@@ -2,7 +2,7 @@
 
 - **Date:** 2026-09-29
 - **Author:** Joey (FRC Team 5181), with Claude
-- **Status:** Draft — awaiting review
+- **Status:** Draft v2 — revised after Fable 5.1 review (2026-09-29); awaiting Joey's review
 - **First live use:** Ramp Riot 2026 (Team 341's offseason event, Ambler PA) — **Saturday, October 24, 2026**
 
 ---
@@ -76,14 +76,17 @@ Explicitly **out of scope** for the Oct 24 release (candidates for v2):
 - **Constraint:** `P × R ≤ T`, where `T` is the number of FRC teams in the round's team pool (§3.3). The commissioner UI must block starting a draft that violates this and show the maximum allowed `R`.
 - **Uniqueness:** within a single round, each FRC team may be owned by at most one player. Enforced by a database unique constraint (§6).
 - The same FRC team may be drafted again in a later round (rounds are independent).
-- In v1 the draft happens in real life; the commissioner enters picks in order (§5.4).
+- In v1 the draft happens in real life; the commissioner enters picks in order (§5.5).
 - **Player participation:** not every league player must participate in every round. The round's draft order defines who participates. A non-participating player earns 0 round points for that round.
 
 ### 3.3 Team pool
 
 - The team pool for a round is TBA's team list for the event (`/event/{key}/teams/simple`).
 - **Offseason risk:** offseason team lists may be missing or incomplete on TBA until close to (or after) the event. Therefore the commissioner may **manually add team numbers** to a round's pool. Manually added teams are stored in `round_extra_teams` (§6) and merged with TBA's list (deduplicated by team key).
-- A drafted team that never plays (withdrew, no-show) simply earns 0. The commissioner may use **replace pick** (§5.4) to fix it before the event starts.
+- A drafted team that never plays (withdrew, no-show) simply earns 0. The commissioner may use **replace pick** (§5.5) to fix it before the event starts.
+- **Offseason team keys are weird, and that's normal:**
+  - **B-teams:** events may remap a second robot from a team to a lettered key, e.g. `frc341B` (TBA `Event.remap_teams`). Team keys therefore allow an optional single uppercase letter suffix everywhere (§6.1).
+  - **Placeholder numbers:** unregistered/demo teams often appear with placeholder numbers ≥ 9970 (Ramp Riot 2025 used 9979–9999 and 10157). They are ordinary draftable teams.
 
 ### 3.4 Scoring
 
@@ -95,7 +98,7 @@ Every scoring value is configurable per round (§3.5). Defaults below. All categ
 |---|---|---|
 | Qual win | 3 per win | `rankings[].record.wins` |
 | Qual tie | 1 per tie | `rankings[].record.ties` |
-| Qual loss | 0 | — |
+| Qual loss | 0 per loss | `rankings[].record.losses` (configurable as `qualLoss`, may be negative) |
 | Ranking points | 1 per RP | Total RP — see §7.4 for extraction |
 
 **Note on double-counting (intentional):** in recent games a qual win also awards win-RPs (e.g. 3 RP in 2025). With defaults a qual win is worth 3 (win) + 3 (RP) = 6 plus any bonus RPs. This is accepted: it makes winning matter most while bonus RPs still differentiate teams. The commissioner can lower `qualWin` if it feels too heavy after the replay test.
@@ -133,7 +136,7 @@ From `/event/{key}/alliances`, `alliance.picks` (ordered array of team keys):
 
 | Category | Default | Rule |
 |---|---|---|
-| Playoff match win | 4 per win | For each match with `comp_level ≠ "qm"` that has a result (§7.5) and a winning alliance, every team in that alliance's `team_keys` for that match earns the points. Teams in `surrogate_team_keys` or `dq_team_keys` for that match do not. Tied playoff matches award nothing (they are replayed). |
+| Playoff match win | 4 per win | For each match with `comp_level ≠ "qm"` that has a result (§7.5) and a winning alliance, every team in that alliance's `team_keys` for that match earns the points. Teams in `surrogate_team_keys` or `dq_team_keys` for that match do not. If TBA reports no winner (`winning_alliance == ""`), the match awards nothing (see §7.5 — this happens for tiebreak-decided matches at offseasons). |
 | Event winner | 15 | Every team on the winning alliance (all of `picks` plus `backup.in` if present). |
 | Event finalist | 8 | Every team on the runner-up alliance (same membership rule). |
 
@@ -151,17 +154,18 @@ From `/event/{key}/awards`. Award points go to each recipient entry with a non-n
 | Engineering Inspiration (9) | 8 |
 | Rookie All-Star (10) | 6 |
 | Winner (1), Finalist (2) | **excluded** — already scored via §3.4.4 |
-| Woodie Flowers (3), Dean's List (4), Volunteer (5) | **excluded** — individual awards |
+| Woodie Flowers (3), Dean's List (4), Volunteer (5), Founder's (6), Bart Kamen Memorial (7) | **excluded** — individual awards (TBA still attaches a `team_key`) |
+| Highest Rookie Seed (14), #1 Seed (39) | **excluded** — already scored via rank tiers §3.4.2 |
 | Any other award with a team recipient | 5 |
 
-- The `award_type` numeric enum must be checked against TBA's published constants during implementation (the fixture test in §10 pins the mapping).
+- Enum values above were verified against TBA's OpenAPI `AwardType` (x-enum-varnames) during review.
 - **Offseason note:** Ramp Riot 2025 had **no awards on TBA**. Awards are therefore commonly scored via **manual adjustments** (§3.7) at offseasons. If TBA returns no awards, the awards category is simply 0.
 
 #### 3.4.6 Stats bonus (OPR)
 
 - After qualifications are complete (§7.6), teams are ranked by TBA OPR at this event (`/event/{key}/oprs` → `oprs[teamKey]`).
 - Default bonus: OPR rank #1 → **+6**, #2 → **+4**, #3 → **+2**.
-- **Ties:** standard competition ranking ("1,1,3"): tied teams share the better place and the next place is skipped.
+- **Ties:** standard competition ranking ("1,1,3"): tied teams share the better place and the next place is skipped. OPRs are floats; two OPRs are equal when they differ by less than `1e-6`.
 - **Before quals complete:** no OPR bonus is awarded (early-event OPR is too noisy). The UI shows "OPR bonus: after quals".
 - OPR is computed over **all teams in the event**, not only drafted teams.
 - If TBA returns no OPRs (e.g. no match scores posted), the bonus is 0 for all teams.
@@ -199,7 +203,12 @@ From `/event/{key}/awards`. Award points go to each recipient entry with a non-n
 - **No player accounts in v1.** Players are names typed by the commissioner.
 - The league `slug` is not secret but not easily guessable (name-derived + 6 random base32 chars, e.g. `habich-fam-k3x9qd`).
 - The commissioner token is a random 32-byte value (base64url). Only its SHA-256 hash is stored. It is shown **once** at league creation, together with the full admin link, with a prominent "save this link" warning.
-- The token lives in the URL **fragment** (`#k=…`) so it is never sent to servers in request lines or logged by hosts/proxies. The admin page's client code reads the fragment, stores the token in `localStorage` under `frcf:admin:{slug}` (so revisiting `/l/{slug}/admin` without the fragment works on that device), and sends it on every mutation as the `x-commissioner-key` header.
+- The token lives in the URL **fragment** (`#k=…`) so it is never sent to servers in request lines or logged by hosts/proxies. The admin page's client code:
+  1. reads the fragment,
+  2. stores the token in `localStorage` under `frcf:admin:{slug}` (so revisiting `/l/{slug}/admin` without the fragment works on that device),
+  3. **removes the fragment from the address bar** with `history.replaceState` (so the commissioner can't accidentally share the admin URL from the phone share sheet),
+  4. sends the token on every admin API call as the `x-commissioner-key` header.
+- Because the server never sees the fragment, the admin pages are **client-rendered shells** that load their data from admin API endpoints with the header (§9.3). The first call is `GET /api/l/{slug}/admin/verify`; on 403 the page shows "This admin link is invalid".
 - All mutation endpoints verify `sha256(header) == leagues.admin_token_hash` using a constant-time comparison. On mismatch: HTTP 403, no detail.
 - **Lost admin link recovery:** out of band — regenerate via a one-off script run with the Supabase service key (`scripts/rotate-admin-token.ts <slug>`), which prints a new admin link. Documented in README.
 - **League creation passcode:** env var `CREATE_LEAGUE_PASSCODE`. Prevents random internet visitors from creating leagues on Joey's free tier.
@@ -219,7 +228,7 @@ All pages must be usable one-handed on a phone at 360px width. No horizontal scr
 
 - League name.
 - **Season leaderboard**: rank, player name, season points, and a mini per-round breakdown.
-- **Rounds list**: each round with event name, dates, status badge (Setup / Drafting / Live / Final — §7.8), and link to the round page.
+- **Rounds list**: each round with event name, dates, status badge (Setup / Drafting / Upcoming / Live / Awaiting final / Final — §7.8), and link to the round page.
 - If a round is Live, it is pinned at the top with its current leaderboard.
 - "Last updated X min ago" for live data; stale warning if the TBA fetch failed (§8).
 - Auto-refresh every 60 s while any round is Live and the tab is visible.
@@ -239,7 +248,7 @@ All pages must be usable one-handed on a phone at 360px width. No horizontal scr
   - `Adjustment: Industrial Design Award → +5`
 - **Draft board**: grid of picks (draft round × slot) showing who took whom and in which order.
 - **Adjustments list** with reasons.
-- **Undrafted notable teams**: the top 5 scoring undrafted teams ("the ones that got away") — cheap to compute, big trash-talk value.
+- *(Priority 2 — stretch)* **Undrafted notable teams**: the top 5 scoring undrafted teams ("the ones that got away") — cheap to compute, big trash-talk value.
 
 ### 5.4 `/l/{slug}/admin` — Commissioner dashboard
 
@@ -247,17 +256,17 @@ Requires a valid token (fragment or localStorage). If none or invalid: "This adm
 
 **League section**
 - Rename league.
-- Players: add, rename, remove. A player who has picks or adjustments in any round cannot be removed (UI explains why); they can be renamed.
+- Players: add, rename, remove. A player who has picks or adjustments in any round, **or appears in any round's draft order**, cannot be removed (UI explains why); they can be renamed. Player names are unique within a league **case-insensitively** ("Mom" and "mom" collide).
 - Edit league default scoring config (form with all fields from §6.2, with "reset to defaults").
 
 **Rounds section**
 - **Add round** by event key (validated against TBA `/event/{key}`; shows event name/dates for confirmation).
-- **"Add 5181's events"** helper: calls TBA `/team/frc5181/events/{year}/simple` for the current year and lists events not already in the league, each with an "add" button. The team number is configurable in league settings (default 5181).
+- *(Priority 2 — stretch)* **"Add 5181's events"** helper: calls TBA `/team/frc5181/events/{year}/simple` for the current year and lists events not already in the league, each with an "add" button. The team number is configurable in league settings (default 5181).
 - Delete round (confirmation dialog; deletes its picks and adjustments).
 
 ### 5.5 `/l/{slug}/admin/r/{roundId}` — Round admin
 
-- **Setup**: roster size, participating players & draft order (drag to reorder, or "randomize"), team pool (TBA list + manually added teams with "add team number" input), scoring config for this round.
+- **Setup**: roster size, participating players & draft order (up/down buttons to reorder, or "randomize"), team pool (TBA list + manually added teams with "add team number" input), scoring config for this round.
 - **Draft entry**:
   - Banner: "Pick 7 of 20 — Mom's turn (round 2)".
   - Search box filtering available teams by number or nickname; tapping a team records the pick for the current picker immediately (no confirm dialog — speed matters at the dinner table).
@@ -266,7 +275,7 @@ Requires a valid token (fragment or localStorage). If none or invalid: "This adm
   - Draft board preview.
 - **Adjustments**: add/edit/delete (§3.7).
 - **Refresh from TBA** button (forces a cache refresh; rate-limited, §8.3).
-- **Mark round final** / reopen (§7.8).
+- **Mark round final** / reopen (§7.8). When today is past `end_date + 1 day` and the round isn't final, show a nudge: "Event's over — mark final once results look complete."
 
 ---
 
@@ -289,17 +298,18 @@ create table players (
   id          uuid primary key default gen_random_uuid(),
   league_id   uuid not null references leagues(id) on delete cascade,
   name        text not null check (char_length(name) between 1 and 40),
-  created_at  timestamptz not null default now(),
-  unique (league_id, name)
+  created_at  timestamptz not null default now()
 );
+create unique index players_league_name_ci on players (league_id, lower(name));
 
 create table rounds (
   id            uuid primary key default gen_random_uuid(),
   league_id     uuid not null references leagues(id) on delete cascade,
   event_key     text not null check (event_key ~ '^[0-9]{4}[a-z0-9]+$'),
   event_name    text not null,                 -- cached from TBA at creation
-  start_date    date,
-  end_date      date,
+  start_date    date not null,                 -- required in TBA Event_Simple
+  end_date      date not null,
+  timezone      text not null default 'America/New_York',  -- IANA tz from TBA /event/{key}.timezone; default if TBA gives none
   roster_size   integer not null default 4 check (roster_size between 1 and 10),
   draft_order   uuid[] not null default '{}',  -- player ids, participating players only
   scoring       jsonb not null,                -- ScoringConfig copied from league at creation
@@ -310,7 +320,7 @@ create table rounds (
 
 create table round_extra_teams (
   round_id  uuid not null references rounds(id) on delete cascade,
-  team_key  text not null check (team_key ~ '^frc[0-9]{1,5}$'),
+  team_key  text not null check (team_key ~ '^frc[1-9][0-9]{0,4}[A-Z]?$'),
   primary key (round_id, team_key)
 );
 
@@ -318,18 +328,18 @@ create table picks (
   id           uuid primary key default gen_random_uuid(),
   round_id     uuid not null references rounds(id) on delete cascade,
   pick_number  integer not null check (pick_number >= 0),   -- 0-indexed overall pick
-  player_id    uuid not null references players(id) on delete restrict,
-  team_key     text not null check (team_key ~ '^frc[0-9]{1,5}$'),
+  player_id    uuid not null references players(id) on delete cascade,  -- removal of in-use players is blocked in app code (§5.4); cascade keeps league deletion working
+  team_key     text not null check (team_key ~ '^frc[1-9][0-9]{0,4}[A-Z]?$'),
   created_at   timestamptz not null default now(),
-  unique (round_id, pick_number),
-  unique (round_id, team_key)
+  constraint picks_round_pick_number_key unique (round_id, pick_number),
+  constraint picks_round_team_key unique (round_id, team_key)
 );
 
 create table adjustments (
   id          uuid primary key default gen_random_uuid(),
   round_id    uuid not null references rounds(id) on delete cascade,
-  player_id   uuid references players(id) on delete restrict,
-  team_key    text check (team_key ~ '^frc[0-9]{1,5}$'),
+  player_id   uuid references players(id) on delete cascade,
+  team_key    text check (team_key ~ '^frc[1-9][0-9]{0,4}[A-Z]?$'),
   points      integer not null check (points between -1000 and 1000),
   reason      text not null check (char_length(reason) between 1 and 200),
   created_at  timestamptz not null default now(),
@@ -339,7 +349,7 @@ create table adjustments (
 create table tba_cache (
   path        text primary key,          -- e.g. '/event/2025parr/matches/simple'
   etag        text,
-  body        jsonb not null,
+  body        jsonb,                     -- SQL NULL = TBA had no data yet (JSON null or 404)
   fetched_at  timestamptz not null,      -- last time we successfully talked to TBA (200 or 304)
   last_error  text,                      -- last failure message, null if last attempt succeeded
   last_error_at timestamptz
@@ -347,7 +357,7 @@ create table tba_cache (
 ```
 
 **Integrity rules enforced in application code (not expressible as simple constraints):**
-- Every `rounds.draft_order` element must be a player of the same league, with no duplicates.
+- Every `rounds.draft_order` element must be a player of the same league, with no duplicates. (`uuid[]` has no foreign key, so this is also why players in any draft order cannot be removed — §5.4.)
 - `picks.player_id` must equal the snake-order picker for `pick_number` given the round's `draft_order` at the time of the pick.
 - `picks.pick_number` values in a round must be contiguous from 0 (enforced by only allowing append-next and undo-last).
 - `adjustments.player_id` must belong to the round's league.
@@ -360,6 +370,7 @@ create table tba_cache (
   "version": 1,
   "qualWin": 3,
   "qualTie": 1,
+  "qualLoss": 0,
   "rankingPoint": 1,
   "rankTiers": [
     { "maxRank": 1,  "points": 10 },
@@ -372,7 +383,7 @@ create table tba_cache (
   "eventFinalist": 8,
   "awards": {
     "byType": { "0": 10, "9": 8, "10": 6 },
-    "excludedTypes": [1, 2, 3, 4, 5],
+    "excludedTypes": [1, 2, 3, 4, 5, 6, 7, 14, 39],
     "default": 5
   },
   "oprBonus": [6, 4, 2]
@@ -414,34 +425,47 @@ TBA may return `null` (JSON) or 404 for endpoints with no data yet (e.g. allianc
 
 ### 7.3 Fetch & cache layer (`lib/tba/client.ts`)
 
-`getTba(path, { force = false })` returns `{ data, fetchedAt, stale: boolean }`:
+`getTba(path, { windowMs, force = false })` returns `{ data, fetchedAt, stale: boolean }`. The **caller** computes `windowMs` from the round using `cacheWindowFor(round, now)`:
+
+```
+local "today" = now in round.timezone
+if round.finalized_at is not null           → 24 h
+else if today ∈ [start_date − 1 day, end_date + 1 day] → 60 s
+else if today > end_date + 1 day            → 10 min   (late-posted offseason results still show up)
+else (before the event)                     → 10 min
+```
+
+Paths not tied to a round (event validation at round creation, team-events helper) use `windowMs = 10 min`.
 
 1. Read `tba_cache` row for `path`.
-2. Freshness window: **60 s** if the event is current (today within `[start_date − 1 day, end_date + 1 day]`, using the event's `timezone` from `/event/{key}`; if unknown, US Eastern), otherwise **24 h**.
-3. If a row exists, `force` is false, and `now − fetched_at < window` → return cached.
-4. Otherwise request TBA with `If-None-Match` if an etag exists, **5 s timeout**.
-   - `200`: upsert body + etag, `fetched_at = now`, clear `last_error`. Return fresh.
+2. If a row exists, `force` is false, and `now − fetched_at < windowMs` → return cached.
+3. Otherwise request TBA with `If-None-Match` if an etag exists, **5 s timeout**, and `cache: 'no-store'` (§9.2).
+   - `200`: upsert body + etag, `fetched_at = now`, clear `last_error`. Return fresh. A JSON `null` body is stored as SQL NULL.
    - `304`: update `fetched_at = now`, clear `last_error`. Return cached body.
-   - `404`: treat as empty (`null`) body; upsert; return.
+   - `404`: store SQL NULL body; upsert; return `data: null`.
    - Timeout / 5xx / network error / 401: record `last_error`, `last_error_at`; if a cached row exists return it with `stale: true`; if not, return `{ data: null, stale: true }`.
-5. Concurrent callers may both fetch; accepted at this scale (last write wins; both writes are equivalent).
+4. Concurrent callers may both fetch; accepted at this scale (last write wins; both writes are equivalent).
 
 The **page-level "last updated"** is the minimum `fetched_at` across the paths used to render it; the page shows a stale warning if any path returned `stale: true`.
 
 ### 7.4 Ranking points extraction
 
-TBA rankings: `{ rankings: [{ rank, team_key, record: {wins, losses, ties} | null, matches_played, extra_stats: number[], sort_orders: number[] }], extra_stats_info: [{name}], sort_order_info: [{name}] }`.
+TBA rankings: `{ rankings: [{ rank, team_key, record: {wins, losses, ties} | null, matches_played, extra_stats: number[], sort_orders: number[] }], extra_stats_info: [{name}], sort_order_info: [{name}] | null }`. The whole response may also be JSON `null`. Treat any missing/null array as empty.
 
 Total RP for a team:
 1. If `extra_stats_info` contains an entry whose name, lowercased, contains `"total ranking points"` → use `extra_stats[thatIndex]`.
 2. Else if `sort_order_info[0].name` lowercased contains `"ranking score"` or `"ranking points"` (an **average**) → `round(sort_orders[0] × matches_played)`.
 3. Else → 0 RP points for everyone, and the round page shows "RP data unavailable for this event".
 
-The chosen method is recorded in the computed result (for display/debugging). The `2025parr` fixture test pins which branch that event takes.
+The chosen method is recorded in the computed result (for display/debugging). Per TBA's backend (`event_details.py`), for years ≥ 2017 "Total Ranking Points" is itself derived as `round(sort_orders[0] × matches_played)`, so branches 1 and 2 agree; `2025parr` takes branch 1, which the fixture test pins.
 
 ### 7.5 Match results
 
-A match "has a result" when both `alliances.red.score` and `alliances.blue.score` are `≥ 0` (TBA uses `-1` for unplayed). The winner is `winning_alliance` (`"red"`, `"blue"`, or `""` for tie). If `winning_alliance` is missing but scores exist, winner = higher score; equal = tie.
+A match "has a result" when both `alliances.red.score` and `alliances.blue.score` are `≥ 0` (TBA uses `-1` for unplayed). The winner is `winning_alliance` (`"red"`, `"blue"`, or `""` for no winner).
+
+- **Never override a non-empty `winning_alliance`** by comparing scores: TBA applies game tiebreakers when `score_breakdown` exists, so a lower-or-equal score can legitimately be the winner.
+- Fall back to score comparison **only when the field is absent** (not when it is `""`).
+- `""` with equal scores means TBA could not determine a winner. Under 2023+ double-elimination rules, playoff ties are **not replayed**; they're decided by tiebreak criteria, which TBA can only apply when a score breakdown exists. Offseasons often lack breakdowns, so a tied playoff match may show `""` even though one alliance advanced. Such matches award no playoff-win points. **Real example:** 2025parr Playoff Match 3 was 156–156 (Alliance 2 vs 7). The commissioner may credit the actual winner with a manual adjustment.
 
 **Qual W-L-T fallback:** if `rankings` is null/empty or a team's `record` is null, compute W-L-T from qual matches (`comp_level == "qm"`) with results, counting only teams in `team_keys` that are not in `surrogate_team_keys` or `dq_team_keys` for that match.
 
@@ -456,7 +480,11 @@ Otherwise quals are in progress. (The second rule alone is unreliable because of
 ### 7.7 Winner / finalist determination
 
 1. **Primary:** from `/alliances`, an alliance with `status.level == "f"` and `status.status == "won"` is the winner; `status.level == "f"` and `status.status == "eliminated"` is the finalist.
-2. **Fallback** (no `status` data): among `comp_level == "f"` matches with results, count wins per side. The first side to reach 2 wins is the winner. Map that side to an alliance by finding the alliance whose `picks ∪ {backup.in}` contains the **majority** of that side's `team_keys` in the deciding match. The other finals alliance (same method on the opposing side) is the finalist.
+2. **Fallback** (no `status` data), mirroring TBA's own `event_team_status_helper`:
+   - For each `comp_level == "f"` match with a result, map **each side** (red, blue) to an alliance: the alliance whose `picks ∪ {backup.in}` shares **≥ 2** teams with that side's `team_keys`.
+   - Tally match wins **per alliance**, not per color. Alliance colors are not guaranteed to stay the same across finals matches.
+   - The first alliance to 2 finals wins is the winner. The other alliance that appeared in the finals is the finalist.
+   - A side that maps to no alliance is ignored.
 3. If neither method resolves an alliance, no winner/finalist points are awarded yet.
 4. **Awards cross-check:** winner/finalist *awards* (types 1, 2) are always excluded from award scoring (§3.4.5), so there is no double count regardless of which method is used.
 
@@ -466,12 +494,19 @@ Derived, not stored (except `finalized_at`):
 
 | Status | Condition |
 |---|---|
+Evaluated top to bottom; first match wins. "Today" is the local date in `rounds.timezone`.
+
+| Status | Condition |
+|---|---|
+| **Final** | `finalized_at` is set |
 | **Setup** | No picks yet |
 | **Drafting** | `0 < picks < P × R` |
-| **Live** | Draft complete, not finalized, and today ≤ `end_date + 1 day` |
-| **Final** | `finalized_at` is set, **or** draft complete and today > `end_date + 1 day` |
+| **Upcoming** | Draft complete and today < `start_date − 1 day` |
+| **Live** | Draft complete and today ∈ [`start_date − 1 day`, `end_date + 1 day`] |
+| **Awaiting final** | Draft complete and today > `end_date + 1 day` (commissioner is nudged to finalize, §5.5) |
 
-Finalizing does **not** freeze scores (scores are always computed from data). It only affects the badge and switches the cache freshness window to 24 h. Reopening clears `finalized_at`.
+- **Final only ever comes from the commissioner.** Dates alone never make a round Final, so late-posted offseason results keep flowing in (10 min cache window, §7.3) until the commissioner decides the results are complete.
+- Finalizing does **not** freeze scores (scores are always computed from data). It only sets the badge and the 24 h cache window. Reopening clears `finalized_at`, and the round returns to whatever the dates imply.
 
 ### 7.9 Scoring engine (`lib/scoring/`)
 
@@ -530,10 +565,13 @@ Free projects pause after ~7 days of inactivity. Before each event, the commissi
 ### 8.4 Input validation
 
 - All mutation bodies are validated with zod; invalid → 400 with a human-readable message.
-- Team numbers entered manually: 1–5 digits, stored as `frc<number>` with leading zeros stripped.
+- Team numbers entered manually: 1–5 digits plus an optional letter suffix (e.g. `341`, `341b`). Leading zeros stripped, suffix uppercased, stored as `frc341B`.
 - Event keys: lowercased and trimmed before validation.
-- Unique-violation on `picks.team_key` (race: two tabs) → 409 "That team was just taken".
-- Pick append must specify the expected `pick_number`; if it isn't the next number → 409 "Draft changed in another tab — refresh". Same for undo (must specify the pick number being undone).
+- Unique-constraint violations map to specific 409 messages by **constraint name**:
+  - `picks_round_team_key` → "That team was just taken"
+  - `picks_round_pick_number_key` → "Draft changed in another tab — refresh"
+  - `players_league_name_ci` → "There's already a player with that name"
+- Pick append must specify `expectedPickNumber`. If it isn't the next number → 409 "Draft changed in another tab — refresh". Same for undo (must specify the pick number being undone).
 
 ### 8.5 Display edge cases
 
@@ -548,7 +586,7 @@ Free projects pause after ~7 days of inactivity. Before each event, the commissi
 | Layer | Choice | Notes |
 |---|---|---|
 | Framework | **Next.js** (current stable, App Router, TypeScript strict) | Server components for public pages; route handlers for mutations |
-| Styling | Tailwind CSS | Mobile-first; supports dark mode via `prefers-color-scheme` |
+| Styling | Tailwind CSS | Mobile-first. Dark mode is Priority 2 (stretch). |
 | Database | **Supabase** Postgres (free tier) | Service role key server-only; migrations in `supabase/migrations/` |
 | Validation | zod | Shared schemas for API bodies and ScoringConfig |
 | Tests | Vitest | Pure scoring engine + TBA client (with mocked fetch) + route handler auth |
@@ -565,7 +603,7 @@ frc-fantasy/
     l/[slug]/admin/page.tsx          # commissioner dashboard (client shell + token handling)
     l/[slug]/admin/r/[roundId]/page.tsx
     api/leagues/route.ts             # POST create league
-    api/l/[slug]/...                 # commissioner mutations (players, rounds, picks, adjustments, scoring, refresh)
+    api/l/[slug]/admin/...           # commissioner endpoints (§9.3)
   lib/
     tba/client.ts                    # getTba + cache (§7.3)
     tba/types.ts                     # TBA response types (only fields we use)
@@ -586,14 +624,55 @@ frc-fantasy/
   docs/superpowers/specs/
 ```
 
-### 9.2 Request flow (public round page)
+### 9.2 Next.js caching — pinned (important)
+
+Next.js's own caches would sit in front of our `tba_cache` and could serve a **build-time snapshot** of the leaderboard or stale TBA bodies all event day. To prevent that:
+
+- **Cache Components is disabled** (not enabled in `next.config`).
+- Every page under `app/l/` and every route handler under `app/api/` exports `export const dynamic = 'force-dynamic'`.
+- Every `fetch` in `lib/tba/client.ts` passes `cache: 'no-store'`. The Supabase client is also configured with a `no-store` fetch.
+- Our own `tba_cache` table (§7.3) is the **only** cache layer.
+- Pages and route handlers that call TBA set `export const maxDuration = 30` (seconds). Six parallel TBA calls with 5 s timeouts plus DB queries fit comfortably.
+- **Test:** an automated check (or the replay dry run) confirms a leaderboard change appears after refresh without redeploying.
+
+### 9.3 API endpoints
+
+All admin endpoints require the `x-commissioner-key` header (403 otherwise). All bodies are JSON, validated with zod (400 on failure). Responses are JSON.
+
+| Method | Path | Body | Success | Errors |
+|---|---|---|---|---|
+| POST | `/api/leagues` | `{ name, passcode }` | 201 `{ slug, adminToken }` | 403 bad passcode |
+| GET | `/api/l/{slug}/admin/verify` | — | 200 `{ ok: true }` | 403 |
+| GET | `/api/l/{slug}/admin/state` | — | 200 league + players + rounds (summary) | 403 |
+| PATCH | `/api/l/{slug}/admin/league` | `{ name?, homeTeamNumber?, defaultScoring? }` | 200 | 400, 403 |
+| POST | `/api/l/{slug}/admin/players` | `{ name }` | 201 | 409 name exists |
+| PATCH | `/api/l/{slug}/admin/players/{id}` | `{ name }` | 200 | 409 name exists |
+| DELETE | `/api/l/{slug}/admin/players/{id}` | — | 204 | 409 player in use (§5.4) |
+| POST | `/api/l/{slug}/admin/rounds` | `{ eventKey }` | 201 (event validated on TBA) | 404 unknown event, 409 already in league |
+| GET | `/api/l/{slug}/admin/rounds/{id}` | — | 200 round + pool + picks + adjustments | 403, 404 |
+| PATCH | `/api/l/{slug}/admin/rounds/{id}` | `{ rosterSize?, draftOrder?, scoring?, finalized? }` | 200 | 409 draft order/roster size changed with picks present; 400 `P × R > T` |
+| DELETE | `/api/l/{slug}/admin/rounds/{id}` | — | 204 | — |
+| POST | `/api/l/{slug}/admin/rounds/{id}/teams` | `{ teamNumber }` | 201 | 400 bad format |
+| DELETE | `/api/l/{slug}/admin/rounds/{id}/teams/{teamKey}` | — | 204 | 409 team is drafted |
+| POST | `/api/l/{slug}/admin/rounds/{id}/picks` | `{ expectedPickNumber, teamKey }` | 201 | 409 stale pick number / team taken / draft full; 400 team not in pool |
+| DELETE | `/api/l/{slug}/admin/rounds/{id}/picks/{pickNumber}` | — (must be the last pick) | 204 | 409 not the last pick |
+| PATCH | `/api/l/{slug}/admin/rounds/{id}/picks/{pickNumber}` | `{ teamKey }` (replace pick) | 200 | 409 team taken; 400 not in pool |
+| POST | `/api/l/{slug}/admin/rounds/{id}/adjustments` | `{ playerId? , teamKey?, points, reason }` | 201 | 400 |
+| PATCH / DELETE | `/api/l/{slug}/admin/rounds/{id}/adjustments/{adjId}` | partial adjustment / — | 200 / 204 | 404 |
+| POST | `/api/l/{slug}/admin/rounds/{id}/refresh` | — | 200 `{ fetchedAt }` | rate-limited → 200 with cached `fetchedAt` |
+
+Every `{id}` is also checked to belong to `{slug}`'s league (404 otherwise), so a valid token for league A can't touch league B.
+
+Public pages read directly from the database in server components; no public API is needed in v1.
+
+### 9.4 Request flow (public round page)
 
 1. Server component loads round, players, picks, adjustments from Supabase.
-2. In parallel, `getTba` for teams, matches, rankings, alliances, awards, oprs.
+2. In parallel, `getTba` for teams, matches, rankings, alliances, awards, oprs, with `windowMs = cacheWindowFor(round, now)`.
 3. `scoreEvent` → `scoreRound` → render.
 4. Client auto-refresh (§5.2) calls `router.refresh()` every 60 s while Live and visible.
 
-The league page does the same for every round (season standings). Past rounds hit the 24 h cache window, so a league page view costs at most 6 TBA requests per live round.
+The league page does the same for every round (season standings). Finalized rounds use the 24 h window, so a league page view costs at most 6 TBA requests per non-final round, and usually 6 × 304s.
 
 ---
 
@@ -602,12 +681,13 @@ The league page does the same for every round (season standings). Past rounds hi
 1. **Fixture capture:** `scripts/capture-fixture.ts 2025parr` saves every §7.2 endpoint response for Ramp Riot 2025 into `tests/fixtures/2025parr/`. Committed to the repo.
 2. **Scoring engine unit tests** against the fixture:
    - Hand-verify full breakdowns for at least 3 teams (the event winner's captain, a mid-ranked team, and an unpicked low-ranked team), with expected values written into the test.
-   - Pin: which RP extraction branch `2025parr` uses; qualsComplete = true; winner/finalist alliances.
-3. **Synthetic tests** for edge cases: null sections, ties in OPR (1,1,3), tied playoff match, surrogate & DQ handling, 4-team alliances with `backup.in`, rank tier boundaries (1, 8, 9, 16, 17), missing `status` → finals fallback, awards exclusions, team-targeted adjustment on undrafted team.
-4. **Snake draft tests:** `pickerFor` for P = 1, 2, 3, 5 over several draft rounds.
-5. **TBA client tests** (mocked fetch): fresh cache hit, 304, 200 update, timeout → stale, 404 → empty, force rate-limit.
-6. **API tests:** mutation with missing/wrong token → 403; pick race → 409; wrong expected pick number → 409; draft-order change with existing picks → 409.
-7. **Manual end-to-end dry run (replay):** create a league with the family, add round `2025parr`, run a real draft at dinner, review the leaderboard together. Tune scoring defaults based on the feel.
+   - Pin: which RP extraction branch `2025parr` uses (expected: branch 1); qualsComplete = true; winner = Alliance 3, finalist = Alliance 4 (via both the `status` path and the finals fallback with `status` stripped); Alliance 2's 4th pick (`picks[3]`) scores the third-pick value; Playoff Match 3 (156–156) awards no playoff-win points; awards category is 0 (no awards posted); 34 teams in the pool.
+3. **Synthetic tests** for edge cases: null sections (including a JSON-`null` rankings body and null `sort_order_info`), ties in OPR (1,1,3) including float near-equality, `winning_alliance` present but disagreeing with scores (must trust the field), surrogate & DQ handling, 4-team alliances with `backup.in`, rank tier boundaries (1, 8, 9, 16, 17), finals where alliance colors swap between matches, awards exclusions (6, 7, 14, 39), B-team keys like `frc341B`, team-targeted adjustment on undrafted team.
+4. **Round status & cache window tests:** `cacheWindowFor` and status derivation across timezone boundaries (e.g. 11:30 pm Eastern on `end_date + 1`), finalized vs not, before/during/after the event.
+5. **Snake draft tests:** `pickerFor` for P = 1, 2, 3, 5 over several draft rounds.
+6. **TBA client tests** (mocked fetch): fresh cache hit, 304, 200 update, JSON-`null` 200 stored as SQL NULL, timeout → stale, 404 → empty, force rate-limit.
+7. **API tests:** mutation with missing/wrong token → 403; valid token for league A used on league B's round → 404; removing a player who is in a draft order → 409; pick race → 409; wrong expected pick number → 409; draft-order change with existing picks → 409.
+8. **Manual end-to-end dry run (replay):** create a league with the family, add round `2025parr`, run a real draft at dinner, review the leaderboard together. Tune scoring defaults based on the feel.
 
 ---
 
@@ -618,7 +698,7 @@ The league page does the same for every round (season standings). Past rounds hi
 | Sep 30 – Oct 6 | Scaffold Next.js + Supabase + Vercel. TBA client + cache. Capture `2025parr` fixture. Scoring engine with full tests. |
 | Oct 7 – Oct 13 | DB schema + migrations. Create league, commissioner auth, players, rounds, draft entry, adjustments. Public league/round pages. |
 | Oct 14 – Oct 18 | **Family replay dry run** on `2025parr`. Tune scoring. Mobile polish. Deploy to production URL. |
-| Oct 19 – Oct 22 | Feature freeze. Confirm `2026parr` exists on TBA and check its team list; add missing teams manually. Wake Supabase. |
+| Oct 19 – Oct 22 | Priority 2 stretch items only if everything above is done. Feature freeze by Oct 21. Confirm `2026parr` exists on TBA and check its team list; add missing teams manually. Wake Supabase. |
 | Oct 23 | Draft night for Ramp Riot 2026. |
 | **Oct 24** | **Live.** |
 
