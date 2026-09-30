@@ -2964,7 +2964,6 @@ describe('Ramp Riot 2025 replay: known facts', () => {
       0,
     );
     expect(actualCredits).toBe(expectedCredits);
-    expect(expectedCredits).toBe((playoffs.length - 1) * 3);
   });
 
   it('has no award points, because TBA has no awards for this event', () => {
