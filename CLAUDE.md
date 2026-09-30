@@ -10,10 +10,10 @@ The design spec: `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md`. Read
 
 ## Current status
 
-- Spec is **Draft v2**: written, then revised after a Fable 5.1 review (all 15 findings applied).
-- **Joey has NOT yet approved the spec.** The first step in a new session is to confirm approval or collect changes.
-- **Next step after approval:** invoke the `superpowers:writing-plans` skill to write the implementation plan. No product code, scaffolding, or dependency installs before the plan is approved.
-- No code exists yet.
+- Spec is **Draft v2**, approved by Joey on 2026-09-29.
+- **Implementation plan written** (2026-09-29), 28 tasks in four files: `docs/superpowers/plans/2026-09-29-frc-fantasy-v1.md` (index: constraints, deviations, review focus) plus `-part-1-engine.md`, `-part-2-data-api.md`, `-part-3-ui.md`.
+- **Joey has NOT yet reviewed the plan.** The first step in a new session is to confirm the plan (and its 7 flagged deviations in the index) or collect changes, and pick an execution method (subagent-driven vs native).
+- No product code exists yet. Task 11 needs Joey's TBA key in `.env.local`; Task 12 needs a Supabase project.
 
 ## Locked decisions (don't re-litigate)
 

@@ -51,6 +51,8 @@ Joey should glance at these when reviewing. Each is small and is the plan's reco
 3. **Rank-tier points require `matches_played > 0`.** If TBA posts a rankings table before any match is played, nobody gets seeding points for an alphabetical placeholder rank.
 4. **No ESLint.** Next.js 16 removed `next lint`; `tsc --noEmit` + Vitest are the quality gates. Not in the spec either way.
 5. **Hand-verified fixture numbers are filled in during Task 11**, because they can only come from the real `2025parr` download, which needs Joey's TBA key. Task 11 gives the exact procedure. This is the one place the plan cannot pre-write expected values.
+6. **"Add round" creates the round first, then shows its name and dates** (§5.4 says "shows event name/dates for confirmation"). The API table in §9.3 has no look-up-only endpoint, so the dashboard adds the round and shows a notice with the event name and dates plus a one-tap Delete. Adding a preview endpoint would be a small v1.1 change if the family finds this confusing.
+7. **The rounds unique constraint is named** `rounds_league_event_key` in the migration (the spec's SQL leaves it unnamed) so the API can map it to "That event is already in this league".
 
 ## Review Focus
 
