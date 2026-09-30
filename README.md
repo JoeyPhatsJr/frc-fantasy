@@ -52,6 +52,10 @@ npx tsx --env-file=.env.local scripts/db-smoke.ts   # talks to the real database
 Run them with `npx tsx --env-file=.env.local scripts/<name>.ts ...`. For example, the demo league:
 `npx tsx --env-file=.env.local scripts/seed-demo.ts`.
 
+## Live site
+
+Production: https://frc-fantasy-6yo3.vercel.app (Vercel, deploys automatically from `main`).
+
 ## Design
 
 The look and feel lives in `design-system/frc-fantasy/`. Start with `BRIEF.md` (the design direction and
