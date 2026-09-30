@@ -283,7 +283,12 @@ export type TeamStatsRow = {
 Run: `npx vitest run tests/db/migration-0004.test.ts && npm run typecheck`
 Expected: 5 tests PASS; typecheck clean.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 7: Joey checkpoint — apply `0004` now**
+
+Dev and production share one Supabase project, and this migration only adds a column and two tables, so it's applied now (same rule as SP1 `0002` and SP4 `0003`): later tasks' `npm run dev` checks read `tba_cache.body_hash`, and the live site (pre-SP3 code) ignores the new objects. Joey: Supabase dashboard → wake the project if it's *Paused* → **SQL Editor** → New query → paste all of `supabase/migrations/0004_team_stats.sql` → **Run**.
+Expected: `Success. No rows returned`. **Table Editor** shows `event_scores` and `team_stats` (both empty), and `tba_cache` has a `body_hash` column. (The hash backfill and the stats build wait until Task 17, once the scripts exist.)
+
+- [ ] **Step 8: Commit**
 
 ```bash
 git add supabase/migrations/0004_team_stats.sql lib/db/types.ts tests/db/migration-0004.test.ts
@@ -4239,7 +4244,7 @@ git commit -m "feat(sp3): team sheet with per-event history for Y and Y−1"
 
 ---
 
-### Task 17: Apply `0004`, backfill hashes, build 2025 + 2026 stats (with Joey)
+### Task 17: Backfill hashes, build 2025 + 2026 stats (with Joey)
 
 **Files:** none changed (this task runs the migration and scripts against the real database).
 
@@ -4253,15 +4258,14 @@ v1 has one Supabase project, used by both local dev and the live site, so **thes
 
 Joey: Supabase dashboard → the FRC Fantasy project. If it says *Paused*, click **Restore** and wait until it's green.
 
-- [ ] **Step 2: Apply the migration**
+- [ ] **Step 2: Confirm the migration is in**
 
-Joey: Supabase dashboard → **SQL Editor** → New query → paste all of `supabase/migrations/0004_team_stats.sql` → **Run**.
-Expected: `Success. No rows returned`. Then **Table Editor** shows `event_scores` and `team_stats` (both empty), and `tba_cache` has a `body_hash` column.
+`0004` was applied in Task 1 Step 7. Check: **Table Editor** shows `event_scores` and `team_stats`, and `tba_cache` has a `body_hash` column. If not (for example Task 1's checkpoint was skipped), apply it now the same way.
 
 - [ ] **Step 3: Backfill the hashes**
 
 Run: `npx tsx --env-file=.env.local scripts/backfill-body-hash.ts`
-Expected: `Done: N rows hashed.` where N is the number of `tba_cache` rows with a body (a few dozen).
+Expected: `Done: N rows hashed.` where N is the number of `tba_cache` rows with a body (a few dozen). (Rows the live site writes between now and the SP3 merge still come from pre-SP3 code and get a null hash; each is re-hashed on its next refresh after the merge, which costs at most one extra re-score per event. Re-run this script right after merging if you want them hashed at once.)
 
 - [ ] **Step 4: Build 2025**
 
@@ -4400,7 +4404,7 @@ Fill in the `<…>` values from Task 17 and Step 1 before running it.
 
 - [ ] **Step 3: Merge (after Joey says so)**
 
-Joey merges the PR on GitHub (or: `gh pr merge --squash --delete-branch` if he asks you to). Vercel deploys `main` automatically. Migration `0004` is already applied (Task 17).
+Joey merges the PR on GitHub (or: `gh pr merge --squash --delete-branch` if he asks you to). Vercel deploys `main` automatically. Migration `0004` is already applied (Task 1 Step 7), and the stats are built (Task 17).
 
 - [ ] **Step 4: Production checks**
 

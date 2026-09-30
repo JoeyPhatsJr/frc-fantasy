@@ -604,7 +604,17 @@ In `tests/api/refresh.test.ts` add:
 Run: `npm run typecheck && npm test`
 Expected: typecheck clean; all tests pass (previous count + 11).
 
-- [ ] **Step 15: Commit**
+- [ ] **Step 15: Joey checkpoint — apply `0005` now**
+
+Dev and production share one Supabase project and `0005` only adds things (new columns have defaults; `event_key` just becomes nullable), so it's applied now, the same rule as SP1 `0002`, SP4 `0003` and SP3 `0004`. Later tasks' `npm run dev` checks need the new columns, and the live site (pre-SP2 code) keeps working.
+1. Wake the Supabase project if it's paused.
+2. In the Supabase SQL editor, confirm the roster check's name first:
+   `select conname from pg_constraint where conrelid = 'rounds'::regclass and contype = 'c';`
+   It must list `rounds_roster_size_check`. If it shows a different name, edit that one line of `0005_formats.sql` (`drop constraint if exists <real name>`) before running.
+3. Run the whole of `supabase/migrations/0005_formats.sql` in the SQL editor.
+4. Check: `select column_name from information_schema.columns where table_name = 'rounds' and column_name in ('kind','season_year','pool_filter','auto_added');` returns 4 rows, and `select relname, relrowsecurity from pg_class where relname in ('manual_results','league_follows','league_skipped_events');` shows `true` for all three.
+
+- [ ] **Step 16: Commit**
 
 ```bash
 git add supabase/migrations/0005_formats.sql lib/season/poolFilter.ts lib/db lib/rounds lib/views/round.ts lib/api/types.ts \
@@ -5847,15 +5857,11 @@ Expected: clean typecheck; every test passes (write the new count in the PR); th
 
 Push the branch and open a PR titled `SP2: league formats (manual events, follow-a-team, full season)`. The body lists: migration `0005_formats.sql`; the three spec deviations at the top of this plan; the test count; screenshots at 360 px (dark and light) of the Results card, a season round's per-event breakdown, and the create-league format choice. End the body with the attribution line from the session's instructions.
 
-- [ ] **Step 3: Apply migration `0005` to production (after Joey's go)**
+- [ ] **Step 3: Confirm migration `0005` is in (applied in Task 1 Step 15)**
 
 1. Wake the Supabase project if it's paused.
-2. In the Supabase SQL editor, confirm the roster check's name first:
-   `select conname from pg_constraint where conrelid = 'rounds'::regclass and contype = 'c';`
-   It must list `rounds_roster_size_check`. If it shows a different name, edit that one line of `0005_formats.sql` (`drop constraint if exists <real name>`) and commit before running.
-3. Run the whole of `supabase/migrations/0005_formats.sql` in the SQL editor.
-4. Check: `select column_name from information_schema.columns where table_name = 'rounds' and column_name in ('kind','season_year','pool_filter','auto_added');` returns 4 rows, and `select relname, relrowsecurity from pg_class where relname in ('manual_results','league_follows','league_skipped_events');` shows `true` for all three.
-5. Run SP4's `scripts/smoke-v2.ts` against the dev project (its RLS check covers every `public` table, including the three new ones).
+2. Re-run Task 1 Step 15's two check queries (4 `rounds` columns; RLS `true` on the three new tables). If they fail, Task 1's checkpoint was skipped: do it now.
+3. Run SP4's `scripts/smoke-v2.ts` (its RLS check covers every `public` table, including the three new ones).
 
 - [ ] **Step 4: Merge and deploy check**
 

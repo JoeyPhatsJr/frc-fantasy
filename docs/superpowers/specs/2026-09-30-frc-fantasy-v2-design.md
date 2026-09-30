@@ -469,7 +469,7 @@ create table draft_prefs (
 **Pause / resume:**
 - **Pause:** `draft_paused_at = now()`; if a timer is on, `paused_remaining_ms = max(0, pick_deadline − now())`, and `pick_deadline = null`.
 - **Resume:** `draft_paused_at = null`; if a timer is on, `pick_deadline = now() + max(paused_remaining_ms, 10 s)`, so a draft paused after the clock ran out gives the player 10 seconds instead of auto-picking instantly. If `pick_seconds` was changed while paused, the resumed pick gets the full new `pick_seconds` instead.
-- Both are done in one SQL statement each (single-row `update`), so they're atomic without an RPC.
+- **Start, pause, and resume** go through a third locked function, `draft_control(p_round_id, p_action)` with `p_action ∈ {'start', 'pause', 'resume'}` (added in plan review 2026-09-30): it locks the round row, checks the phase, and does the deadline math with the **database clock** (`now()`), which PostgREST can't do in a plain update. Like the other functions it returns `false` instead of raising when a check fails.
 
 ### 7.2 Atomic pick writes
 
@@ -546,7 +546,7 @@ If nobody has the draft open when a deadline passes, nothing happens until someo
 ### 8.1 Security rules
 
 - **RLS stays on with no policies** for every table, old and new (`profiles`, `manual_results`, `league_follows`, `league_skipped_events`, `event_scores`, `team_stats`, `draft_queue`, `draft_prefs`). The anon key becomes public in v2 (`NEXT_PUBLIC_…`), so this is what keeps it harmless. The real-database smoke script (§9) queries `pg_class.relrowsecurity` for every `public` table and fails if any has RLS off (it needs a real database, so it isn't a Vitest test).
-- **RPC lockdown:** `draft_make_pick`, `draft_undo_pick`, and `gen_invite_code` (and any future function) are created with `revoke execute … from public, anon, authenticated` followed by an explicit `grant execute … to service_role`; only the service role can call them.
+- **RPC lockdown:** `draft_make_pick`, `draft_undo_pick`, `draft_control`, `public_tables_without_rls` (the smoke script's RLS check), and `gen_invite_code` (and any future function) are created with `revoke execute … from public, anon, authenticated` followed by an explicit `grant execute … to service_role`; only the service role can call them.
 - **Session checks** happen only in `lib/auth/session.ts` / `lib/auth/roles.ts`. Every route and page that mutates or reads members-only data goes through them; the route tests include "signed out → 401", "other league's commissioner → 403", "non-member of members-only league → private card/403".
 - **Cron:** `/api/cron/daily` requires `Authorization: Bearer $CRON_SECRET` (constant-time compare).
 - **Open redirect:** the `next` parameter rule (§4.1).

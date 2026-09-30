@@ -19,7 +19,7 @@
 | 3rd | `2026-09-30-frc-fantasy-v2-sp3-team-info.md` | SP3 `event_scores` + team info | `0004_team_stats.sql` | Oct 11–14 |
 | 4th | `2026-09-30-frc-fantasy-v2-sp2-formats.md` | SP2 League formats | `0005_formats.sql` | Oct 15–18 (cuttable) |
 
-Tasks are numbered per plan; refer to them as "SP1 Task 3". Each plan ends with a merge task: PR → merge to `main` → apply its migration to production → deploy check. **Stop for Joey's "go" between plans** (and between task batches inside a plan when Joey asks).
+Tasks are numbered per plan; refer to them as "SP1 Task 3". **Migration rule:** dev and production share one Supabase project and every migration here is additive, so each plan applies its migration at a Joey checkpoint in its first migration task (SP1 Task 2, SP4 Task 1, SP3 Task 1, SP2 Task 1); the live site ignores the new objects until the code merges. Each plan ends with a merge task: PR → merge to `main` → confirm the migration is in → deploy check. **Stop for Joey's "go" between plans** (and between task batches inside a plan when Joey asks).
 
 ## Global Constraints (every task in every plan)
 
@@ -51,29 +51,39 @@ Each plan's tasks **produce** the names below exactly as written; later plans **
 | `SessionUser` | `lib/auth/session.ts` | `{ id: string; email: string \| null }` |
 | `getUser` | `lib/auth/session.ts` | `(): Promise<SessionUser \| null>` — the only reader of the auth cookie |
 | `requireUser` | `lib/auth/session.ts` | `(): Promise<SessionUser>`; throws `HttpError(401, 'Sign in first')` |
-| `LeagueRole` | `lib/auth/roles.ts` | `'commissioner' \| 'player'` |
+| `LeagueRole`, `Visibility` | `lib/db/types.ts` (`roles.ts` re-exports `LeagueRole`) | `'commissioner' \| 'player'`; `'link' \| 'members'` |
 | `requireLeagueRole` | `lib/auth/roles.ts` | `(slug: string, role: LeagueRole): Promise<{ user: SessionUser; league: LeagueRow; player: PlayerRow }>`; 401 / 403 `'Forbidden'` / 404 `'League not found'`. `'player'` also admits commissioners |
 | `requireLeagueView` | `lib/auth/roles.ts` | `(slug: string): Promise<{ user: SessionUser \| null; league: LeagueRow; player: PlayerRow \| null }>`; 404 unknown; 403 `'This league is private'` for non-members of `members` leagues |
+| `leagueAccess` | `lib/auth/roles.ts` | `(slug: string) => Promise<LeagueAccess \| null>`; `LeagueAccess = { user; league; player; canView: boolean; isCommissioner: boolean }` (never throws; pages use it to choose between the league, the private card, and admin links) |
+| `requireRound` | `lib/api/http.ts` (unchanged; SP1 only removes `requireCommissioner`) | `(league, roundId) => Promise<RoundRow>` |
+| `PrivateLeague` | `components/PrivateLeague.tsx` | `({ signedIn: boolean; next: string })` — the members-only card; SP4's draft page reuses it |
+| `loadMePage` | `lib/views/me.ts` | `(userId, now) => Promise<MePage>`; SP2 Task 18 extends it for season picks |
 | `LeagueRow` additions | `lib/db/types.ts` | `inviteCode: string; visibility: 'link' \| 'members'; createdBy: string \| null; adminTokenHash: string \| null` |
 | `PlayerRow` additions | `lib/db/types.ts` | `userId: string \| null; role: LeagueRole` |
 | `ProfileRow` | `lib/db/types.ts` | `{ id: string; displayName: string; avatarUrl: string \| null; frcTeam: number \| null; createdAt: string }` |
-| Repo additions | `lib/db/repo.ts` | `getProfile(id)`, `createProfile(input)`, `updateProfile(id, patch)`, `deleteUser(id)`; `getLeagueByInviteCode(code)`, `resetInviteCode(leagueId)`, `countLeaguesCreatedBy(userId)`, `listLeaguesForUser(userId)`; `createMember(input: { leagueId; userId; name; role })`, `getMemberByUser(leagueId, userId)`, `updatePlayer(id, patch: { name?; role?; userId?: null })` |
+| Repo additions | `lib/db/repo.ts` | `getProfile(id)`, `createProfile(input)`, `updateProfile(id, patch)`, `deleteUser(id)`; `getLeagueByInviteCode(code)`, `resetInviteCode(leagueId)`, `countLeaguesCreatedBy(userId)`, `listLeaguesForUser(userId)`; `createMember(input: { leagueId; userId; name; role })`, `getMemberByUser(leagueId, userId)`, `updatePlayer(id, patch: { name?; role?; userId?: null })`. `listLeaguesForUser` returns `{ league: LeagueRow; player: PlayerRow }[]`. `LeaguePatch.visibility?`. `createPlayer` stays for v1 tests and the seed script only |
 | `createServerSupabase` / `createBrowserSupabase` | `lib/supabase/server.ts` / `lib/supabase/browser.ts` | `@supabase/ssr` clients (anon key) used **only** for Auth |
-| Test helpers | `tests/helpers/auth.ts` | `mockSession` pattern: tests do `vi.mock('@/lib/auth/session', …)` backed by `setUser(user \| null)`; `seedLeague(repo, opts)` in `tests/helpers/api.ts` now returns `{ league, commissioner: PlayerRow, user: SessionUser }` |
+| Test helpers | `tests/helpers/auth.ts`, `tests/helpers/api.ts` | `vi.mock('@/lib/auth/session', async () => (await import('../helpers/auth')).fakeSession)`; `setUser(user \| null)`, `makeUser(repo, name?)`, `signInAsMember(repo, league, name?, role?)`. `seedLeague(repo, { name?, slug?, visibility?, signIn? })` returns `{ league, commissioner: PlayerRow, user: SessionUser }` and **signs the commissioner in** unless `signIn: false`; SP2 adds a `format?` option |
 | `request()` | `tests/helpers/api.ts` | loses the `token` option (no more `x-commissioner-key`) |
+| E2E login | `app/api/test/login/route.ts` | `POST { email, name? }` with `Authorization: Bearer $E2E_AUTH_SECRET` → `{ userId }`, sets the session cookie, creates the profile; 404 unless `E2E_AUTH_SECRET` is set and `VERCEL` is unset |
 
 ### From SP4 (live draft)
 
 | Name | Where | Signature / shape |
 |---|---|---|
 | `RoundRow` additions | `lib/db/types.ts` | `draftMode: 'commissioner' \| 'live'; pickSeconds: 30 \| 60 \| 90 \| 120 \| null; draftStartedAt; draftPausedAt; pausedRemainingMs: number \| null; pickDeadline: string \| null` |
-| `PickRow` addition | `lib/db/types.ts` | `auto: boolean` |
+| `PickRow` addition | `lib/db/types.ts` | `auto: boolean`; `NewPick.auto?: boolean` (optional, default `false`) |
+| `HttpError.code` | `lib/api/http.ts` | optional 3rd constructor arg; `handle()` returns `{ error, code }`. Live-draft codes: `not_your_turn`, `stale`, `taken`, `not_live` |
 | `DraftPhase` / `draftPhase` | `lib/draft/live.ts` | `'setup' \| 'live' \| 'paused' \| 'done'`; `(round: RoundRow, pickCount: number) => DraftPhase` |
 | `chooseAutoPick` | `lib/draft/live.ts` | `(queue: string[], available: { teamKey: string; proj: number \| null }[]) => string \| null` |
 | `PoolEntry` | `lib/pool/entries.ts` | `{ teamKey; nickname: string \| null; proj: number \| null; record: [number, number, number] \| null; bestFinish: 'winner' \| 'finalist' \| 'captain' \| 'picked' \| null; opr: number \| null; rank: number \| null; available: boolean }` |
-| `PoolStatsLookup` | `lib/pool/entries.ts` | `(teamKeys: string[], season: number) => Promise<Map<string, Omit<PoolEntry, 'teamKey' \| 'nickname' \| 'available'>>>`; SP4 ships `noPoolStats` (empty map); **SP3 swaps in the real lookup** |
-| `buildPoolEntries` | `lib/pool/entries.ts` | `(round: RoundRow, now: Date, stats?: PoolStatsLookup) => Promise<PoolEntry[]>`, built on v1 `loadPool` |
-| Repo additions | `lib/db/repo.ts` | `makePickAtomic(input: { roundId; pickNumber; playerId; teamKey; requireDue: boolean; auto: boolean }): Promise<boolean>`, `undoPickAtomic(roundId, pickNumber): Promise<boolean>`, `getQueue(roundId, playerId)`, `setQueue(roundId, playerId, teamKeys)`, `getAutodraft(roundId, playerId)`, `setAutodraft(roundId, playerId, on)`, `listAutodraftPlayers(roundId)` |
+| `PoolStatsLookup` | `lib/pool/entries.ts` | `(teamKeys: string[], season: number) => Promise<Map<string, Omit<PoolEntry, 'teamKey' \| 'nickname' \| 'available'>>>`; `noPoolStats` (empty map) and `activePoolStats` (= `noPoolStats` in SP4; **SP3 changes this one constant** to `teamStatsPoolLookup`) |
+| `buildPoolEntries` | `lib/pool/entries.ts` | `(round: RoundRow, now: Date, stats: PoolStatsLookup = activePoolStats) => Promise<PoolEntry[]>`, built on v1 `loadPool` |
+| Pool UI | `components/draft/PoolList.tsx`, `lib/draft/poolView.ts` | `PoolList` (search, `filterSortPool` Proj/OPR/Number sort, Available only, footnote); SP3 Task 15 adds `slug`/`roundId` props and stat cells |
+| Test helpers | `tests/helpers/draftMocks.ts`, `tests/helpers/draft.ts` | `mocks` (`repo`, `user`, `getTba`, `ring`), `resetDraftMocks`, `sessionModule`; `seedLiveDraft(repo, opts)`, `TBA_TEAMS`, `T0` |
+| Repo additions | `lib/db/repo.ts` | `makePickAtomic(input: AtomicPick /* { roundId; pickNumber; playerId; teamKey; requireDue: boolean; auto: boolean } */): Promise<boolean>`, `undoPickAtomic(roundId, pickNumber): Promise<boolean>`, `draftControl(roundId, action: DraftAction /* 'start' \| 'pause' \| 'resume' */): Promise<boolean>`, `rlsDisabledTables(): Promise<string[]>`, `getQueue(roundId, playerId)`, `setQueue(roundId, playerId, teamKeys)`, `getAutodraft(roundId, playerId)`, `setAutodraft(roundId, playerId, on)`, `listAutodraftPlayers(roundId)`. `createMemoryRepo(opts?: { now?: () => Date })` (injectable clock) |
+| SQL functions | `0003_live_draft.sql` | `draft_make_pick`, `draft_undo_pick`, `draft_control` (start/pause/resume on the database clock), `public_tables_without_rls()`; all service-role only |
+| Draft control route | `app/api/l/[slug]/admin/rounds/[id]/draft/[action]/route.ts` | `POST` for `start` \| `pause` \| `resume` (URLs match spec §7.3) |
 | `advance` | `lib/draft/advance.ts` | `(roundId: string, now: Date) => Promise<number>` (auto-picks made) |
 | `ring` | `lib/realtime/doorbell.ts` | `(roundId: string) => Promise<void>` (never throws) |
 
@@ -81,16 +91,27 @@ Each plan's tasks **produce** the names below exactly as written; later plans **
 
 | Name | Where | Signature / shape |
 |---|---|---|
-| `getEventScores` | `lib/scores/eventScores.ts` | `(eventKey: string, config: ScoringConfig, windowMs: number) => Promise<{ scores: EventScores; stale: boolean; fetchedAt: string \| null }>` |
+| `getEventScores` | `lib/scores/eventScores.ts` | `(eventKey: string, config: ScoringConfig, windowMs: number, opts?: { now?: Date; repo?: Repo; tba?: Partial<TbaDeps> }) => Promise<{ scores: EventScores; info: EventInfo; stale: boolean; fetchedAt: string \| null }>`; `EventInfo = { teamNames: Record<string, string>; hasEventData: boolean; hasRankings: boolean }` |
+| `loadEventData` | `lib/tba/event.ts` | gains optional `deps?: Partial<TbaDeps>`; `cleanEventData` moves to `lib/tba/clean.ts` (re-exported from `lib/views/round.ts`) |
 | `serializeEventScores` / `deserializeEventScores` | `lib/scores/eventScores.ts` | `EventScores` ⇄ plain JSON |
-| Repo additions | `lib/db/repo.ts` | `getCacheMeta(paths: string[])`, `getEventScoresRow(eventKey, configHash)`, `upsertEventScoresRow(row)`, `getTeamStats(teamKeys, seasons)`, `upsertTeamStats(rows)` |
-| `teamStatsPoolLookup` | `lib/stats/pool.ts` | a `PoolStatsLookup` reading `team_stats` + `projection` |
-| `projection` | `lib/stats/projection.ts` | `(cur: { points: number; events: number } \| null, prev: … \| null) => number \| null` |
-| Cron | `app/api/cron/daily/route.ts` | `GET`, bearer `CRON_SECRET`; runs `DAILY_JOBS: { name: string; run(now: Date, deadline: number): Promise<void> }[]` from `lib/cron/jobs.ts`. **SP3 creates it** with the `team_stats` job; SP2 appends follow-sync and season-date jobs |
+| Repo additions | `lib/db/repo.ts` | `getCacheMeta(paths: string[])`, `getEventScoresRow(eventKey, configHash)`, `upsertEventScoresRow(row)`, `clearEventScores()`, `getTeamStats(teamKeys, seasons, opts?: { withHistory?: boolean })`, `upsertTeamStats(rows)` |
+| `teamStatsPoolLookup`, `teamSheet`, `TeamSheetData` | `lib/stats/pool.ts` | a `PoolStatsLookup` reading `team_stats` + `projection`; the team-sheet data behind `GET /api/l/{slug}/rounds/{id}/pool/{teamKey}` |
+| Pool formatters | `lib/pool/format.ts`, `components/pool/PoolStats.tsx` | `formatProj`, `formatRecord`, `formatOprRank`, `BEST_FINISH_LABEL`, `POOL_FOOTNOTE`; `NewChip`, `PoolStatCells`, `PoolFootnote` |
+| `projection` | `lib/stats/projection.ts` | `(cur: SeasonTotals \| null, prev: SeasonTotals \| null) => number \| null` (`SeasonTotals` = points + events for one season) |
+| Cron | `app/api/cron/daily/route.ts` | `GET`, bearer `CRON_SECRET`; runs `DAILY_JOBS: DailyJob[]` (`DailyJob = { name: string; run(now: Date, deadline: number): Promise<void> }`) via `runDailyJobs` from `lib/cron/jobs.ts`. **SP3 creates it** with the `team-stats` job and `vercel.json` (`0 10 * * *`); SP2 appends `follow-sync` and `season-dates` |
 
 ### From SP2 (formats)
 
-Nothing later depends on SP2. It extends: `RoundRow` (`kind`, `seasonYear`, `poolFilter`, `autoAdded`), `LeagueRow` (`format`, `followsSyncedAt`), `loadPool` (manual + season pools), `DAILY_JOBS`, and `RpMethod` (`'manual'`).
+Nothing later depends on SP2. It extends: `RoundRow` (`kind`, `seasonYear`, `poolFilter`, `autoAdded`; `eventKey` becomes `string | null`), `LeagueRow` (`format`, `followsSyncedAt`), `loadPool` (manual + season pools; return gains `emptyMessage: string | null`, checked by SP4's draft-start branch), `DAILY_JOBS`, `RpMethod` (`'manual'`, also added to SP3's `RP_METHODS`), `seedLeague` (`format?`), and SP1's `POST /api/leagues` + `CreateLeagueForm`. New seam: `scoreSourceFor(round, now): Promise<RoundScoreSource>` in `lib/rounds/scoreSource.ts` — `buildRoundView` calls it instead of `getEventScores` directly, and it dispatches `tba` (SP3's cached path, moved unchanged) / `manual` / `season`.
+
+## Spec deviations across plans
+
+Each plan lists its own deviations near the top; Joey should skim these before approving:
+
+- **SP1** — "Deviations" section: Me | Leagues bar hidden on `/l/*` pages (v1's league TabBar is already a bottom bar); concrete route names for invites/me/profile; `POST /api/leagues` takes `{ name, visibility }` until SP2; `createPlayer` kept for tests/seed; Me "Live now" covers TBA rounds until SP2.
+- **SP4** — "Deviations" section: a third locked SQL function `draft_control` (start/pause/resume on the database clock; spec §7.1 updated); `public_tables_without_rls()` for the smoke test; `HttpError.code` carries the 409 codes.
+- **SP3** — "Deviations from the spec" section: `event_scores.info` column; bodies read on a miss; nothing cached if a path was never fetched; build script resumes via `tba_cache`; cron refreshes least-recently-updated teams first; "played" quals = quals with a result; team sheet skips excluded award types. Task 15 reuses SP4's pool list instead of building a second one.
+- **SP2** — "Deviations" section: per-event rows labelled by date (no week field on Event_Simple); "4 in flight" = 4 event refreshes; "Other award" = TBA type 70; manual Results is a card; manual rounds left out of Me "Live now".
 
 ## Review Focus (whole v2)
 
