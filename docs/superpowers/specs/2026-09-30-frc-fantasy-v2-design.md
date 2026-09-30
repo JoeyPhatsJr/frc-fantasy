@@ -443,6 +443,9 @@ alter table rounds
   add column paused_remaining_ms  integer,              -- remaining time when paused (timer only)
   add column pick_deadline        timestamptz;          -- current pick's deadline; null if no timer, paused, not started, or done
 
+alter table picks
+  add column auto  boolean not null default false;      -- true when made by tick/advance (undo uses it, §7.3)
+
 create table draft_queue (
   round_id   uuid not null references rounds(id) on delete cascade,
   player_id  uuid not null references players(id) on delete cascade,
@@ -461,15 +464,30 @@ create table draft_prefs (
 
 **Draft phase** (derived, `lib/draft/live.ts`): `setup` (not started) → `live` ⇄ `paused` → `done` (`picks = P × R`). Commissioner-mode rounds behave exactly as v1. Draft order, roster size, and pool filter lock once `draft_started_at` is set (v1 already locks them once any pick exists).
 
+**Round status** (v1 `roundStatus`, `lib/rounds/status.ts`): a live-mode round whose `draft_started_at` is set counts as `drafting` even with 0 picks (v1 returns `setup` for 0 picks), so the league page badge agrees with the "Draft is live" banner.
+
+**Pause / resume:**
+- **Pause:** `draft_paused_at = now()`; if a timer is on, `paused_remaining_ms = max(0, pick_deadline − now())`, and `pick_deadline = null`.
+- **Resume:** `draft_paused_at = null`; if a timer is on, `pick_deadline = now() + max(paused_remaining_ms, 10 s)`, so a draft paused after the clock ran out gives the player 10 seconds instead of auto-picking instantly. If `pick_seconds` was changed while paused, the resumed pick gets the full new `pick_seconds` instead.
+- Both are done in one SQL statement each (single-row `update`), so they're atomic without an RPC.
+
 ### 7.2 Atomic pick writes
 
 supabase-js can't run multi-statement transactions, so every live-draft pick goes through one Postgres function called via RPC:
 
 ```
-draft_make_pick(p_round_id, p_pick_number, p_player_id, p_team_key, p_require_due boolean) returns boolean
+draft_make_pick(p_round_id, p_pick_number, p_player_id, p_team_key, p_require_due boolean, p_auto boolean) returns boolean
 ```
 
-In one transaction it: locks the round row (`for update`); checks the phase is `live` (`draft_mode = 'live'`, `draft_started_at is not null`, `draft_paused_at is null`, `count(picks) < roster_size × cardinality(draft_order)`); checks `count(picks) = p_pick_number`; if `p_require_due`, checks `now() >= pick_deadline` (database clock); inserts the pick (the v1 unique constraints on `(round_id, pick_number)` and `(round_id, team_key)` still guard); sets `pick_deadline = now() + pick_seconds` (or null when the timer is off or the draft is now done). It returns `false` (no-op) instead of raising when a check fails, so racing callers get a clean "someone beat you" answer. The server still validates the picker (`pickerFor`) and pool membership before calling it.
+In one transaction it: locks the round row (`for update`); checks the phase is `live` (`draft_mode = 'live'`, `draft_started_at is not null`, `draft_paused_at is null`, `count(picks) < roster_size × cardinality(draft_order)`); checks `count(picks) = p_pick_number`; if `p_require_due`, checks `now() >= pick_deadline` (database clock); inserts the pick (the v1 unique constraints on `(round_id, pick_number)` and `(round_id, team_key)` still guard); sets `pick_deadline = now() + pick_seconds` (or null when the timer is off or the draft is now done). It returns `false` (no-op) instead of raising when a check fails, so racing callers get a clean "someone beat you" answer. The server still validates the picker (`pickerFor`) and pool membership before calling it. `p_pick_number` is 0-based like v1's `pick_number`, so "count of picks = pick number" is the right check.
+
+A second function handles live-mode undo the same way, so a `tick` can't auto-pick between the delete and the deadline reset:
+
+```
+draft_undo_pick(p_round_id, p_pick_number) returns boolean
+```
+
+In one transaction: lock the round row; check `p_pick_number` is the last pick; delete it; set `pick_deadline = now() + pick_seconds` (null if the timer is off or the draft is paused). Commissioner-mode undo stays v1's plain delete.
 
 ### 7.3 Endpoints
 
@@ -487,23 +505,26 @@ Player role (§4.5) unless marked *commissioner*. All bodies zod-validated.
 | POST | `…/admin/rounds/{id}/draft/pause` · `/resume` (*commissioner*) | — | 200 |
 
 - **Commissioner picks:** the v1 `POST …/admin/rounds/{id}/picks` endpoint (always the current snake picker) keeps working in live mode ("Pick for Mom"), going through `draft_make_pick`.
-- **Undo** (v1 `DELETE` last pick): in live mode it also resets `pick_deadline = now() + pick_seconds`.
-- Every successful mutation above **rings the doorbell** (§7.5).
+- **Undo** (v1 `DELETE` last pick): in live mode it goes through `draft_undo_pick` (§7.2). If the undone pick was an **auto-pick**, the player it was made for gets `autodraft = false`; otherwise `advance` would immediately re-pick the same team and the undo would do nothing. (Picks gain `auto boolean not null default false` to know this.)
+- Every successful mutation above calls **`advance(roundId)`** (§7.4) and then **rings the doorbell** (§7.5) once.
 
 ### 7.4 Auto-pick
 
-`chooseAutoPick(queue, available, proj)` (pure): the first team in the player's queue that is still available; otherwise the available team with the highest `proj`; ties and "New" teams go by lowest team number, after all projected teams.
+`chooseAutoPick(queue, available, proj)` (pure): the first team in the player's queue that is still available; otherwise the available team with the highest `proj`; ties and "New" teams go by lowest team number, after all projected teams. (Until SP3 lands, every `proj` is `null`, so auto-pick is queue → lowest team number.)
 
 Auto-picks happen when:
-1. **Timeout:** a client calls `tick` after its corrected clock passes `deadline + 500 ms`. The server calls `draft_make_pick(…, p_require_due = true)`. Clients retry `tick` every 2 s while the deadline is overdue.
-2. **Auto-draft:** after any successful pick, while the phase is `live` and the next on-clock player has `autodraft = true`, the server immediately auto-picks for them (bounded by the remaining picks).
+1. **Timeout:** a client calls `tick` after its corrected clock passes `deadline + 500 ms`. The server calls `draft_make_pick(…, p_require_due = true, p_auto = true)`. Clients retry `tick` every 2 s while the deadline is overdue.
+2. **Auto-draft:** handled by one server routine, **`advance(roundId)`** (`lib/draft/live.ts` decides, the route runs it): while the phase is `live` and the on-clock player has `autodraft = true`, auto-pick for them via `draft_make_pick(…, p_require_due = false, p_auto = true)`; stop when the next player isn't on auto-draft, the draft is done, or a call returns `false`. Bounded by the remaining picks.
+
+`advance` runs after **every** state change that can put an auto-drafter on the clock: draft **start**, any **pick** (player, commissioner, or `tick`), **resume**, **undo**, and turning **auto-draft on** (if that player is on the clock, they get picked for right away). Without this, a draft whose first picker has auto-draft on (or one resumed or undone onto an auto-drafter) would sit forever with the timer off.
 
 If nobody has the draft open when a deadline passes, nothing happens until someone opens it; then `tick` catches up one pick at a time (each auto-pick sets a fresh deadline).
 
 ### 7.5 Realtime doorbell
 
-- **Ring (server):** `ring(roundId)` POSTs to Supabase Realtime's HTTP broadcast endpoint (`{SUPABASE_URL}/realtime/v1/api/broadcast`, service key) with topic `draft:{roundId}`, event `changed`, **empty payload**. Failures are logged and ignored (polling covers them).
-- **Listen (browser):** the draft page subscribes with the anon key: `channel('draft:{roundId}').on('broadcast', { event: 'changed' }, refetch)`. Refetches are debounced 250 ms.
+- **Ring (server):** `ring(roundId)` POSTs to Supabase Realtime's HTTP broadcast endpoint (`{SUPABASE_URL}/realtime/v1/api/broadcast`, `apikey` header = service key, body `{ messages: [{ topic, event, payload }] }`) with topic `draft:{roundId}`, event `changed`, **empty payload**. Failures are logged and ignored (polling covers them). The endpoint shape is checked against current Supabase docs at plan time.
+- **Listen (browser):** the draft page subscribes with the anon key: `channel('draft:{roundId}').on('broadcast', { event: 'changed' }, refetch)`. Refetches are debounced 250 ms, **at most one per 1.5 s**, and rings that arrive while a fetch is in flight just schedule one follow-up fetch.
+- **Why the rate limit:** a public channel can be *written* by anyone holding the (public) anon key, so a prankster could spam "changed" rings. The ring carries no data, so the worst case is extra refetches; the client-side limit caps that at under 1 request/s per phone. (Private channels with `realtime.messages` policies would stop it fully, but they would need signed-out viewers to poll instead; not worth it for v2.)
 - **Polling fallback:** every 3 s while the channel isn't `SUBSCRIBED`, every 15 s while it is, and immediately when the tab becomes visible again.
 - **Clock sync:** each state response carries `serverNow`; the client keeps `offset = serverNow − (receivedAt − rtt/2)` and renders `remaining = deadline − (Date.now() + offset)`.
 - Free-tier headroom: Realtime allows far more concurrent connections than a 30-player league needs; the doorbell adds one small message per pick.
