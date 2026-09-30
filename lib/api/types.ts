@@ -1,5 +1,6 @@
 import type { RoundStatus } from '@/lib/rounds/status';
 import type { ScoringConfig } from '@/lib/scoring/config';
+import type { PoolTeam } from '@/lib/teams';
 
 // Shapes the admin API returns. The admin pages import these, so server and client agree.
 
@@ -32,4 +33,37 @@ export type AdminState = {
   league: AdminLeague;
   players: AdminPlayer[];
   rounds: AdminRoundSummary[];
+};
+
+export type AdminRoundDetail = {
+  round: {
+    id: string;
+    eventKey: string;
+    eventName: string;
+    startDate: string;
+    endDate: string;
+    timezone: string;
+    rosterSize: number;
+    draftOrder: string[];
+    scoring: ScoringConfig;
+    finalizedAt: string | null;
+  };
+  status: RoundStatus;
+  /** True when the event is over but the round isn't final yet (spec §5.5). */
+  nudgeFinalize: boolean;
+  /** Every player in the league, not only the ones drafting. */
+  players: { id: string; name: string }[];
+  pool: PoolTeam[];
+  /** True when TBA couldn't be reached and the pool may be out of date. */
+  poolStale: boolean;
+  picks: { pickNumber: number; playerId: string; teamKey: string }[];
+  adjustments: {
+    id: string;
+    playerId: string | null;
+    teamKey: string | null;
+    points: number;
+    reason: string;
+  }[];
+  /** Largest roster size the pool allows for the current draft order, capped at 10. null with no drafters. */
+  maxRosterSize: number | null;
 };

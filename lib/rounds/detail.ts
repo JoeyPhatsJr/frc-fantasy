@@ -1,0 +1,45 @@
+import type { AdminRoundDetail } from '@/lib/api/types';
+import { getRepo } from '@/lib/db';
+import type { RoundRow } from '@/lib/db/types';
+import { loadPool } from '@/lib/rounds/pool';
+import { roundStatus, shouldNudgeFinalize } from '@/lib/rounds/status';
+
+/** Everything the round admin page needs, in one response. */
+export async function roundDetail(round: RoundRow, now: Date): Promise<AdminRoundDetail> {
+  const repo = getRepo();
+  const [players, picks, adjustments, pool] = await Promise.all([
+    repo.listPlayers(round.leagueId),
+    repo.listPicks(round.id),
+    repo.listAdjustments(round.id),
+    loadPool(round, now),
+  ]);
+  const drafters = round.draftOrder.length;
+  return {
+    round: {
+      id: round.id,
+      eventKey: round.eventKey,
+      eventName: round.eventName,
+      startDate: round.startDate,
+      endDate: round.endDate,
+      timezone: round.timezone,
+      rosterSize: round.rosterSize,
+      draftOrder: round.draftOrder,
+      scoring: round.scoring,
+      finalizedAt: round.finalizedAt,
+    },
+    status: roundStatus(round, picks.length, now),
+    nudgeFinalize: shouldNudgeFinalize(round, now),
+    players: players.map((p) => ({ id: p.id, name: p.name })),
+    pool: pool.teams,
+    poolStale: pool.stale,
+    picks: picks.map((p) => ({ pickNumber: p.pickNumber, playerId: p.playerId, teamKey: p.teamKey })),
+    adjustments: adjustments.map((a) => ({
+      id: a.id,
+      playerId: a.playerId,
+      teamKey: a.teamKey,
+      points: a.points,
+      reason: a.reason,
+    })),
+    maxRosterSize: drafters === 0 ? null : Math.min(10, Math.floor(pool.teams.length / drafters)),
+  };
+}
