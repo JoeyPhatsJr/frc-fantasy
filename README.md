@@ -58,8 +58,13 @@ Production: https://frc-fantasy-6yo3.vercel.app (Vercel, deploys automatically f
 
 ## Design
 
-The look and feel lives in `design-system/frc-fantasy/`. Start with `BRIEF.md` (the design direction and
-why), then `MASTER.md` (the tokens, components, and rules the pages follow).
+The look and feel lives in `design-system/frc-fantasy/`. Start with `OVERHAUL.md` (the current
+direction: dark-first with a light toggle, bumper-plate team numbers, scoreboard leaderboards, the
+app shell with the bottom tab bar). `BRIEF.md` is the original v1 light-theme brief and `MASTER.md`
+the generated token reference; `OVERHAUL.md` wins where they disagree.
+
+The theme is remembered per device in `localStorage['frcf:theme']` and follows the system setting
+until you flip the sun/moon toggle in the header.
 
 ## Lost the admin link?
 

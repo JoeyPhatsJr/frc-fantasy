@@ -586,7 +586,7 @@ Free projects pause after ~7 days of inactivity. Before each event, the commissi
 | Layer | Choice | Notes |
 |---|---|---|
 | Framework | **Next.js** (current stable, App Router, TypeScript strict) | Server components for public pages; route handlers for mutations |
-| Styling | Tailwind CSS | Mobile-first. Dark mode is Priority 2 (stretch). |
+| Styling | Tailwind CSS | Mobile-first. Dark mode shipped 2026-09-30 (dark-first with a light toggle; see `design-system/frc-fantasy/OVERHAUL.md`). |
 | Database | **Supabase** Postgres (free tier) | Service role key server-only; migrations in `supabase/migrations/` |
 | Validation | zod | Shared schemas for API bodies and ScoringConfig |
 | Tests | Vitest | Pure scoring engine + TBA client (with mocked fetch) + route handler auth |
