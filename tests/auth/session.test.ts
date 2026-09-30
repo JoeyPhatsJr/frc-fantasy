@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
-const h = vi.hoisted(() => ({ claims: undefined as unknown, error: null as unknown }));
+const h = vi.hoisted(() => ({ claims: undefined as unknown, error: null as unknown, throws: false }));
 vi.mock('@/lib/supabase/server', () => ({
   createServerSupabase: async () => ({
-    auth: { getClaims: async () => ({ data: h.claims === undefined ? null : { claims: h.claims }, error: h.error }) },
+    auth: { getClaims: async () => {
+      if (h.throws) throw new SyntaxError('Unexpected token in JSON');
+      return { data: h.claims === undefined ? null : { claims: h.claims }, error: h.error };
+    } },
   }),
 }));
 
@@ -24,6 +27,14 @@ describe('getUser', () => {
       h.claims = claims;
       h.error = error;
       expect(await getUser()).toBeNull();
+    }
+  });
+  it('is null (not a 500) when getClaims throws on a garbage cookie', async () => {
+    h.throws = true;
+    try {
+      expect(await getUser()).toBeNull();
+    } finally {
+      h.throws = false;
     }
   });
   it('treats a missing email as null', async () => {
