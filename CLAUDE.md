@@ -25,7 +25,7 @@ The design spec: `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md`. Read
 - **Stack:** Next.js App Router plus TypeScript, Tailwind, Supabase Postgres (free tier, service-role key server-only, RLS on with no policies), zod, Vitest, deployed on Vercel Hobby (free).
 - **Caching:** Next.js caching is disabled (`force-dynamic`, `no-store`). The `tba_cache` table is the only cache.
 - **Scores are computed, never stored.** They're a pure function of TBA data, the round config, picks, and adjustments.
-- **Test data:** the Ramp Riot 2025 event (`2025parr`) is the fixture and replay test. Known quirks: 34 teams, no awards on TBA, Playoff Match 3 tied 156–156, Alliance 2 had 4 picks, winner is Alliance 3, finalist is Alliance 4.
+- **Test data:** the Ramp Riot 2025 event (`2025parr`) is the fixture and replay test. Known quirks: 34 teams, no awards on TBA, Playoff Match 3 tied 156–156 (TBA later recorded blue as tiebreak winner), Alliance 2 had 4 picks, winner is Alliance 3, finalist is Alliance 4.
 - **Priority 2 (stretch, only if the core is done by Oct 19):** the "Add 5181's events" helper, "the ones that got away", dark mode, drag-to-reorder.
 
 ## Working with Joey

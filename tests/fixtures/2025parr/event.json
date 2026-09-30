@@ -1,0 +1,38 @@
+{
+  "key": "2025parr",
+  "name": "Ramp Riot XXV",
+  "short_name": "Ramp Riot XXV",
+  "event_code": "parr",
+  "event_type": 99,
+  "event_type_string": "Offseason",
+  "parent_event_key": null,
+  "playoff_type": 10,
+  "playoff_type_string": "Double Elimination Bracket (8 Alliances)",
+  "district": null,
+  "division_keys": [],
+  "first_event_id": null,
+  "first_event_code": "PAAMB",
+  "year": 2025,
+  "timezone": "America/New_York",
+  "week": null,
+  "website": "https://www.rampriot.com/",
+  "remap_teams": null,
+  "city": "Ambler",
+  "state_prov": "PA",
+  "country": "USA",
+  "postal_code": "19002",
+  "lat": null,
+  "lng": null,
+  "location_name": "Wissahickon High School",
+  "address": "521 Houston Road",
+  "gmaps_place_id": null,
+  "gmaps_url": null,
+  "start_date": "2025-10-18",
+  "end_date": "2025-10-18",
+  "webcasts": [
+    {
+      "type": "youtube",
+      "channel": "-PweGr_S6Q0"
+    }
+  ]
+}
