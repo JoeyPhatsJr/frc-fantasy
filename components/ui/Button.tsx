@@ -41,6 +41,11 @@ const SIZES: Record<ButtonSize, string> = {
   sm: 'min-h-9 px-3 text-sm before:absolute before:inset-x-0 before:-inset-y-1',
 };
 
+/** The classes a <Button> of this variant and size gets, for the rare element that can't be a <Button>. */
+export function buttonClass(variant: ButtonVariant = 'primary', size: ButtonSize = 'md'): string {
+  return `${BASE} ${VARIANTS[variant]} ${SIZES[size]}`;
+}
+
 function Spinner() {
   return (
     <span
@@ -54,7 +59,7 @@ function Spinner() {
 export function Button(props: ButtonProps) {
   if (props.href !== undefined) {
     const { variant = 'primary', size = 'md', busy = false, className, children, href, ...rest } = props;
-    const classes = [BASE, VARIANTS[variant], SIZES[size], busy && 'pointer-events-none opacity-50', className]
+    const classes = [buttonClass(variant, size), busy && 'pointer-events-none opacity-50', className]
       .filter(Boolean)
       .join(' ');
     return (
@@ -72,7 +77,7 @@ export function Button(props: ButtonProps) {
   }
 
   const { variant = 'primary', size = 'md', busy = false, className, children, disabled, ...rest } = props;
-  const classes = [BASE, VARIANTS[variant], SIZES[size], className].filter(Boolean).join(' ');
+  const classes = [buttonClass(variant, size), className].filter(Boolean).join(' ');
   return (
     <button {...rest} disabled={disabled || busy} aria-busy={busy || undefined} className={classes}>
       {busy && <Spinner />}

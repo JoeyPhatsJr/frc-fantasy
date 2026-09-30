@@ -13,12 +13,15 @@ export type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'id'> & {
   className?: string;
 };
 
-export const FIELD_CLASS =
-  'h-11 w-full rounded-lg border border-fg-muted/40 bg-surface px-3 text-base text-fg ' +
+/** Field styling without a width, for fields that size themselves (a number box, a flex-1 input). */
+export const FIELD_BASE =
+  'h-11 rounded-lg border border-fg-muted/40 bg-surface px-3 text-base text-fg ' +
   'placeholder:text-fg-muted motion-safe:transition-colors duration-200 hover:border-fg-muted/70 ' +
   'focus-visible:outline-hidden focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring ' +
   'disabled:cursor-not-allowed disabled:bg-surface-2 disabled:opacity-60 ' +
   'aria-invalid:border-red-alliance';
+
+export const FIELD_CLASS = `w-full ${FIELD_BASE}`;
 
 export function Input({ label, error, hint, id, className, ...inputProps }: InputProps) {
   const generatedId = useId();
