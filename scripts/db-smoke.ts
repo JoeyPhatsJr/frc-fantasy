@@ -20,6 +20,8 @@ async function constraintOf(p: Promise<unknown>): Promise<string | null> {
 }
 
 async function main() {
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!anonKey) throw new Error('NEXT_PUBLIC_SUPABASE_ANON_KEY is missing from .env.local (needed for the RLS checks)');
   const repo = createSupabaseRepo(createSupabaseClient());
   const slug = `smoke-test-${Date.now().toString(36)}`;
   const league = await repo.createLeague({
@@ -97,6 +99,55 @@ async function main() {
   } finally {
     await repo.deleteLeague(league.id);
   }
+  // v2 SP1: accounts (spec §4). Needs a real auth user because profiles.id references auth.users.
+  const db = createSupabaseClient();
+  const email = `smoke-${Date.now().toString(36)}@example.com`;
+  const created = await db.auth.admin.createUser({ email, email_confirm: true });
+  if (created.error || !created.data.user) throw new Error(`createUser: ${created.error?.message}`);
+  const userId = created.data.user.id;
+  let accountsLeagueId: string | null = null;
+  try {
+    const profile = await repo.createProfile({ id: userId, displayName: 'Smoke', avatarUrl: null });
+    check('profile round-trips', profile.displayName === 'Smoke' && profile.frcTeam === null);
+    check('createProfile twice returns the first row',
+      (await repo.createProfile({ id: userId, displayName: 'Other', avatarUrl: null })).displayName === 'Smoke');
+
+    const acc = await repo.createLeague({
+      slug: `smoke-acc-${Date.now().toString(36)}`, name: 'Smoke Accounts', defaultScoring: defaultScoring(), createdBy: userId,
+    });
+    accountsLeagueId = acc.id;
+    check('invite code comes from gen_invite_code()', /^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$/.test(acc.inviteCode));
+    check('visibility defaults to link, admin token is null', acc.visibility === 'link' && acc.adminTokenHash === null);
+    check('lookup by invite code', (await repo.getLeagueByInviteCode(acc.inviteCode))?.id === acc.id);
+    check('reset changes the code', (await repo.resetInviteCode(acc.id)).inviteCode !== acc.inviteCode);
+    check('countLeaguesCreatedBy', (await repo.countLeaguesCreatedBy(userId)) === 1);
+
+    const me = await repo.createMember({ leagueId: acc.id, userId, name: 'Smoke', role: 'commissioner' });
+    check('one membership per user per league',
+      (await constraintOf(repo.createMember({ leagueId: acc.id, userId, name: 'Smoke 2', role: 'player' }))) === 'players_league_user');
+    check('listLeaguesForUser joins the league', (await repo.listLeaguesForUser(userId))[0]?.league.id === acc.id);
+    check('unlink keeps the row', (await repo.updatePlayer(me.id, { userId: null })).userId === null);
+
+    const code = await db.rpc('gen_invite_code');
+    check('gen_invite_code is callable by the service role', typeof code.data === 'string');
+  } finally {
+    // Always clean up, even if a check threw; one failed cleanup must not skip the other.
+    await repo.deleteUser(userId).catch((e) => { console.error('cleanup deleteUser failed', e); process.exitCode = 1; });
+    if (accountsLeagueId) {
+      await repo.deleteLeague(accountsLeagueId).catch((e) => { console.error('cleanup deleteLeague failed', e); process.exitCode = 1; });
+    }
+  }
+  check('deleteUser removes the profile', (await repo.getProfile(userId)) === null);
+
+  // RLS on, no policies (spec §8.1): the public anon key sees nothing and can't call our functions.
+  const { createClient } = await import('@supabase/supabase-js');
+  const anon = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, anonKey);
+  for (const table of ['leagues', 'players', 'profiles', 'rounds', 'picks', 'adjustments', 'tba_cache']) {
+    const leaked = await anon.from(table).select('*').limit(1);
+    check(`anon key reads no ${table}`, (leaked.data ?? []).length === 0);
+  }
+  check('anon key cannot call gen_invite_code', (await anon.rpc('gen_invite_code')).error !== null);
+
   check('league delete cascades', (await repo.getLeagueBySlug(slug)) === null);
 }
 
