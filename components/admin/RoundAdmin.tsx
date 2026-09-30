@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AdjustmentEditor } from '@/components/admin/AdjustmentEditor';
 import { AdminGate } from '@/components/admin/AdminGate';
 import { DraftEntry } from '@/components/admin/DraftEntry';
 import { DETAILS_SUMMARY, RoundSetup } from '@/components/admin/RoundSetup';
 import { usePending } from '@/components/admin/usePending';
+import { usePolling } from '@/components/admin/usePolling';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
@@ -33,13 +34,20 @@ function RoundManager({ slug, roundId, api }: { slug: string; roundId: string; a
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  /** Counts reloads, so a slow background poll can't overwrite the fresher state a change just loaded. */
+  const latestReload = useRef(0);
   const reload = useCallback(async () => {
-    setDetail(await api<AdminRoundDetail>(`/rounds/${roundId}`));
+    const n = ++latestReload.current;
+    const next = await api<AdminRoundDetail>(`/rounds/${roundId}`);
+    if (n === latestReload.current) setDetail(next);
   }, [api, roundId]);
 
   useEffect(() => {
     reload().catch((err: unknown) => setError(err instanceof Error ? err.message : 'Something went wrong'));
   }, [reload]);
+
+  // Picks up picks made on another device. Paused while a change runs; `run` reloads when it finishes.
+  usePolling(reload, 30_000, { paused: busy });
 
   /** Runs one change, then reloads. A 409 from another tab shows its message and the fresh state. */
   const run = useCallback(

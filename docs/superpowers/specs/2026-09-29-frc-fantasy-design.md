@@ -231,7 +231,7 @@ All pages must be usable one-handed on a phone at 360px width. No horizontal scr
 - **Rounds list**: each round with event name, dates, status badge (Setup / Drafting / Upcoming / Live / Awaiting final / Final — §7.8), and link to the round page.
 - If a round is Live, it is pinned at the top with its current leaderboard.
 - "Last updated X min ago" for live data; stale warning if the TBA fetch failed (§8).
-- Auto-refresh every 60 s while any round is Live and the tab is visible.
+- Auto-refresh every 60 s while the tab is visible.
 
 ### 5.3 `/l/{slug}/r/{roundId}` — Round page (public)
 
@@ -671,7 +671,7 @@ Public pages read directly from the database in server components; no public API
 1. Server component loads round, players, picks, adjustments from Supabase.
 2. In parallel, `getTba` for teams, matches, rankings, alliances, awards, oprs, with `windowMs = cacheWindowFor(round, now)`.
 3. `scoreEvent` → `scoreRound` → render.
-4. Client auto-refresh (§5.2) calls `router.refresh()` every 60 s while Live and visible.
+4. Client auto-refresh (§5.2) calls `router.refresh()` every 60 s while the tab is visible.
 
 The league page does the same for every round (season standings). Finalized rounds use the 24 h window, so a league page view costs at most 6 TBA requests per non-final round, and usually 6 × 304s.
 

@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AddForm, AddRoundForm, PlayerRow, RenameLeague } from '@/components/admin/DashboardParts';
 import { AdminGate } from '@/components/admin/AdminGate';
 import { ScoringForm } from '@/components/admin/ScoringForm';
+import { usePolling } from '@/components/admin/usePolling';
 import { CopyButton } from '@/components/CopyButton';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Alert } from '@/components/ui/Alert';
@@ -26,13 +27,20 @@ function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
   const [pending, setPending] = useState<string | null>(null);
   const busy = pending !== null;
 
+  /** Counts reloads, so a slow background poll can't overwrite the fresher state a change just loaded. */
+  const latestReload = useRef(0);
   const reload = useCallback(async () => {
-    setState(await api<AdminState>('/state'));
+    const n = ++latestReload.current;
+    const next = await api<AdminState>('/state');
+    if (n === latestReload.current) setState(next);
   }, [api]);
 
   useEffect(() => {
     reload().catch((err: unknown) => setError(err instanceof Error ? err.message : 'Something went wrong'));
   }, [reload]);
+
+  // Picks up changes from another device. Paused while a change runs; `run` reloads when it finishes.
+  usePolling(reload, 30_000, { paused: busy });
 
   /**
    * Runs one change, then reloads so the screen always shows what the server has.

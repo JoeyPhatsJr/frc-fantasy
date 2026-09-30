@@ -109,7 +109,7 @@ Skip any item that is already done.
 
 ## During the event
 
-- Pages refresh themselves every 60 seconds while a round is live.
+- Pages refresh themselves every 60 seconds while the tab is visible.
 - If The Blue Alliance is slow, pages show "Scores may be behind" and keep the last good numbers.
 - "Refresh from TBA" in the round admin forces a check (at most once every 15 seconds).
 - Things TBA doesn't have (offseason awards, a tied playoff match the refs decided) go in as
