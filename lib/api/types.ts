@@ -1,4 +1,4 @@
-import type { LeagueRole } from '@/lib/db/types';
+import type { LeagueRole, Visibility } from '@/lib/db/types';
 import type { RoundStatus } from '@/lib/rounds/status';
 import type { ScoringConfig } from '@/lib/scoring/config';
 import type { PoolTeam } from '@/lib/teams';
@@ -10,6 +10,8 @@ export type AdminLeague = {
   name: string;
   homeTeamNumber: number;
   defaultScoring: ScoringConfig;
+  inviteCode: string;
+  visibility: Visibility;
 };
 
 export type AdminPlayer = {

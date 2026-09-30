@@ -96,17 +96,16 @@ describe('adminFetch', () => {
 });
 
 describe('createLeague', () => {
-  it('posts the name and passcode and returns the slug and token', async () => {
-    const fetchImpl = respond(201, { slug: 'fam-abc234', adminToken: TOKEN });
-    const out = await createLeague('Fam', 'open sesame', fetchImpl);
-    expect(out).toEqual({ slug: 'fam-abc234', adminToken: TOKEN });
+  it('posts the name and visibility and returns slug + invite code', async () => {
+    const fetchImpl = respond(201, { slug: 'fam-abc234', inviteCode: 'ABC234' });
+    const out = await createLeague({ name: 'Fam', visibility: 'members' }, fetchImpl);
+    expect(out).toEqual({ slug: 'fam-abc234', inviteCode: 'ABC234' });
     const [url, init] = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
     expect(url).toBe('/api/leagues');
-    expect(init.body).toBe('{"name":"Fam","passcode":"open sesame"}');
+    expect(JSON.parse(init.body as string)).toEqual({ name: 'Fam', visibility: 'members' });
   });
-
-  it('throws the server message for a wrong passcode', async () => {
-    const attempt = createLeague('Fam', 'nope', respond(403, { error: 'Wrong passcode' }));
-    await expect(attempt).rejects.toMatchObject({ status: 403, message: 'Wrong passcode' });
+  it('surfaces the server message (e.g. the 5-league cap)', async () => {
+    const attempt = createLeague({ name: 'Fam' }, respond(409, { error: "You've reached the 5-league limit" }));
+    await expect(attempt).rejects.toMatchObject({ status: 409, message: "You've reached the 5-league limit" });
   });
 });

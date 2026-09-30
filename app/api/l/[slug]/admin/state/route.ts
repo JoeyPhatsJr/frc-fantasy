@@ -29,6 +29,8 @@ export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
         name: league.name,
         homeTeamNumber: league.homeTeamNumber,
         defaultScoring: league.defaultScoring,
+        inviteCode: league.inviteCode,
+        visibility: league.visibility,
       },
       players: players.map((p) => ({
         id: p.id, name: p.name, inUse: used.has(p.id), role: p.role, linked: p.userId !== null,

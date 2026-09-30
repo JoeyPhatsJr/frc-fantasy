@@ -67,11 +67,10 @@ async function send<T>(
 }
 
 export function createLeague(
-  name: string,
-  passcode: string,
+  input: { name: string; visibility?: 'link' | 'members' },
   fetchImpl: typeof fetch = fetch,
-): Promise<{ slug: string; adminToken: string }> {
-  return send('/api/leagues', { method: 'POST', body: { name, passcode } }, fetchImpl);
+): Promise<{ slug: string; inviteCode: string }> {
+  return send('/api/leagues', { method: 'POST', body: input }, fetchImpl);
 }
 
 export function adminFetch<T>(
