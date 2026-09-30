@@ -135,3 +135,32 @@ describe('memory repo', () => {
     expect(await repo.getCache('/other')).toBeNull();
   });
 });
+
+describe('v2 league and player fields (SP1)', () => {
+  it('gives every new league an invite code, link visibility, and no admin token', async () => {
+    const repo = createMemoryRepo();
+    const league = await repo.createLeague({ slug: 'fam-abc234', name: 'Fam', defaultScoring: defaultScoring() });
+    expect(league.inviteCode).toMatch(/^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$/);
+    expect(league.visibility).toBe('link');
+    expect(league.createdBy).toBeNull();
+    expect(league.adminTokenHash).toBeNull();
+  });
+
+  it('keeps visibility and createdBy when given', async () => {
+    const repo = createMemoryRepo();
+    const league = await repo.createLeague({
+      slug: 'fam-abc234', name: 'Fam', defaultScoring: defaultScoring(),
+      visibility: 'members', createdBy: '3f2b8c1e-5d4a-4e6f-9a7b-0c1d2e3f4a5b',
+    });
+    expect(league.visibility).toBe('members');
+    expect(league.createdBy).toBe('3f2b8c1e-5d4a-4e6f-9a7b-0c1d2e3f4a5b');
+  });
+
+  it('makes name-only players unlinked plain players', async () => {
+    const repo = createMemoryRepo();
+    const league = await repo.createLeague({ slug: 'fam-abc234', name: 'Fam', defaultScoring: defaultScoring() });
+    const mom = await repo.createPlayer(league.id, 'Mom');
+    expect(mom.userId).toBeNull();
+    expect(mom.role).toBe('player');
+  });
+});

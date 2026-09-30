@@ -17,15 +17,20 @@ const toLeague = (r: Raw): LeagueRow => ({
   id: r.id,
   slug: r.slug,
   name: r.name,
-  adminTokenHash: r.admin_token_hash,
+  adminTokenHash: r.admin_token_hash ?? null,
   homeTeamNumber: r.home_team_number,
   defaultScoring: r.default_scoring,
+  inviteCode: r.invite_code,
+  visibility: r.visibility,
+  createdBy: r.created_by ?? null,
   createdAt: r.created_at,
 });
 const toPlayer = (r: Raw): PlayerRow => ({
   id: r.id,
   leagueId: r.league_id,
   name: r.name,
+  userId: r.user_id ?? null,
+  role: r.role,
   createdAt: r.created_at,
 });
 const toRound = (r: Raw): RoundRow => ({
@@ -127,12 +132,17 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
       const rows = await run(
         db
           .from('leagues')
-          .insert({
-            slug: input.slug,
-            name: input.name,
-            admin_token_hash: input.adminTokenHash,
-            default_scoring: input.defaultScoring,
-          })
+          .insert(
+            defined({
+              slug: input.slug,
+              name: input.name,
+              default_scoring: input.defaultScoring,
+              admin_token_hash: input.adminTokenHash ?? null,
+              visibility: input.visibility,
+              created_by: input.createdBy ?? null,
+              // invite_code comes from the column default, gen_invite_code()
+            }),
+          )
           .select(),
       );
       return first(rows, toLeague, 'league');
@@ -151,6 +161,7 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
               home_team_number: patch.homeTeamNumber,
               default_scoring: patch.defaultScoring,
               admin_token_hash: patch.adminTokenHash,
+              visibility: patch.visibility,
             }),
           )
           .eq('id', id)

@@ -5,6 +5,7 @@ import type {
   PickRow,
   PlayerRow,
   RoundRow,
+  Visibility,
 } from '@/lib/db/types';
 import type { ScoringConfig } from '@/lib/scoring/config';
 
@@ -27,14 +28,18 @@ export class DbUnavailableError extends Error {
 export type NewLeague = {
   slug: string;
   name: string;
-  adminTokenHash: string;
   defaultScoring: ScoringConfig;
+  createdBy?: string | null;
+  visibility?: Visibility;
+  /** v1 only. v2 leagues leave it out. */
+  adminTokenHash?: string | null;
 };
 export type LeaguePatch = {
   name?: string;
   homeTeamNumber?: number;
   defaultScoring?: ScoringConfig;
-  adminTokenHash?: string;
+  adminTokenHash?: string | null;
+  visibility?: Visibility;
 };
 export type NewRound = {
   leagueId: string;

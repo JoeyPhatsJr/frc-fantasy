@@ -19,8 +19,8 @@ describe('rotateAdminToken', () => {
     expect(out.token).not.toBe(oldToken);
 
     const saved = (await repo.getLeagueBySlug(league.slug))!;
-    expect(verifyToken(out.token, saved.adminTokenHash)).toBe(true);
-    expect(verifyToken(oldToken, saved.adminTokenHash)).toBe(false);
+    expect(verifyToken(out.token, saved.adminTokenHash!)).toBe(true);
+    expect(verifyToken(oldToken, saved.adminTokenHash!)).toBe(false);
   });
 
   it('changes nothing else about the league', async () => {

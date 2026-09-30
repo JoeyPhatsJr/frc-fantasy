@@ -9,6 +9,13 @@ import type {
   RoundRow,
 } from '@/lib/db/types';
 
+const INVITE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+function newInviteCode(): string {
+  let code = '';
+  for (let i = 0; i < 6; i++) code += INVITE_ALPHABET[Math.floor(Math.random() * INVITE_ALPHABET.length)];
+  return code;
+}
+
 /** A Repo that lives in memory and enforces the same unique constraints as the real schema. */
 export function createMemoryRepo(): Repo {
   let leagues: LeagueRow[] = [];
@@ -42,7 +49,18 @@ export function createMemoryRepo(): Repo {
   return {
     async createLeague(input) {
       if (leagues.some((l) => l.slug === input.slug)) throw new UniqueViolation('leagues_slug_key');
-      const row: LeagueRow = { id: randomUUID(), homeTeamNumber: 5181, createdAt: stamp(), ...copy(input) };
+      const row: LeagueRow = {
+        id: randomUUID(),
+        slug: input.slug,
+        name: input.name,
+        defaultScoring: copy(input.defaultScoring),
+        adminTokenHash: input.adminTokenHash ?? null,
+        homeTeamNumber: 5181,
+        inviteCode: newInviteCode(),
+        visibility: input.visibility ?? 'link',
+        createdBy: input.createdBy ?? null,
+        createdAt: stamp(),
+      };
       leagues.push(row);
       return copy(row);
     },
@@ -67,7 +85,7 @@ export function createMemoryRepo(): Repo {
       if (players.some((p) => p.leagueId === leagueId && p.name.toLowerCase() === name.toLowerCase())) {
         throw new UniqueViolation('players_league_name_ci');
       }
-      const row: PlayerRow = { id: randomUUID(), leagueId, name, createdAt: stamp() };
+      const row: PlayerRow = { id: randomUUID(), leagueId, name, userId: null, role: 'player', createdAt: stamp() };
       players.push(row);
       return copy(row);
     },

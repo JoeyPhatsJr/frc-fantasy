@@ -83,7 +83,7 @@ export async function requireCommissioner(req: Request, slug: string): Promise<L
   const token = req.headers.get('x-commissioner-key') ?? '';
   const league = await getRepo().getLeagueBySlug(slug);
   // Same answer for "no such league" and "wrong token": give nothing away.
-  if (!league || !verifyToken(token, league.adminTokenHash)) throw new HttpError(403, 'Forbidden');
+  if (!league || !league.adminTokenHash || !verifyToken(token, league.adminTokenHash)) throw new HttpError(403, 'Forbidden');
   return league;
 }
 
