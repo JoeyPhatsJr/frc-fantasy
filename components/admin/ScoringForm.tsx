@@ -44,7 +44,7 @@ function NumberField({
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <fieldset className="min-w-0 space-y-2 rounded-xl border border-border bg-surface-2 p-3">
-      <legend className="rounded-pill bg-surface px-2 font-display text-base font-bold uppercase tracking-wide text-fg">
+      <legend className="rounded-pill bg-surface px-2 font-display text-[17px] font-bold leading-6 text-fg">
         {title}
       </legend>
       {children}

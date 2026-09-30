@@ -19,7 +19,7 @@ export const DETAILS_SUMMARY =
   'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ' +
   '[&::-webkit-details-marker]:hidden';
 
-const SUBHEAD = 'font-display text-lg font-bold uppercase tracking-wide text-fg';
+const SUBHEAD = 'font-display text-[17px] font-bold leading-6 text-fg';
 
 export function RoundSetup({ detail, busy, run, api, playerNames }: SectionProps) {
   const { round } = detail;

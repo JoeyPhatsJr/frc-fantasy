@@ -31,7 +31,10 @@ export function Leaderboard({ rows, emptyText }: { rows: LeaderboardRow[]; empty
             style={{ animationDelay: `${index * 40}ms` }}
             className={[
               'flex min-h-14 items-center gap-3 py-2 pr-3 motion-safe:animate-fade-up',
-              leader ? 'rounded-lg border-l-[3px] border-l-accent bg-accent/10 pl-[9px]' : 'pl-3',
+              // Gold tint: /15 reads as gold in dark; light keeps /10, where accent-text on /15 would drop to 4.47:1.
+              leader
+                ? 'rounded-lg border-l-[3px] border-l-accent bg-accent/15 pl-[9px] [[data-theme=light]_&]:bg-accent/10'
+                : 'pl-3',
             ].join(' ')}
           >
             <span

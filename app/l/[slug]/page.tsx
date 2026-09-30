@@ -94,7 +94,7 @@ export default async function LeaguePage({ params }: Props) {
                 <li key={view.round.id}>
                   <Link
                     href={`/l/${league.slug}/r/${view.round.id}`}
-                    className="flex min-h-14 cursor-pointer items-center gap-3 rounded-lg px-2 py-2 motion-safe:transition-colors duration-200 hover:bg-surface-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                    className="flex min-h-14 cursor-pointer items-center gap-3 rounded-lg px-2 py-2 motion-safe:transition-colors duration-200 hover:bg-fg/5 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <DateBlock date={view.round.startDate} />
                     <span className="min-w-0 flex-1">

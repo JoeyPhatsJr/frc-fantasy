@@ -17,7 +17,7 @@ export const BTN_DANGER = buttonClass('danger');
 /** No width of its own: add `flex-1`, `w-full`, `w-20`... where it's used. */
 export const INPUT = `${FIELD_BASE} min-w-0`;
 
-const TITLE = 'break-words font-display text-3xl font-bold uppercase leading-tight tracking-wide text-fg';
+const TITLE = 'break-words font-display text-[22px] font-bold leading-[26px] text-fg';
 
 export function AdminGate({ slug, children }: { slug: string; children: (api: AdminApi) => ReactNode }) {
   const session = useAdmin(slug);
@@ -38,8 +38,15 @@ export function AdminGate({ slug, children }: { slug: string; children: (api: Ad
   if (session.status === 'invalid') {
     return (
       <main id="main">
-        <Card>
+        <Card className="space-y-3">
           <h1 className={TITLE}>This admin link is invalid</h1>
+          <p className="text-[15px] text-fg-muted">
+            Open the commissioner link from your group chat on this device. If it still doesn&apos;t work, the link
+            may have been replaced; ask whoever runs the league for the new one.
+          </p>
+          <Button href={`/l/${slug}`} variant="secondary">
+            View standings
+          </Button>
         </Card>
       </main>
     );
