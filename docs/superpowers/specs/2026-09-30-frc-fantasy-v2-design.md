@@ -221,3 +221,149 @@ Migration `0002` (additive) runs on the live database:
 - Display and player names: 1–40 chars, trimmed, no control characters. No profanity filter (commissioners can remove members).
 - Unknown invite codes and non-member access to members-only data return uniform responses (no existence leaks beyond the league name shown on a valid invite).
 - Me-tab data loads per league in parallel; one failing league shows "Couldn't load" on its row, not a page error.
+
+---
+
+## 5. Sub-project 2 — League formats
+
+### 5.1 League format
+
+```sql
+alter table leagues
+  add column format             text not null default 'event' check (format in ('event', 'season')),
+  add column follows_synced_at  timestamptz;
+```
+
+`format` is chosen at creation and **cannot change** afterwards. v1 leagues migrate as `event`.
+
+| | Event-by-event (`event`) | Full season (`season`) |
+|---|---|---|
+| Rounds | One per event: `tba` or `manual` kind; added by hand or by follow-a-team | One `season` round per FRC season year |
+| Draft | Per round (v1) | Once per season round |
+| Standings | Sum of rounds (v1 `seasonStandings`) | Same function over season rounds |
+
+### 5.2 Round changes
+
+```sql
+alter table rounds
+  add column kind         text not null default 'tba' check (kind in ('tba', 'manual', 'season')),
+  alter column event_key  drop not null,
+  add column season_year  integer check (season_year between 1992 and 2100),
+  add column pool_filter  jsonb,                  -- season rounds only (§5.5)
+  add column auto_added   boolean not null default false,
+  add constraint rounds_kind_event_key check ((kind = 'tba') = (event_key is not null)),
+  add constraint rounds_kind_season    check ((kind = 'season') = (season_year is not null));
+alter table rounds drop constraint rounds_roster_size_check;
+alter table rounds add constraint rounds_roster_size_check check (roster_size between 1 and 15);
+```
+
+- `event_name`, `start_date`, `end_date`, `timezone` stay required for every kind (manual: typed by the commissioner; season: §5.5).
+- Roster size: 1–10 for `tba`/`manual` (app rule, as v1), 1–15 for `season`.
+- The v1 unique `(league_id, event_key)` still applies; Postgres treats NULLs as distinct, so manual and season rounds don't collide.
+- **Round status** (v1 §7.8) is unchanged in logic and works for all kinds because it only uses dates, picks, and `finalized_at`.
+- Admin UI: event leagues get **Add round → TBA event | Manual event**; season leagues get no "Add round" (§5.5).
+
+### 5.3 Manual rounds
+
+- **Create:** `POST /api/l/{slug}/admin/rounds { kind: 'manual', name, startDate, endDate }` (name 1–80 chars; `endDate ≥ startDate`; timezone defaults to `America/New_York`).
+- **Pool:** only `round_extra_teams` (the existing "add team number" UI). The v1 `P × R ≤ T` check applies.
+- **Results** are entered after (or during) the event in a new **Results** tab of the round admin: one row per pool team, drafted teams listed first with a "Show all teams" toggle.
+
+```sql
+create table manual_results (
+  round_id        uuid not null references rounds(id) on delete cascade,
+  team_key        text not null check (team_key ~ '^frc[1-9][0-9]{0,4}[A-Z]?$'),
+  qual_wins       integer not null default 0 check (qual_wins between 0 and 50),
+  qual_losses     integer not null default 0 check (qual_losses between 0 and 50),
+  qual_ties       integer not null default 0 check (qual_ties between 0 and 50),
+  ranking_points  integer check (ranking_points between 0 and 500),     -- null = unknown
+  qual_rank       integer check (qual_rank between 1 and 200),          -- null = unknown
+  alliance_role   text check (alliance_role in ('captain', 'pick1', 'pick2', 'pick3', 'backup')),
+  playoff_wins    integer not null default 0 check (playoff_wins between 0 and 20),
+  event_result    text check (event_result in ('winner', 'finalist')),
+  award_types     integer[] not null default '{}',                      -- TBA award type ids
+  primary key (round_id, team_key)
+);
+```
+
+- `PUT /api/l/{slug}/admin/rounds/{id}/results/{teamKey}` upserts one row (team must be in the pool; 400 otherwise). `DELETE` clears it. Only allowed for `manual` rounds (409 otherwise).
+- Awards picker lists common TBA award types by name (Impact, Engineering Inspiration, Rookie All-Star, Winner/Finalist excluded as in the config, etc.) plus "Other award" (scored with `awards.default`).
+- **`scoreManualEvent(results, config): EventScores`** (`lib/scoring/manual.ts`, pure) emits the same `CategoryId`s and line labels as `scoreEvent` for: `qualRecord`, `rankingPoints`, `rank`, `alliance`, `playoffWins`, `eventResult`, `awards`. It never emits `oprBonus`. `qualsComplete = results.length > 0`; `rpMethod = 'manual'` (new union member). Unknown (`null`) RP or rank emits no line.
+- **Equivalence test:** entering `2025parr`'s real results into `manual_results` must produce, for every team, `scoreEvent` totals minus that team's OPR line (`scoreEvent` itself is unchanged).
+- Manual rounds are not cached in `event_scores` (scoring them is cheap; there's no TBA input).
+
+### 5.4 Follow-a-team (event leagues)
+
+```sql
+create table league_follows (
+  league_id    uuid not null references leagues(id) on delete cascade,
+  team_number  integer not null check (team_number between 1 and 99999),
+  primary key (league_id, team_number)
+);
+create table league_skipped_events (
+  league_id  uuid not null references leagues(id) on delete cascade,
+  event_key  text not null,
+  primary key (league_id, event_key)
+);
+```
+
+- League settings: "Follow teams" — up to **3** team numbers (event leagues only). v1's `home_team_number` setting is superseded (removed from the UI; column dropped in migration `0004`). Following is opt-in: the migration does not create follows.
+- **`syncFollowedEvents(league, now)`** (`lib/follow/sync.ts`):
+  1. For each followed team, `getTba('/team/frc{n}/events/{year}/simple')` for the current calendar year (10 min window).
+  2. Keep events with `event_type` not in {100 preseason, −1 unlabeled} (offseason `99` is **included**), `end_date ≥ today − 1 day`, not already a round in the league, and not in `league_skipped_events`.
+  3. Create each as a `tba` round with `auto_added = true`, TBA name/dates/timezone, `scoring` = league default, `roster_size` and `draft_order` copied from the league's most recently created round (order filtered to players whose accounts are still linked; roster size default 4 if no round exists).
+  4. Insert with `on conflict (league_id, event_key) do nothing`, so concurrent syncs are harmless.
+  5. Set `leagues.follows_synced_at = now`.
+- **Triggers:**
+  - **Daily cron** `GET /api/cron/daily` (Vercel cron, `vercel.json` schedule `0 10 * * *` UTC; requires `Authorization: Bearer $CRON_SECRET`, else 401) syncs every league with follows.
+  - **On visit:** loading `/l/{slug}` or the admin dashboard runs the sync via Next.js `after()` (after the response is sent) when `follows_synced_at` is null or older than 10 minutes. New rounds appear on the next refresh; auto-refresh (v1 PR #2) picks them up.
+- **Deleting an auto-added round** also inserts `league_skipped_events`, so it never comes back. Deleting a manually added round does not.
+- A TBA failure during sync is logged and ignored (no rounds created, `follows_synced_at` not updated).
+- Auto-added rounds show a small "Auto-added · following 5181" note in the admin round list.
+
+### 5.5 Full-season leagues
+
+- **Create:** format `season` + `seasonYear` (current year, or next year from October on) + pool filter. Creation also creates the league's single season round (`kind = 'season'`, `event_name = "{year} Season"`, `roster_size` default 8).
+- **Next season:** a season league's admin shows "Start {year + 1} season" once the latest season round is Final; it creates a new season round (draft order copied). League standings span all season rounds (v1 `seasonStandings`).
+- **Dates:** `start_date`/`end_date` = the earliest start and latest end among that year's official events (TBA `/events/{year}/simple`), refreshed by the daily cron. Before TBA publishes the calendar: Jan 1 – Dec 31. `timezone = 'America/New_York'`.
+- **Pool filter** (`pool_filter` jsonb, zod-validated), editable only while the round has no picks:
+  - `{ "type": "all" }` (default) — TBA `/teams/{year}/{page}/simple`, pages 0.. until an empty page (24 h window per page).
+  - `{ "type": "district", "key": "2027fma" }` — `/district/{key}/teams/simple`. The picker lists `/districts/{year}`.
+  - `{ "type": "state", "country": "USA", "state": "Pennsylvania" }` — all teams filtered on `country` + `state_prov`.
+  - `{ "type": "country", "country": "Canada" }`.
+- **Empty pool:** if TBA hasn't published the year's team list, the draft can't start: "TBA hasn't published {year} teams yet — usually by January." v1's `P × R ≤ T` check applies.
+- **Official events:** `event_type ∈ {0 Regional, 1 District, 2 District Championship, 3 Championship Division, 4 Championship Finals, 5 District Championship Division}`. Offseason (99) and preseason (100) never count.
+- **Scoring:** for each drafted team, list its official events that year (`/team/{key}/events/{year}/simple`), score each via `getEventScores` (§5.6) with the season round's `scoring`, and sum. `TeamScore.lines` are grouped per event. Team-targeted and player-targeted adjustments work as v1.
+- **Cache windows:** each event's TBA paths use `cacheWindowFor` computed from *that event's* dates (not the season round's), so finished events drop to the 24 h/10 min windows.
+- **Round page (season):** per player, each team shows a season total, expandable to per-event subtotals ("Week 1 · Hatboro-Horsham · +41"), each expandable to v1-style lines. Upcoming events for the team are listed as "Next: {event} · {date}".
+- **Status:** v1 rules with the season's dates: Live once the first official event is within a day, Awaiting final after the last one ends; only the commissioner finalizes.
+
+### 5.6 Derived cache: `event_scores`
+
+**Why:** a full-season league with 10 players × 10 teams touches ~60 events; re-scoring from raw TBA JSON on every page view would pull 15+ MB from Postgres per request. The Me tab across several leagues has the same problem.
+
+```sql
+alter table tba_cache add column body_hash text;   -- sha256 of the stored body; null when body is null
+
+create table event_scores (
+  event_key     text not null,
+  config_hash   text not null,   -- sha256 of canonical (sorted-key) JSON of the ScoringConfig
+  source_stamp  text not null,   -- sha256 of the input paths' body_hash values, in fixed path order
+  scores        jsonb not null,  -- serialized EventScores: { teams: { [teamKey]: { total, lines } }, qualsComplete, rpMethod }
+  computed_at   timestamptz not null,
+  primary key (event_key, config_hash)
+);
+```
+
+**`getEventScores(eventKey, config, windowMs)`** (`lib/scores/eventScores.ts`):
+1. Input paths = the fixed list `scoreEvent` needs (event teams, matches, rankings, alliances, awards, oprs — exactly the paths v1's `loadEventData` reads).
+2. Read those paths' `tba_cache` **metadata only** (`path, fetched_at, body_hash, last_error_at`; no bodies).
+3. If every path is within `windowMs` and a row exists in `event_scores` for `(eventKey, config_hash)` whose `source_stamp` matches → return it (no body reads).
+4. Otherwise refresh through `getTba` as v1 (304s keep `body_hash`, so the stamp is unchanged and step 5 is skipped), recompute the stamp, and if it differs from the stored one: load bodies, run `scoreEvent`, and upsert the row.
+5. Staleness (`stale`, `fetchedAt`) is reported exactly as v1 does, from the TBA metadata.
+
+**Rules:**
+- The cache is **derived and rebuildable**: `scripts/rebuild-event-scores.ts` truncates it and nothing breaks. It is never edited by hand or by the app except through `getEventScores`.
+- Round pages (v1 `tba` rounds), season rounds, the Me tab, and `team_stats` (§6) all read scores through `getEventScores`.
+- The replay test asserts that `2025parr` round scores through `getEventScores` equal v1's direct `scoreEvent` output.
+- CLAUDE.md's locked caching decision is updated to: "`tba_cache` is the only cache of *TBA data*; `event_scores` and `team_stats` are derived, rebuildable caches of *computed* values."
