@@ -113,6 +113,20 @@ describe('POST /api/leagues (spec §4.4)', () => {
     expect(res.status).toBeGreaterThanOrEqual(500);
     expect(await repo.countLeaguesCreatedBy(user.id)).toBe(0);
   });
+
+  it('keeps the original error when the rollback fails too, and logs the rollback failure', async () => {
+    setUser(await makeUser(repo, 'Joey'));
+    const { UniqueViolation } = await import('@/lib/db/repo');
+    const rollback = new Error('rollback boom');
+    vi.spyOn(repo, 'createMember').mockRejectedValueOnce(new UniqueViolation('players_league_user'));
+    vi.spyOn(repo, 'deleteLeague').mockRejectedValueOnce(rollback);
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await createLeague(request('POST', '/api/leagues', { body: { name: 'Fam' } }));
+    expect(res.status).toBe(409);
+    expect((await readJson(res)).error).toBe("You're already in this league");
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('rollback'), rollback);
+    log.mockRestore();
+  });
 });
 
 describe('PATCH /admin/league visibility', () => {

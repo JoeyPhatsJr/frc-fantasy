@@ -51,7 +51,11 @@ export async function POST(req: Request): Promise<Response> {
       try {
         await repo.createMember({ leagueId: league.id, userId: user.id, name: myName, role: 'commissioner' });
       } catch (err) {
-        await repo.deleteLeague(league.id); // no commissioner-less leagues left behind
+        // No commissioner-less leagues left behind. A failed rollback is logged, never allowed to
+        // replace the error that actually happened.
+        await repo.deleteLeague(league.id).catch((rollbackErr: unknown) => {
+          console.error(`League rollback failed for ${league.id}`, rollbackErr);
+        });
         throw err;
       }
       return json({ slug: league.slug, inviteCode: league.inviteCode }, 201);
