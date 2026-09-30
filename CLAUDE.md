@@ -12,7 +12,9 @@ The design spec: `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md`. Read
 
 - v1 is implemented on branch `v1` (Tasks 1–27 of `docs/superpowers/plans/2026-09-29-frc-fantasy-v1*.md`), reviewed task-by-task, with a design layer from `design-system/frc-fantasy/`.
 - Local dev works against the real Supabase project; demo league seeded (`scripts/seed-demo.ts`).
-- Deployed: https://frc-fantasy-6yo3.vercel.app (PR #1 merged 2026-09-30). Real league created (testleague-o3alja) and the caching proof passed. Next: family replay dry run on 2025parr, then scoring tuning. v2 idea parked (see memory: v2-league-formats-idea).
+- Deployed: https://frc-fantasy-6yo3.vercel.app (PR #1 merged 2026-09-30). Real league created (testleague-o3alja) and the caching proof passed.
+- UI overhaul shipped (PR #3, 2026-09-30): dark-first shell with light toggle, bumper plates, scoreboard leaderboards; brief in `design-system/frc-fantasy/OVERHAUL.md`. Two cosmetic leftovers: the 56px draft banner wraps for picks ≥ 10 at 360px; the gold pressed ring is faint on white in light mode.
+- Next: Joey checks the live site on a phone in both themes (especially the draft-night screen with the commissioner link), then family replay dry run on 2025parr and scoring tuning. v2 roadmap parked (see memory: v2-league-formats-idea — formats + user accounts/multi-league).
 
 ## Locked decisions (don't re-litigate)
 
