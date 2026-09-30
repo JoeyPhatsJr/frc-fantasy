@@ -2,7 +2,7 @@
 
 - **Date:** 2026-09-29
 - **Author:** Joey (FRC Team 5181), with Claude
-- **Status:** Draft v2 — revised after Fable 5.1 review (2026-09-29); awaiting Joey's review
+- **Status:** Draft v2 — approved by Joey 2026-09-29; implemented on branch v1 (see docs/superpowers/plans/)
 - **First live use:** Ramp Riot 2026 (Team 341's offseason event, Ambler PA) — **Saturday, October 24, 2026**
 
 ---
@@ -560,7 +560,7 @@ Free projects pause after ~7 days of inactivity. Before each event, the commissi
 
 ### 8.3 Forced refresh rate limit
 
-`force: true` refreshes are ignored (cached data returned) if the path's `fetched_at` is under 15 s old. Prevents a commissioner button-mash from hammering TBA.
+`force: true` refreshes are ignored (cached data returned) if the path's `fetched_at` is under 15 s old. Prevents a commissioner button-mash from hammering TBA. Also, after a failed TBA request, the cached row is served as stale for 30 s before TBA is retried (including for forced refreshes), so an outage costs one 5 s timeout per 30 s rather than one per page view.
 
 ### 8.4 Input validation
 

@@ -109,7 +109,8 @@ describe('Ramp Riot 2025 replay: known facts', () => {
 // Hand-verified breakdowns (spec §10.2).
 //
 // These numbers come from a HUMAN reading thebluealliance.com/event/2025parr,
-// not from running the engine. Step 6 of Task 11 explains how to fill them in.
+// not from running the engine. Step 7 of Task 11 explains how to fill them in.
+// Filled 2026-09-30 by deriving from the raw fixture JSON (no engine code); spot-check against thebluealliance.com/event/2025parr.
 // ---------------------------------------------------------------------------
 type HandVerified = {
   why: string;
@@ -123,7 +124,41 @@ type HandVerified = {
   total: number;
 };
 
-const HAND_VERIFIED: Record<string, HandVerified> = {};
+const HAND_VERIFIED: Record<string, HandVerified> = {
+  frc2607: {
+    why: 'event winner captain (Alliance 3)',
+    record: [5, 0, 0],
+    rankingPoints: 25,
+    rank: 3,
+    alliancePoints: 8,
+    playoffWins: 5,
+    eventResultPoints: 15,
+    oprBonusPoints: 6,
+    total: 94,
+  },
+  frc103: {
+    why: 'rank-17 team',
+    record: [2, 3, 0],
+    rankingPoints: 14,
+    rank: 17,
+    alliancePoints: 6,
+    playoffWins: 3,
+    eventResultPoints: 0,
+    oprBonusPoints: 0,
+    total: 38,
+  },
+  frc9998: {
+    why: 'lowest-ranked undrafted team',
+    record: [0, 5, 0],
+    rankingPoints: 2,
+    rank: 34,
+    alliancePoints: 0,
+    playoffWins: 0,
+    eventResultPoints: 0,
+    oprBonusPoints: 0,
+    total: 2,
+  },
+};
 
 describe('Ramp Riot 2025 replay: hand-verified teams', () => {
   it('has three hand-verified teams', () => {
