@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from 'next';
 import { Barlow, Barlow_Condensed } from 'next/font/google';
 import Link from 'next/link';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { ExternalLink } from '@/components/ui/icons';
+import { THEME_BOOT_SCRIPT } from '@/lib/theme';
 import './globals.css';
 
 const barlowCondensed = Barlow_Condensed({
@@ -23,7 +25,8 @@ export const metadata: Metadata = {
   description: 'Fantasy drafts for FIRST Robotics Competition events.',
 };
 
-export const viewport: Viewport = { width: 'device-width', initialScale: 1 };
+// viewport-fit=cover turns on env(safe-area-inset-*) so the bottom tab bar clears the iPhone home indicator.
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' };
 
 /** Hex-nut mark: gold hexagon with a blue bore. Decorative. */
 function Mark() {
@@ -37,23 +40,29 @@ function Mark() {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${barlowCondensed.variable} ${barlow.variable}`}>
+    // data-theme is set by the boot script before React hydrates, so the attribute legitimately
+    // differs from the server markup.
+    <html lang="en" className={`${barlowCondensed.variable} ${barlow.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+      </head>
       <body className="flex min-h-dvh flex-col bg-bg font-body text-fg">
-        <header className="sticky top-0 z-20 bg-primary text-on-primary shadow-md">
-          <div className="mx-auto flex h-14 w-full max-w-2xl items-center px-4 md:max-w-3xl">
+        <header className="sticky top-0 z-30 border-b border-border bg-surface">
+          <div className="mx-auto flex h-14 w-full max-w-2xl items-center justify-between gap-3 px-4 md:max-w-3xl">
             <Link
               href="/"
-              className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-on-primary"
+              className="-ml-1 flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-1 text-fg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Mark />
               <span className="font-display text-2xl font-bold uppercase leading-none tracking-wide">
                 FRC FANTASY
               </span>
             </Link>
+            <ThemeToggle />
           </div>
         </header>
 
-        <div className="mx-auto w-full max-w-2xl flex-1 px-4 py-6 pb-24 md:max-w-3xl">{children}</div>
+        <div className="mx-auto w-full max-w-2xl flex-1 px-4 py-6 pb-24 md:max-w-3xl md:pb-8">{children}</div>
 
         <footer className="mx-auto w-full max-w-2xl px-4 pb-6 text-center md:max-w-3xl">
           <a

@@ -10,7 +10,7 @@ function initial(name: string): string {
 
 /** Dark gold for gains, red for losses (both ≥ 4.5:1 on white). */
 function pointsTone(points: number): string {
-  return points < 0 ? 'text-red-alliance' : 'text-warning';
+  return points < 0 ? 'text-red-alliance-text' : 'text-accent-text';
 }
 
 /**
@@ -44,7 +44,7 @@ export function RosterList({
           <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 rounded-xl px-3 py-2 motion-safe:transition-colors duration-200 hover:bg-surface-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring group-open:rounded-b-none [&::-webkit-details-marker]:hidden">
             <span
               aria-hidden="true"
-              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary font-display text-lg font-bold text-on-primary"
+              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-fill font-display text-lg font-bold text-on-primary"
             >
               {initial(player.name)}
             </span>
@@ -73,7 +73,7 @@ export function RosterList({
               return (
                 <div key={team.teamKey} className="rounded-lg border border-border px-3 py-2">
                   <p className="flex items-center gap-2">
-                    <span className="shrink-0 rounded-md bg-primary/10 px-2 py-0.5 font-display text-lg font-bold leading-tight text-primary-strong tabular-nums">
+                    <span className="shrink-0 rounded-md bg-primary/10 px-2 py-0.5 font-display text-lg font-bold leading-tight text-primary tabular-nums">
                       {teamLabel(team.teamKey)}
                     </span>{' '}
                     <span className="min-w-0 flex-1 break-words font-medium text-fg">

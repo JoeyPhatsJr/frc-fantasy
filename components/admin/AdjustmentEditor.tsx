@@ -179,7 +179,7 @@ export function AdjustmentEditor({ detail, busy, run, api, playerNames }: Sectio
                   <span
                     className={[
                       'shrink-0 rounded-pill px-2.5 py-0.5 font-display text-lg font-bold tabular-nums',
-                      a.points < 0 ? 'bg-red-alliance text-on-primary' : 'bg-accent text-fg',
+                      a.points < 0 ? 'bg-red-alliance text-on-primary' : 'bg-accent text-on-accent',
                     ].join(' ')}
                   >
                     {signed(a.points)}

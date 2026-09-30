@@ -8,14 +8,14 @@ export type BadgeProps = {
   children: ReactNode;
 };
 
-// Solid fills where a tinted fill would drop text contrast below 4.5:1.
+// Solid fills with their paired on-* text colour, so every tone is 4.5:1+ in both themes.
 const TONES: Record<BadgeTone, string> = {
   neutral: 'bg-surface-2 text-fg-muted ring-1 ring-inset ring-border',
-  live: 'bg-success text-on-primary',
-  upcoming: 'bg-primary/10 text-primary-strong',
-  final: 'bg-fg text-on-primary',
-  drafting: 'bg-secondary text-on-primary',
-  warning: 'bg-accent text-fg',
+  live: 'bg-success text-on-success',
+  upcoming: 'bg-primary-fill text-on-primary',
+  final: 'bg-fg text-bg',
+  drafting: 'bg-secondary text-on-secondary',
+  warning: 'bg-accent text-on-accent',
 };
 
 export function Badge({ tone, className, children }: BadgeProps) {
@@ -23,7 +23,7 @@ export function Badge({ tone, className, children }: BadgeProps) {
     <span
       className={[
         'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill px-2.5 py-0.5',
-        'text-xs font-bold uppercase tracking-wide',
+        'text-[13px] font-semibold leading-[18px]',
         TONES[tone],
         className,
       ]
@@ -31,7 +31,7 @@ export function Badge({ tone, className, children }: BadgeProps) {
         .join(' ')}
     >
       {tone === 'live' && (
-        <span aria-hidden="true" className="size-2 rounded-full bg-on-primary motion-safe:animate-pulse" />
+        <span aria-hidden="true" className="size-2 rounded-full bg-on-success motion-safe:animate-pulse" />
       )}
       {children}
     </span>

@@ -29,7 +29,7 @@ export default function HomePage() {
         <ul className="space-y-3">
           {BENEFITS.map(({ Icon, text }) => (
             <li key={text} className="flex items-start gap-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow-sm">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-fill text-on-primary shadow-sm">
                 <Icon className="size-5" />
               </span>
               <span className="min-w-0 pt-1.5 text-fg">{text}</span>

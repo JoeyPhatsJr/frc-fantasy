@@ -15,7 +15,7 @@ import { parseTeamInput } from '@/lib/teams';
 /** The summary of a <details> styled as a secondary button, matching the dashboard's. */
 export const DETAILS_SUMMARY =
   'flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-xl border border-primary/40 ' +
-  'bg-surface px-4 font-semibold text-primary-strong motion-safe:transition-colors duration-200 hover:bg-surface-2 ' +
+  'bg-surface px-4 font-semibold text-primary motion-safe:transition-colors duration-200 hover:bg-surface-2 ' +
   'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ' +
   '[&::-webkit-details-marker]:hidden';
 
@@ -126,7 +126,7 @@ export function RoundSetup({ detail, busy, run, api, playerNames }: SectionProps
             Randomize order
           </Button>
         </div>
-        <p className={`text-sm tabular-nums ${tooBig ? 'font-semibold text-red-alliance' : 'text-fg-muted'}`}>
+        <p className={`text-sm tabular-nums ${tooBig ? 'font-semibold text-red-alliance-text' : 'text-fg-muted'}`}>
           {order.length} {order.length === 1 ? 'player' : 'players'} × {rosterSize} teams = {order.length * rosterSize}{' '}
           picks from a pool of {detail.pool.length}.{' '}
           {order.length > 0 ? `Roster size can be at most ${maxAllowed}.` : ''}

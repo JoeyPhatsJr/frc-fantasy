@@ -9,8 +9,8 @@ export type LeaderboardRow = {
 
 // Gold, silver and bronze medals for the top three; everyone else gets a plain circle.
 const MEDAL: Record<number, string> = {
-  1: 'bg-accent text-fg',
-  2: 'bg-slate-300 text-fg',
+  1: 'bg-accent text-on-accent',
+  2: 'bg-slate-300 text-slate-900',
   3: 'bg-amber-700 text-on-primary',
 };
 

@@ -67,7 +67,7 @@ export function DraftEntry({ detail, busy, run, api, playerNames }: SectionProps
     <div className="space-y-5">
       <p
         aria-live="polite"
-        className="flex items-center justify-center gap-2 rounded-card bg-primary px-4 py-4 text-center font-display text-2xl font-bold leading-tight tracking-wide text-on-primary shadow-card"
+        className="flex items-center justify-center gap-2 rounded-card bg-primary-fill px-4 py-4 text-center font-display text-2xl font-bold leading-tight tracking-wide text-on-primary shadow-card"
       >
         {complete ? <Check className="size-6 shrink-0" /> : null}
         <span className="min-w-0 break-words">
