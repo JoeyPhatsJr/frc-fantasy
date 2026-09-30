@@ -10,7 +10,7 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { ChevronLeft, ExternalLink, Info } from '@/components/ui/icons';
+import { ExternalLink, Info } from '@/components/ui/icons';
 import { formatDateRange, tbaEventUrl } from '@/lib/format';
 import { loadRoundPage } from '@/lib/views/round';
 
@@ -34,8 +34,8 @@ export default async function RoundPage({ params }: Props) {
   const page = await loadRoundPage(slug, roundId, now);
   if (!page) notFound();
 
-  // Only { slug, name } of the league reaches this page; the admin token hash never does.
-  const { league, view, playerNames } = page;
+  // The league bar in app/l/[slug]/layout.tsx shows the league name and links back to standings.
+  const { view, playerNames } = page;
   const { round } = view;
   const draftInProgress = view.status === 'setup' || view.status === 'drafting';
   const notStarted = !view.hasEventData;
@@ -47,12 +47,8 @@ export default async function RoundPage({ params }: Props) {
       <AutoRefresh seconds={60} />
 
       <header className="space-y-3">
-        <Button href={`/l/${league.slug}`} variant="ghost" className="-ml-3 max-w-full">
-          <ChevronLeft className="size-5 shrink-0" />
-          <span className="min-w-0 truncate">{league.name}</span>
-        </Button>
         <div className="flex items-start gap-3">
-          <h1 className="min-w-0 flex-1 break-words font-display text-3xl font-bold uppercase leading-tight tracking-wide text-fg">
+          <h1 className="min-w-0 flex-1 break-words font-display text-[28px] font-bold leading-[30px] text-fg">
             {round.eventName}
           </h1>
           <StatusBadge status={view.status} />

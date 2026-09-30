@@ -28,10 +28,9 @@ export default async function LeaguePage({ params }: Props) {
     <main id="main" className="space-y-6">
       <AutoRefresh seconds={60} />
 
+      {/* The league bar (app/l/[slug]/layout.tsx) shows the name; this keeps a page heading for screen readers. */}
       <header className="space-y-3">
-        <h1 className="break-words font-display text-4xl font-bold uppercase leading-tight tracking-wide text-fg">
-          {league.name}
-        </h1>
+        <h1 className="sr-only">{league.name} standings</h1>
         {rounds.length > 0 ? <Freshness fetchedAt={page.fetchedAt} stale={page.stale} now={now} /> : null}
       </header>
 
