@@ -1113,7 +1113,7 @@ In `lib/scoring/types.ts`:
 export type RpMethod = 'extra_stats' | 'sort_order_avg' | 'none' | 'manual';
 ```
 
-If SP3's `deserializeEventScores` validates `rpMethod` against a list, add `'manual'` there too (manual rounds are never cached, but the type must stay one union).
+SP3's `lib/scores/serialize.ts` validates `rpMethod` with `const RP_METHODS: Record<RpMethod, true>` (SP3 Task 5). Adding `'manual'` to `RpMethod` makes TypeScript demand it there: add `manual: true,` (manual rounds are never cached, but the type must stay one union).
 
 - [ ] **Step 4: Write the award list**
 
@@ -1451,7 +1451,7 @@ describe('POST rounds: manual events (spec §5.3)', () => {
 });
 ```
 
-(`tbaAnswers` and `EVENT` already exist in this file; if SP1 renamed `seedLeague`'s slug option, use its name.)
+(`tbaAnswers` and `EVENT` already exist in this file; `slug` is SP1's `seedLeague` option.)
 
 - [ ] **Step 3: Write the failing pool test**
 
@@ -2002,7 +2002,7 @@ export async function DELETE(_req: Request, ctx: Ctx): Promise<Response> {
 }
 ```
 
-(SP1 may export `requireRound` from a different module now that `lib/api/http.ts` no longer holds commissioner auth — import it from wherever SP1 left it.)
+(`requireRound` is still in `lib/api/http.ts`; SP1 only removed `requireCommissioner` from that file.)
 
 - [ ] **Step 4: Include results in the round admin detail**
 
@@ -3447,7 +3447,7 @@ Open `vercel.json` (SP3 created it). It must contain exactly this cron (spec §5
 { "crons": [{ "path": "/api/cron/daily", "schedule": "0 10 * * *" }] }
 ```
 
-If SP3 used a different schedule, change it to `0 10 * * *`.
+(SP3 Task 13 already set `vercel.json` to `0 10 * * *`; nothing to change.)
 
 - [ ] **Step 6: Run the tests**
 
@@ -3457,7 +3457,7 @@ Expected: PASS
 - [ ] **Step 7: Run the gates**
 
 Run: `npm run typecheck && npm test`
-Expected: clean, all pass. (If SP3 has a test listing `DAILY_JOBS` names, update it to include `'follow-sync'`.)
+Expected: clean, all pass. (SP3's cron tests replace `DAILY_JOBS` with their own list through a mock, so appending a job doesn't break them.)
 
 - [ ] **Step 8: Commit**
 
@@ -4250,7 +4250,7 @@ Expected: PASS
 Run: `npm run typecheck && npm test`
 Expected: clean, all pass.
 
-Then in `npm run dev`, switch a test season round's draft to SP4's live mode and open the draft room: the pool loads every team for the filter (≈3,500 for "all"), search by number ("5181") and by nickname both work, and the list scrolls smoothly at 360 px. Spec §6.3 makes search required for season pools; if SP4's room lacks it, add it there now.
+Then in `npm run dev`, switch a test season round's draft to SP4's live mode and open the draft room: the pool loads every team for the filter (≈3,500 for "all"), search by number ("5181") and by nickname both work, and the list scrolls smoothly at 360 px. Spec §6.3 makes search required for season pools; SP4's `PoolList` already has it (number or nickname, via `filterSortPool`).
 
 - [ ] **Step 14: Commit**
 
@@ -5206,7 +5206,7 @@ export async function setUpLeagueFormat(league: LeagueRow, options: FormatOption
 - [ ] **Step 4: Call it from the create-league route**
 
 In `app/api/leagues/route.ts` (SP1):
-- Merge the options into SP1's body schema: `const bodySchema = sp1BodySchema.extend(formatOptionsSchema.shape);` (or add the four fields to SP1's `z.object` directly — keep `strictObject` if SP1 used it).
+- SP1's `bodySchema` is `z.object({ name, visibility })` (SP1 Task 8). Append `.extend(formatOptionsSchema.shape)` to it, so the body accepts `format`, `followTeams`, `seasonYear` and `poolFilter` too.
 - Pass `format: body.format` into SP1's `repo.createLeague({...})` call (Task 1 added `NewLeague.format`).
 - Right after SP1 creates the league **and** the creator's commissioner row, and before responding:
 
@@ -5214,7 +5214,7 @@ In `app/api/leagues/route.ts` (SP1):
     await setUpLeagueFormat(league, body, new Date());
 ```
 
-- If SP1 handles `?event={key}` / a first TBA round for new leagues, keep that for `format === 'event'` only.
+- SP1 handles `/leagues/new?event={key}` in `CreateLeagueForm`: after the league is created it adds the event as the first round with `POST /admin/rounds`. In Step 5, keep that for `format === 'event'` only (a season league's round is created by `setUpLeagueFormat`).
 - Call `checkFormatOptions(body, now)` right after `parseBody` and **before** `createLeague`, so a bad season year or district answers 400 without leaving a half-made league.
 
 - [ ] **Step 5: Format choices on the create-league form**

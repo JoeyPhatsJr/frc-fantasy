@@ -3974,7 +3974,7 @@ describe('GET …/pool/{teamKey}', () => {
 });
 ```
 
-If SP1 named the visibility field on `LeaguePatch` differently, use SP1's name in the `updateLeague` call.
+(`visibility` is SP1's `LeaguePatch` field, SP1 Task 3.)
 
 - [ ] **Step 2: Run it to make sure it fails, then implement the route**
 

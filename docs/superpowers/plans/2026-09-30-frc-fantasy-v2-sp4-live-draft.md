@@ -109,7 +109,7 @@ README.md, CLAUDE.md                         docs (Task 18)
 
 ## Conventions for route tests in this plan
 
-Route tests mock three modules the same way v1 tests do (`tests/api/picks.test.ts`): `@/lib/db` (→ memory repo), `@/lib/tba/client` (→ fake `getTba`), and `@/lib/auth/session` (→ a settable signed-in user). SP4 also mocks `@/lib/realtime/doorbell` so tests can assert that a ring happened. The shared setup lives in `tests/helpers/draftMocks.ts` and `tests/helpers/draft.ts` (Task 5); Tasks 5–11 import them. (The session mock behaves like SP1's `lib/auth/session.ts`; if SP1's `tests/helpers/auth.ts` exposes an equivalent `setUser` mock, either works.) The memory repo takes an injectable clock (`createMemoryRepo({ now })`, Task 1) so deadline tests control time.
+Route tests mock three modules the same way v1 tests do (`tests/api/picks.test.ts`): `@/lib/db` (→ memory repo), `@/lib/tba/client` (→ fake `getTba`), and `@/lib/auth/session` (→ a settable signed-in user). SP4 also mocks `@/lib/realtime/doorbell` so tests can assert that a ring happened. The shared setup lives in `tests/helpers/draftMocks.ts` and `tests/helpers/draft.ts` (Task 5); Tasks 5–11 import them. (`sessionModule` behaves like SP1's `fakeSession`, but reads `mocks.user`, so SP4 tests set `mocks.user = …` explicitly; SP1's `seedLeague` also calls SP1's `setUser`, which these tests ignore.) The memory repo takes an injectable clock (`createMemoryRepo({ now })`, Task 1) so deadline tests control time.
 
 ---
 
@@ -4146,7 +4146,7 @@ git commit -m "feat(draft): draft room banner, pool list, queue, confirm sheet, 
 - Produces:
   - `useDraftRoom(slug, roundId, baseTitle)` → `{ api, state, pool, remaining, reconnecting, loadError, subscribed, refetchNow }`
   - `<DraftRoom slug roundId eventName />`
-  - Page `/l/{slug}/r/{roundId}/draft` (spec §7.6): members interact, `link`-league non-members watch read-only, `members` leagues show the private card, commissioner-mode rounds point back to the round page.
+  - Page `/l/{slug}/r/{roundId}/draft` (spec §7.6): members interact, `link`-league non-members watch read-only, `members` leagues show SP1's `PrivateLeague` card (`components/PrivateLeague.tsx`, SP1 Task 14), commissioner-mode rounds point back to the round page.
 
 - [ ] **Step 1: Create the hook `components/draft/useDraftRoom.ts`**
 
@@ -4509,11 +4509,13 @@ export function DraftRoom({ slug, roundId, eventName }: { slug: string; roundId:
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { DraftRoom } from '@/components/draft/DraftRoom';
+import { PrivateLeague } from '@/components/PrivateLeague';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ChevronLeft } from '@/components/ui/icons';
 import { HttpError, isUuid } from '@/lib/api/http';
 import { requireLeagueView } from '@/lib/auth/roles';
+import { getUser } from '@/lib/auth/session';
 import { getRepo } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -4527,13 +4529,9 @@ export default async function DraftRoomPage({ params }: Props) {
     view = await requireLeagueView(slug);
   } catch (err) {
     if (err instanceof HttpError && err.status === 403) {
-      return (
-        <main id="main">
-          <Card title="Private league">
-            <p className="text-[15px] text-fg">Private league — ask the commissioner for an invite code.</p>
-          </Card>
-        </main>
-      );
+      // SP1's card (SP1 Task 14): explains itself and offers sign-in with `next` back here.
+      const user = await getUser();
+      return <PrivateLeague signedIn={user !== null} next={`/l/${slug}/r/${roundId}/draft`} />;
     }
     if (err instanceof HttpError && err.status === 404) notFound();
     throw err;
@@ -4576,7 +4574,7 @@ export default async function DraftRoomPage({ params }: Props) {
 }
 ```
 
-(If SP1 already made a shared private-league card component, use it instead of the inline `Card` here.)
+(The private card is SP1's `PrivateLeague` component.)
 
 - [ ] **Step 4: Typecheck and run the full suite**
 
