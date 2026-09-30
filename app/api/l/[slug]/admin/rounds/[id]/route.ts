@@ -5,10 +5,10 @@ import {
   json,
   noContent,
   parseBody,
-  requireCommissioner,
   requireRound,
   UUID_RE,
 } from '@/lib/api/http';
+import { requireLeagueRole } from '@/lib/auth/roles';
 import { getRepo } from '@/lib/db';
 import { roundDetail } from '@/lib/rounds/detail';
 import { loadPool } from '@/lib/rounds/pool';
@@ -36,10 +36,10 @@ const patchSchema = z
   })
   .refine((v) => Object.values(v).some((x) => x !== undefined), { message: 'Nothing to change' });
 
-export async function GET(req: Request, ctx: Ctx): Promise<Response> {
+export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug, id } = await ctx.params;
-    const league = await requireCommissioner(req, slug);
+    const { league } = await requireLeagueRole(slug, 'commissioner');
     const round = await requireRound(league, id);
     return json(await roundDetail(round, new Date()));
   });
@@ -48,7 +48,7 @@ export async function GET(req: Request, ctx: Ctx): Promise<Response> {
 export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug, id } = await ctx.params;
-    const league = await requireCommissioner(req, slug);
+    const { league } = await requireLeagueRole(slug, 'commissioner');
     const round = await requireRound(league, id);
     const patch = await parseBody(req, patchSchema);
     const repo = getRepo();
@@ -104,10 +104,10 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
   });
 }
 
-export async function DELETE(req: Request, ctx: Ctx): Promise<Response> {
+export async function DELETE(_req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug, id } = await ctx.params;
-    const league = await requireCommissioner(req, slug);
+    const { league } = await requireLeagueRole(slug, 'commissioner');
     const round = await requireRound(league, id);
     await getRepo().deleteRound(round.id);
     return noContent();

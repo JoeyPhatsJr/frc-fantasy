@@ -1,5 +1,4 @@
 import type { z } from 'zod';
-import { verifyToken } from '@/lib/auth/commissioner';
 import { getRepo } from '@/lib/db';
 import { DbUnavailableError, UniqueViolation } from '@/lib/db/repo';
 import type { LeagueRow, RoundRow } from '@/lib/db/types';
@@ -78,14 +77,6 @@ export async function parseBody<S extends z.ZodType>(req: Request, schema: S): P
     throw new HttpError(400, custom ? issue.message : `${where}${issue.message}`);
   }
   return parsed.data;
-}
-
-export async function requireCommissioner(req: Request, slug: string): Promise<LeagueRow> {
-  const token = req.headers.get('x-commissioner-key') ?? '';
-  const league = await getRepo().getLeagueBySlug(slug);
-  // Same answer for "no such league" and "wrong token": give nothing away.
-  if (!league || !league.adminTokenHash || !verifyToken(token, league.adminTokenHash)) throw new HttpError(403, 'Forbidden');
-  return league;
 }
 
 export async function requireRound(league: LeagueRow, roundId: string): Promise<RoundRow> {

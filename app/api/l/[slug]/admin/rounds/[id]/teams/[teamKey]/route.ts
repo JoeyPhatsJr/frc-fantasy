@@ -1,4 +1,5 @@
-import { handle, HttpError, noContent, requireCommissioner, requireRound } from '@/lib/api/http';
+import { handle, HttpError, noContent, requireRound } from '@/lib/api/http';
+import { requireLeagueRole } from '@/lib/auth/roles';
 import { getRepo } from '@/lib/db';
 import { loadPool } from '@/lib/rounds/pool';
 import { isTeamKey } from '@/lib/teams';
@@ -8,10 +9,10 @@ export const maxDuration = 30; // loadPool may call TBA
 
 type Ctx = { params: Promise<{ slug: string; id: string; teamKey: string }> };
 
-export async function DELETE(req: Request, ctx: Ctx): Promise<Response> {
+export async function DELETE(_req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug, id, teamKey } = await ctx.params;
-    const league = await requireCommissioner(req, slug);
+    const { league } = await requireLeagueRole(slug, 'commissioner');
     const round = await requireRound(league, id);
     if (!isTeamKey(teamKey)) throw new HttpError(400, 'That is not a team key');
     const repo = getRepo();

@@ -6,6 +6,7 @@ const h = vi.hoisted(() => ({
   getTba: undefined as unknown as (...args: unknown[]) => unknown,
 }));
 vi.mock('@/lib/db', () => ({ getRepo: () => h.repo }));
+vi.mock('@/lib/auth/session', async () => (await import('../helpers/auth')).fakeSession);
 vi.mock('@/lib/tba/client', () => ({ getTba: (...args: unknown[]) => h.getTba(...args) }));
 
 import {
@@ -15,17 +16,18 @@ import {
   isUuid,
   json,
   parseBody,
-  requireCommissioner,
   requireRound,
 } from '@/lib/api/http';
 import { DbUnavailableError, UniqueViolation, type Repo } from '@/lib/db/repo';
 import { defaultScoring } from '@/lib/scoring/config';
 import { readJson, request, seedLeague } from '../helpers/api';
+import { setUser } from '../helpers/auth';
 import { createMemoryRepo } from '../helpers/memoryRepo';
 
 let repo: Repo;
 
 beforeEach(() => {
+  setUser(null);
   repo = createMemoryRepo();
   h.repo = repo;
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -110,34 +112,6 @@ describe('parseBody', () => {
   });
 });
 
-describe('requireCommissioner (§4)', () => {
-  it('returns the league for the right token', async () => {
-    const { league, token } = await seedLeague(repo);
-    const out = await requireCommissioner(request('GET', '/x', { token }), league.slug);
-    expect(out.id).toBe(league.id);
-  });
-
-  it('answers 403 with no detail for a missing token, a wrong token, or an unknown league', async () => {
-    const { league, token } = await seedLeague(repo);
-    const cases = [
-      requireCommissioner(request('GET', '/x'), league.slug),
-      requireCommissioner(request('GET', '/x', { token: 'wrong' }), league.slug),
-      requireCommissioner(request('GET', '/x', { token: '' }), league.slug),
-      requireCommissioner(request('GET', '/x', { token }), 'no-such-league'),
-    ];
-    for (const attempt of cases) {
-      await expect(attempt).rejects.toMatchObject({ status: 403, message: 'Forbidden' });
-    }
-  });
-
-  it("rejects league A's token on league B", async () => {
-    const a = await seedLeague(repo, { slug: 'league-a-aaaaaa' });
-    const b = await seedLeague(repo, { slug: 'league-b-bbbbbb' });
-    const attempt = requireCommissioner(request('GET', '/x', { token: a.token }), b.league.slug);
-    await expect(attempt).rejects.toMatchObject({ status: 403 });
-  });
-});
-
 describe('requireRound', () => {
   async function addRound(leagueId: string, eventKey = '2025parr') {
     return repo.createRound({
@@ -154,8 +128,8 @@ describe('requireRound', () => {
   });
 
   it("answers 404 for another league's round", async () => {
-    const a = await seedLeague(repo, { slug: 'league-a-aaaaaa' });
-    const b = await seedLeague(repo, { slug: 'league-b-bbbbbb' });
+    const a = await seedLeague(repo, { slug: 'league-a-aaaaaa', signIn: false });
+    const b = await seedLeague(repo, { slug: 'league-b-bbbbbb', signIn: false });
     const roundB = await addRound(b.league.id);
     await expect(requireRound(a.league, roundB.id)).rejects.toMatchObject({ status: 404 });
   });

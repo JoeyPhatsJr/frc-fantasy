@@ -5,6 +5,7 @@ const h = vi.hoisted(() => ({
   getTba: undefined as unknown as (...args: unknown[]) => unknown,
 }));
 vi.mock('@/lib/db', () => ({ getRepo: () => h.repo }));
+vi.mock('@/lib/auth/session', async () => (await import('../helpers/auth')).fakeSession);
 vi.mock('@/lib/tba/client', () => ({ getTba: (...args: unknown[]) => h.getTba(...args) }));
 
 import { PATCH as patchLeague } from '@/app/api/l/[slug]/admin/league/route';
@@ -14,12 +15,14 @@ import { POST as createLeague } from '@/app/api/leagues/route';
 import { hashToken } from '@/lib/auth/commissioner';
 import type { Repo } from '@/lib/db/repo';
 import { DEFAULT_SCORING, defaultScoring } from '@/lib/scoring/config';
+import { setUser, signInAsMember } from '../helpers/auth';
 import { params, readJson, request, seedLeague } from '../helpers/api';
 import { createMemoryRepo } from '../helpers/memoryRepo';
 
 let repo: Repo;
 
 beforeEach(() => {
+  setUser(null);
   repo = createMemoryRepo();
   h.repo = repo;
   vi.stubEnv('CREATE_LEAGUE_PASSCODE', 'open sesame');
@@ -93,25 +96,25 @@ describe('POST /api/leagues', () => {
 });
 
 describe('GET /admin/verify', () => {
-  it('answers 200 for the right token', async () => {
-    const { league, token } = await seedLeague(repo);
-    const res = await verify(request('GET', '/x', { token }), params({ slug: league.slug }));
+  it('answers 200 for the commissioner', async () => {
+    const { league } = await seedLeague(repo);
+    const res = await verify(request('GET', '/x', {}), params({ slug: league.slug }));
     expect(res.status).toBe(200);
     expect(await readJson(res)).toEqual({ ok: true });
   });
 
-  it('answers 403 for a missing or wrong token', async () => {
+  it('answers 401 signed out and 403 for a member who is not a commissioner', async () => {
     const { league } = await seedLeague(repo);
+    setUser(null);
+    expect((await verify(request('GET', '/x'), params({ slug: league.slug }))).status).toBe(401);
+    await signInAsMember(repo, league, 'Mom', 'player');
     expect((await verify(request('GET', '/x'), params({ slug: league.slug }))).status).toBe(403);
-    expect(
-      (await verify(request('GET', '/x', { token: 'wrong' }), params({ slug: league.slug }))).status,
-    ).toBe(403);
   });
 });
 
 describe('GET /admin/state', () => {
   it('returns the league, players, and rounds, and never the token hash', async () => {
-    const { league, token } = await seedLeague(repo);
+    const { league, commissioner } = await seedLeague(repo);
     const mom = await repo.createPlayer(league.id, 'Mom');
     const dad = await repo.createPlayer(league.id, 'Dad');
     const round = await repo.createRound({
@@ -122,10 +125,9 @@ describe('GET /admin/state', () => {
     await repo.updateRound(round.id, { draftOrder: [mom.id], rosterSize: 2 });
     await repo.insertPick({ roundId: round.id, pickNumber: 0, playerId: mom.id, teamKey: 'frc341' });
 
-    const res = await getState(request('GET', '/x', { token }), params({ slug: league.slug }));
+    const res = await getState(request('GET', '/x', {}), params({ slug: league.slug }));
     expect(res.status).toBe(200);
     const text = await res.text();
-    expect(text).not.toContain(league.adminTokenHash);
     expect(text).not.toContain('adminTokenHash');
 
     const body = JSON.parse(text);
@@ -133,6 +135,7 @@ describe('GET /admin/state', () => {
       slug: league.slug, name: 'Habich Fam', homeTeamNumber: 5181, defaultScoring: DEFAULT_SCORING,
     });
     expect(body.players).toEqual([
+      { id: commissioner.id, name: 'Commish', inUse: false },
       { id: mom.id, name: 'Mom', inUse: true },
       { id: dad.id, name: 'Dad', inUse: false },
     ]);
@@ -145,17 +148,20 @@ describe('GET /admin/state', () => {
     ]);
   });
 
-  it('answers 403 without a token', async () => {
+  it('answers 401 signed out and 403 for a member who is not a commissioner', async () => {
     const { league } = await seedLeague(repo);
+    setUser(null);
+    expect((await getState(request('GET', '/x'), params({ slug: league.slug }))).status).toBe(401);
+    await signInAsMember(repo, league, 'Mom', 'player');
     expect((await getState(request('GET', '/x'), params({ slug: league.slug }))).status).toBe(403);
   });
 });
 
 describe('PATCH /admin/league', () => {
   it('renames the league', async () => {
-    const { league, token } = await seedLeague(repo);
+    const { league } = await seedLeague(repo);
     const res = await patchLeague(
-      request('PATCH', '/x', { token, body: { name: '  Robot Fam  ' } }),
+      request('PATCH', '/x', { body: { name: '  Robot Fam  ' } }),
       params({ slug: league.slug }),
     );
     expect(res.status).toBe(200);
@@ -164,10 +170,10 @@ describe('PATCH /admin/league', () => {
   });
 
   it('updates the default scoring and home team', async () => {
-    const { league, token } = await seedLeague(repo);
+    const { league } = await seedLeague(repo);
     const scoring = { ...defaultScoring(), qualWin: 2 };
     const res = await patchLeague(
-      request('PATCH', '/x', { token, body: { defaultScoring: scoring, homeTeamNumber: 341 } }),
+      request('PATCH', '/x', { body: { defaultScoring: scoring, homeTeamNumber: 341 } }),
       params({ slug: league.slug }),
     );
     expect(res.status).toBe(200);
@@ -177,21 +183,21 @@ describe('PATCH /admin/league', () => {
   });
 
   it('does not change existing rounds when the league default changes (§3.5)', async () => {
-    const { league, token } = await seedLeague(repo);
+    const { league } = await seedLeague(repo);
     const round = await repo.createRound({
       leagueId: league.id, eventKey: '2025parr', eventName: 'Ramp Riot',
       startDate: '2025-10-25', endDate: '2025-10-25', timezone: 'America/New_York',
       scoring: defaultScoring(),
     });
     await patchLeague(
-      request('PATCH', '/x', { token, body: { defaultScoring: { ...defaultScoring(), qualWin: 2 } } }),
+      request('PATCH', '/x', { body: { defaultScoring: { ...defaultScoring(), qualWin: 2 } } }),
       params({ slug: league.slug }),
     );
     expect((await repo.getRound(round.id))!.scoring.qualWin).toBe(3);
   });
 
   it('answers 400 for invalid scoring, an empty patch, or unknown fields', async () => {
-    const { league, token } = await seedLeague(repo);
+    const { league } = await seedLeague(repo);
     const bodies = [
       { defaultScoring: { ...defaultScoring(), qualWin: 1.5 } },
       {},
@@ -200,17 +206,19 @@ describe('PATCH /admin/league', () => {
       { homeTeamNumber: 0 },
     ];
     for (const body of bodies) {
-      const res = await patchLeague(request('PATCH', '/x', { token, body }), params({ slug: league.slug }));
+      const res = await patchLeague(request('PATCH', '/x', { body }), params({ slug: league.slug }));
       expect(res.status, JSON.stringify(body)).toBe(400);
     }
   });
 
-  it('answers 403 with the wrong token and changes nothing', async () => {
+  it('answers 401 signed out and 403 for a member who is not a commissioner, and changes nothing', async () => {
     const { league } = await seedLeague(repo);
-    const res = await patchLeague(
-      request('PATCH', '/x', { token: 'wrong', body: { name: 'Hacked' } }),
-      params({ slug: league.slug }),
-    );
+    const attempt = () =>
+      patchLeague(request('PATCH', '/x', { body: { name: 'Hacked' } }), params({ slug: league.slug }));
+    setUser(null);
+    expect((await attempt()).status).toBe(401);
+    await signInAsMember(repo, league, 'Mom', 'player');
+    const res = await attempt();
     expect(res.status).toBe(403);
     expect((await repo.getLeagueBySlug(league.slug))!.name).toBe('Habich Fam');
   });

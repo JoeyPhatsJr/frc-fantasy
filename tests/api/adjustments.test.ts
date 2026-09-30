@@ -5,6 +5,7 @@ const h = vi.hoisted(() => ({
   getTba: undefined as unknown as (...args: unknown[]) => unknown,
 }));
 vi.mock('@/lib/db', () => ({ getRepo: () => h.repo }));
+vi.mock('@/lib/auth/session', async () => (await import('../helpers/auth')).fakeSession);
 vi.mock('@/lib/tba/client', () => ({ getTba: (...args: unknown[]) => h.getTba(...args) }));
 
 import {
@@ -15,12 +16,12 @@ import { POST as addAdjustment } from '@/app/api/l/[slug]/admin/rounds/[id]/adju
 import type { Repo } from '@/lib/db/repo';
 import type { LeagueRow, PlayerRow, RoundRow } from '@/lib/db/types';
 import { defaultScoring } from '@/lib/scoring/config';
+import { setUser, signInAsMember } from '../helpers/auth';
 import { params, readJson, request, seedLeague } from '../helpers/api';
 import { createMemoryRepo } from '../helpers/memoryRepo';
 
 let repo: Repo;
 let league: LeagueRow;
-let token: string;
 let round: RoundRow;
 let mom: PlayerRow;
 
@@ -33,16 +34,17 @@ async function newRound(leagueId: string, eventKey = '2025parr') {
 }
 
 beforeEach(async () => {
+  setUser(null);
   repo = createMemoryRepo();
   h.repo = repo;
-  ({ league, token } = await seedLeague(repo));
+  ({ league } = await seedLeague(repo));
   mom = await repo.createPlayer(league.id, 'Mom');
   round = await newRound(league.id);
 });
 
 const here = () => params({ slug: league.slug, id: round.id });
 const atAdj = (adjId: string) => params({ slug: league.slug, id: round.id, adjId });
-const add = (body: unknown) => addAdjustment(request('POST', '/x', { token, body }), here());
+const add = (body: unknown) => addAdjustment(request('POST', '/x', { body }), here());
 
 describe('POST adjustments (§3.7)', () => {
   it('adds a team-targeted adjustment', async () => {
@@ -84,7 +86,7 @@ describe('POST adjustments (§3.7)', () => {
   });
 
   it("answers 400 for a player from another league or one that doesn't exist", async () => {
-    const other = await seedLeague(repo, { slug: 'other-league-bbbbbb' });
+    const other = await seedLeague(repo, { slug: 'other-league-bbbbbb', signIn: false });
     const stranger = await repo.createPlayer(other.league.id, 'Stranger');
     for (const playerId of [stranger.id, '3f2b8c1e-5d4a-4e6f-9a7b-0c1d2e3f4a5b']) {
       const res = await add({ playerId, points: 5, reason: 'x' });
@@ -116,12 +118,15 @@ describe('POST adjustments (§3.7)', () => {
     expect((await add({ teamKey: 'frc341', points: -1000, reason: 'y' })).status).toBe(201);
   });
 
-  it('answers 403 without a token', async () => {
-    const res = await addAdjustment(
-      request('POST', '/x', { body: { teamKey: 'frc341', points: 5, reason: 'x' } }),
-      here(),
-    );
-    expect(res.status).toBe(403);
+  it('answers 401 signed out and 403 for a member who is not a commissioner', async () => {
+    const attempt = () =>
+      addAdjustment(request('POST', '/x', { body: { teamKey: 'frc341', points: 5, reason: 'x' } }), here());
+    setUser(null);
+    expect((await attempt()).status).toBe(401);
+
+    await signInAsMember(repo, league, 'Sis', 'player');
+    expect((await attempt()).status).toBe(403);
+    expect(await repo.listAdjustments(round.id)).toEqual([]);
   });
 });
 
@@ -134,7 +139,7 @@ describe('PATCH adjustments/{adjId}', () => {
 
   it('changes only the fields that were sent', async () => {
     const adj = await seeded();
-    const res = await patchAdjustment(request('PATCH', '/x', { token, body: { points: 8 } }), atAdj(adj.id));
+    const res = await patchAdjustment(request('PATCH', '/x', { body: { points: 8 } }), atAdj(adj.id));
     expect(res.status).toBe(200);
     expect((await readJson(res)).adjustment).toMatchObject({
       id: adj.id, teamKey: 'frc341', playerId: null, points: 8, reason: 'Award',
@@ -144,7 +149,7 @@ describe('PATCH adjustments/{adjId}', () => {
   it('switches the target from a team to a player', async () => {
     const adj = await seeded();
     const res = await patchAdjustment(
-      request('PATCH', '/x', { token, body: { playerId: mom.id } }),
+      request('PATCH', '/x', { body: { playerId: mom.id } }),
       atAdj(adj.id),
     );
     expect(res.status).toBe(200);
@@ -155,7 +160,7 @@ describe('PATCH adjustments/{adjId}', () => {
     const adj = await repo.insertAdjustment({
       roundId: round.id, playerId: mom.id, teamKey: null, points: 5, reason: 'x',
     });
-    await patchAdjustment(request('PATCH', '/x', { token, body: { teamKey: 'frc25' } }), atAdj(adj.id));
+    await patchAdjustment(request('PATCH', '/x', { body: { teamKey: 'frc25' } }), atAdj(adj.id));
     expect(await repo.getAdjustment(adj.id)).toMatchObject({ playerId: null, teamKey: 'frc25' });
   });
 
@@ -169,7 +174,7 @@ describe('PATCH adjustments/{adjId}', () => {
       {},
     ];
     for (const body of bodies) {
-      const res = await patchAdjustment(request('PATCH', '/x', { token, body }), atAdj(adj.id));
+      const res = await patchAdjustment(request('PATCH', '/x', { body }), atAdj(adj.id));
       expect(res.status, JSON.stringify(body)).toBe(400);
     }
     expect(await repo.getAdjustment(adj.id)).toMatchObject({ teamKey: 'frc341', points: 5, reason: 'Award' });
@@ -181,7 +186,7 @@ describe('PATCH adjustments/{adjId}', () => {
       roundId: otherRound.id, playerId: null, teamKey: 'frc1', points: 1, reason: 'x',
     });
     for (const id of ['3f2b8c1e-5d4a-4e6f-9a7b-0c1d2e3f4a5b', 'nope', elsewhere.id]) {
-      const res = await patchAdjustment(request('PATCH', '/x', { token, body: { points: 9 } }), atAdj(id));
+      const res = await patchAdjustment(request('PATCH', '/x', { body: { points: 9 } }), atAdj(id));
       expect(res.status, id).toBe(404);
     }
     expect((await repo.getAdjustment(elsewhere.id))!.points).toBe(1);
@@ -193,14 +198,14 @@ describe('DELETE adjustments/{adjId}', () => {
     const adj = await repo.insertAdjustment({
       roundId: round.id, playerId: null, teamKey: 'frc341', points: 5, reason: 'Award',
     });
-    const res = await deleteAdjustment(request('DELETE', '/x', { token }), atAdj(adj.id));
+    const res = await deleteAdjustment(request('DELETE', '/x', {}), atAdj(adj.id));
     expect(res.status).toBe(204);
     expect(await repo.listAdjustments(round.id)).toEqual([]);
   });
 
   it('answers 404 for an unknown id', async () => {
     const res = await deleteAdjustment(
-      request('DELETE', '/x', { token }),
+      request('DELETE', '/x', {}),
       atAdj('3f2b8c1e-5d4a-4e6f-9a7b-0c1d2e3f4a5b'),
     );
     expect(res.status).toBe(404);

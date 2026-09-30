@@ -5,9 +5,9 @@ import {
   json,
   noContent,
   parseBody,
-  requireCommissioner,
   requireRound,
 } from '@/lib/api/http';
+import { requireLeagueRole } from '@/lib/auth/roles';
 import { getRepo } from '@/lib/db';
 import { loadPool } from '@/lib/rounds/pool';
 import { TEAM_KEY_RE } from '@/lib/teams';
@@ -26,10 +26,10 @@ function parsePickNumber(raw: string): number | null {
   return /^(0|[1-9][0-9]{0,4})$/.test(raw) ? Number(raw) : null;
 }
 
-export async function DELETE(req: Request, ctx: Ctx): Promise<Response> {
+export async function DELETE(_req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug, id, pickNumber } = await ctx.params;
-    const league = await requireCommissioner(req, slug);
+    const { league } = await requireLeagueRole(slug, 'commissioner');
     const round = await requireRound(league, id);
     const repo = getRepo();
     const picks = await repo.listPicks(round.id);
@@ -45,7 +45,7 @@ export async function DELETE(req: Request, ctx: Ctx): Promise<Response> {
 export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug, id, pickNumber } = await ctx.params;
-    const league = await requireCommissioner(req, slug);
+    const { league } = await requireLeagueRole(slug, 'commissioner');
     const round = await requireRound(league, id);
     const { teamKey } = await parseBody(req, bodySchema);
     const repo = getRepo();

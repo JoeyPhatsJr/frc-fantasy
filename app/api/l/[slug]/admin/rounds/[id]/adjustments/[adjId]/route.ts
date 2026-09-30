@@ -14,9 +14,9 @@ import {
   json,
   noContent,
   parseBody,
-  requireCommissioner,
   requireRound,
 } from '@/lib/api/http';
+import { requireLeagueRole } from '@/lib/auth/roles';
 import { getRepo } from '@/lib/db';
 import type { AdjustmentRow, RoundRow } from '@/lib/db/types';
 
@@ -46,7 +46,7 @@ async function requireAdjustment(round: RoundRow, adjId: string): Promise<Adjust
 export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug, id, adjId } = await ctx.params;
-    const league = await requireCommissioner(req, slug);
+    const { league } = await requireLeagueRole(slug, 'commissioner');
     const round = await requireRound(league, id);
     const existing = await requireAdjustment(round, adjId);
     const patch = await parseBody(req, patchSchema);
@@ -73,10 +73,10 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
   });
 }
 
-export async function DELETE(req: Request, ctx: Ctx): Promise<Response> {
+export async function DELETE(_req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug, id, adjId } = await ctx.params;
-    const league = await requireCommissioner(req, slug);
+    const { league } = await requireLeagueRole(slug, 'commissioner');
     const round = await requireRound(league, id);
     const existing = await requireAdjustment(round, adjId);
     await getRepo().deleteAdjustment(existing.id);

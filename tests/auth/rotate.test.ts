@@ -13,7 +13,8 @@ beforeEach(() => {
 
 describe('rotateAdminToken', () => {
   it('replaces the token: the new one works and the old one stops working', async () => {
-    const { league, token: oldToken } = await seedLeague(repo);
+    const { league } = await seedLeague(repo);
+    const { token: oldToken } = await rotateAdminToken(repo, league.slug);
     const out = await rotateAdminToken(repo, league.slug);
     expect(out).toMatchObject({ slug: league.slug, name: 'Habich Fam' });
     expect(out.token).not.toBe(oldToken);

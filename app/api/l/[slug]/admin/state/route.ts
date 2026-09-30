@@ -1,4 +1,5 @@
-import { handle, json, requireCommissioner } from '@/lib/api/http';
+import { handle, json } from '@/lib/api/http';
+import { requireLeagueRole } from '@/lib/auth/roles';
 import type { AdminState } from '@/lib/api/types';
 import { getRepo } from '@/lib/db';
 import { roundStatus } from '@/lib/rounds/status';
@@ -8,10 +9,10 @@ export const dynamic = 'force-dynamic';
 
 type Ctx = { params: Promise<{ slug: string }> };
 
-export async function GET(req: Request, ctx: Ctx): Promise<Response> {
+export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug } = await ctx.params;
-    const league = await requireCommissioner(req, slug);
+    const { league } = await requireLeagueRole(slug, 'commissioner');
     const repo = getRepo();
     const now = new Date();
 

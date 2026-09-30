@@ -6,8 +6,8 @@ import {
   json,
   noContent,
   parseBody,
-  requireCommissioner,
 } from '@/lib/api/http';
+import { requireLeagueRole } from '@/lib/auth/roles';
 import { getRepo } from '@/lib/db';
 import type { LeagueRow, PlayerRow } from '@/lib/db/types';
 import { playersInUse } from '@/lib/rounds/usage';
@@ -34,7 +34,7 @@ async function requirePlayer(league: LeagueRow, id: string): Promise<PlayerRow> 
 export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug, id } = await ctx.params;
-    const league = await requireCommissioner(req, slug);
+    const { league } = await requireLeagueRole(slug, 'commissioner');
     const player = await requirePlayer(league, id);
     const { name } = await parseBody(req, bodySchema);
     const repo = getRepo();
@@ -44,10 +44,10 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
   });
 }
 
-export async function DELETE(req: Request, ctx: Ctx): Promise<Response> {
+export async function DELETE(_req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug, id } = await ctx.params;
-    const league = await requireCommissioner(req, slug);
+    const { league } = await requireLeagueRole(slug, 'commissioner');
     const player = await requirePlayer(league, id);
     const repo = getRepo();
     const used = await playersInUse(repo, league.id);

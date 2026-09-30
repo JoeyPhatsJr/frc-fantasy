@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { handle, json, parseBody, requireCommissioner } from '@/lib/api/http';
+import { handle, json, parseBody } from '@/lib/api/http';
+import { requireLeagueRole } from '@/lib/auth/roles';
 import { getRepo } from '@/lib/db';
 import { scoringConfigSchema } from '@/lib/scoring/config';
 
@@ -28,7 +29,7 @@ const patchSchema = z
 export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug } = await ctx.params;
-    const league = await requireCommissioner(req, slug);
+    const { league } = await requireLeagueRole(slug, 'commissioner');
     const patch = await parseBody(req, patchSchema);
     const saved = await getRepo().updateLeague(league.id, patch);
     return json({

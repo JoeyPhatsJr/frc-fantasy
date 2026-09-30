@@ -5,6 +5,7 @@ const h = vi.hoisted(() => ({
   getTba: undefined as unknown as (...args: unknown[]) => unknown,
 }));
 vi.mock('@/lib/db', () => ({ getRepo: () => h.repo }));
+vi.mock('@/lib/auth/session', async () => (await import('../helpers/auth')).fakeSession);
 vi.mock('@/lib/tba/client', () => ({ getTba: (...args: unknown[]) => h.getTba(...args) }));
 
 import {
@@ -15,12 +16,12 @@ import { POST as addPick } from '@/app/api/l/[slug]/admin/rounds/[id]/picks/rout
 import type { Repo } from '@/lib/db/repo';
 import type { LeagueRow, PlayerRow, RoundRow } from '@/lib/db/types';
 import { defaultScoring } from '@/lib/scoring/config';
+import { setUser, signInAsMember } from '../helpers/auth';
 import { params, readJson, request, seedLeague } from '../helpers/api';
 import { createMemoryRepo } from '../helpers/memoryRepo';
 
 let repo: Repo;
 let league: LeagueRow;
-let token: string;
 let round: RoundRow;
 let mom: PlayerRow;
 let dad: PlayerRow;
@@ -28,10 +29,11 @@ let dad: PlayerRow;
 const TBA_TEAMS = [1, 2, 3, 4, 5, 6].map((n) => ({ key: `frc${n}`, team_number: n, nickname: `Team ${n}` }));
 
 beforeEach(async () => {
+  setUser(null);
   repo = createMemoryRepo();
   h.repo = repo;
   h.getTba = vi.fn(async () => ({ data: TBA_TEAMS, fetchedAt: '2026-10-01T12:00:00.000Z', stale: false }));
-  ({ league, token } = await seedLeague(repo));
+  ({ league } = await seedLeague(repo));
   mom = await repo.createPlayer(league.id, 'Mom');
   dad = await repo.createPlayer(league.id, 'Dad');
   round = await repo.createRound({
@@ -46,8 +48,8 @@ const here = () => params({ slug: league.slug, id: round.id });
 const atPick = (pickNumber: number | string) =>
   params({ slug: league.slug, id: round.id, pickNumber: String(pickNumber) });
 
-function pick(expectedPickNumber: number, teamKey: string, t: string | undefined = token) {
-  return addPick(request('POST', '/x', { token: t, body: { expectedPickNumber, teamKey } }), here());
+function pick(expectedPickNumber: number, teamKey: string) {
+  return addPick(request('POST', '/x', { body: { expectedPickNumber, teamKey } }), here());
 }
 
 describe('POST picks', () => {
@@ -132,29 +134,26 @@ describe('POST picks', () => {
       { expectedPickNumber: 0 },
     ];
     for (const body of bodies) {
-      const res = await addPick(request('POST', '/x', { token, body }), here());
+      const res = await addPick(request('POST', '/x', { body }), here());
       expect(res.status, JSON.stringify(body)).toBe(400);
     }
   });
 
-  it('answers 403 with a missing or wrong token', async () => {
-    const res = await addPick(
-      request('POST', '/x', { body: { expectedPickNumber: 0, teamKey: 'frc1' } }),
-      here(),
-    );
-    expect(res.status).toBe(403);
-    expect((await pick(0, 'frc1', 'wrong')).status).toBe(403);
+  it('answers 401 signed out and 403 for a member who is not a commissioner', async () => {
+    setUser(null);
+    expect((await pick(0, 'frc1')).status).toBe(401);
+
+    await signInAsMember(repo, league, 'Sis', 'player');
+    expect((await pick(0, 'frc1')).status).toBe(403);
     expect(await repo.listPicks(round.id)).toEqual([]);
   });
 
-  it("answers 404 when league A's token is used on league B's round", async () => {
-    const other = await seedLeague(repo, { slug: 'other-league-bbbbbb' });
-    const res = await addPick(
-      request('POST', '/x', { token: other.token, body: { expectedPickNumber: 0, teamKey: 'frc1' } }),
-      params({ slug: other.league.slug, id: round.id }),
-    );
-    expect(res.status).toBe(404);
+  it("answers 403 when another league's commissioner tries to pick here", async () => {
+    const other = await seedLeague(repo, { slug: 'other-league-bbbbbb' }); // signs in as other's commissioner
+    const res = await pick(0, 'frc1');
+    expect(res.status).toBe(403);
     expect(await repo.listPicks(round.id)).toEqual([]);
+    setUser(other.user);
   });
 });
 
@@ -162,14 +161,14 @@ describe('DELETE picks/{pickNumber} (undo)', () => {
   it('undoes the last pick', async () => {
     await pick(0, 'frc1');
     await pick(1, 'frc2');
-    const res = await undoPick(request('DELETE', '/x', { token }), atPick(1));
+    const res = await undoPick(request('DELETE', '/x', {}), atPick(1));
     expect(res.status).toBe(204);
     expect((await repo.listPicks(round.id)).map((p) => p.teamKey)).toEqual(['frc1']);
   });
 
   it('frees the team to be picked again', async () => {
     await pick(0, 'frc1');
-    await undoPick(request('DELETE', '/x', { token }), atPick(0));
+    await undoPick(request('DELETE', '/x', {}), atPick(0));
     expect((await pick(0, 'frc1')).status).toBe(201);
   });
 
@@ -177,14 +176,14 @@ describe('DELETE picks/{pickNumber} (undo)', () => {
     await pick(0, 'frc1');
     await pick(1, 'frc2');
     for (const n of [0, 2, 'abc', '-1', '1.5']) {
-      const res = await undoPick(request('DELETE', '/x', { token }), atPick(n));
+      const res = await undoPick(request('DELETE', '/x', {}), atPick(n));
       expect(res.status, String(n)).toBe(409);
     }
     expect(await repo.listPicks(round.id)).toHaveLength(2);
   });
 
   it('answers 409 when there is nothing to undo', async () => {
-    const res = await undoPick(request('DELETE', '/x', { token }), atPick(0));
+    const res = await undoPick(request('DELETE', '/x', {}), atPick(0));
     expect(res.status).toBe(409);
   });
 });
@@ -193,7 +192,7 @@ describe('PATCH picks/{pickNumber} (replace)', () => {
   it('changes the team without changing the order or the player', async () => {
     await pick(0, 'frc1');
     await pick(1, 'frc2');
-    const res = await replacePick(request('PATCH', '/x', { token, body: { teamKey: 'frc6' } }), atPick(0));
+    const res = await replacePick(request('PATCH', '/x', { body: { teamKey: 'frc6' } }), atPick(0));
     expect(res.status).toBe(200);
     expect(await readJson(res)).toEqual({ pick: { pickNumber: 0, playerId: mom.id, teamKey: 'frc6' } });
     expect((await repo.listPicks(round.id)).map((p) => [p.pickNumber, p.playerId, p.teamKey])).toEqual([
@@ -205,26 +204,26 @@ describe('PATCH picks/{pickNumber} (replace)', () => {
   it('answers 409 when the new team is taken', async () => {
     await pick(0, 'frc1');
     await pick(1, 'frc2');
-    const res = await replacePick(request('PATCH', '/x', { token, body: { teamKey: 'frc2' } }), atPick(0));
+    const res = await replacePick(request('PATCH', '/x', { body: { teamKey: 'frc2' } }), atPick(0));
     expect(res.status).toBe(409);
     expect((await readJson(res)).error).toBe('That team was just taken');
   });
 
   it('is a harmless no-op when the team is unchanged', async () => {
     await pick(0, 'frc1');
-    const res = await replacePick(request('PATCH', '/x', { token, body: { teamKey: 'frc1' } }), atPick(0));
+    const res = await replacePick(request('PATCH', '/x', { body: { teamKey: 'frc1' } }), atPick(0));
     expect(res.status).toBe(200);
   });
 
   it('answers 400 for a team outside the pool', async () => {
     await pick(0, 'frc1');
-    const res = await replacePick(request('PATCH', '/x', { token, body: { teamKey: 'frc9999' } }), atPick(0));
+    const res = await replacePick(request('PATCH', '/x', { body: { teamKey: 'frc9999' } }), atPick(0));
     expect(res.status).toBe(400);
   });
 
   it('answers 404 for a pick that does not exist', async () => {
     for (const n of [0, 'abc']) {
-      const res = await replacePick(request('PATCH', '/x', { token, body: { teamKey: 'frc1' } }), atPick(n));
+      const res = await replacePick(request('PATCH', '/x', { body: { teamKey: 'frc1' } }), atPick(n));
       expect(res.status, String(n)).toBe(404);
     }
   });
