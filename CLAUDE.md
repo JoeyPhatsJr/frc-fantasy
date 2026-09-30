@@ -6,7 +6,7 @@ Fantasy draft league for FIRST Robotics Competition, for Joey (student on FRC te
 
 ## Source of truth
 
-The design spec: `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md`. Read it before doing anything. It defines the rules, scoring math, schema, API endpoints, caching, tests, and timeline. If code and spec disagree, raise it; don't silently diverge.
+The design specs: v1 `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md` and v2 `docs/superpowers/specs/2026-09-30-frc-fantasy-v2-design.md`, plus the v2 plan index `docs/superpowers/plans/2026-09-30-frc-fantasy-v2.md`. Read them before doing anything. They define the rules, scoring math, schema, API endpoints, caching, tests, and timeline. If code and spec disagree, raise it; don't silently diverge.
 
 ## Current status
 
@@ -14,13 +14,13 @@ The design spec: `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md`. Read
 - Local dev works against the real Supabase project; demo league seeded (`scripts/seed-demo.ts`).
 - Deployed: https://frc-fantasy-6yo3.vercel.app (PR #1 merged 2026-09-30). Real league created (testleague-o3alja) and the caching proof passed.
 - UI overhaul shipped (PR #3, 2026-09-30): dark-first shell with light toggle, bumper plates, scoreboard leaderboards; brief in `design-system/frc-fantasy/OVERHAUL.md`. Its two cosmetic leftovers (draft banner wrapping at 360px, faint gold ring in light mode) were fixed 2026-09-30.
-- Next: Joey checks the live site on a phone in both themes (especially the draft-night screen with the commissioner link), then family replay dry run on 2025parr and scoring tuning. v2 roadmap parked (see memory: v2-league-formats-idea — formats + user accounts/multi-league).
+- v2 SP1 (accounts & leagues) merged <date>; next SP4 live draft. v2 roadmap: see memory v2-league-formats-idea.
 
 ## Locked decisions (don't re-litigate)
 
 - **Format:** per-event snake drafts plus season standings. Not a full-season draft. Default rounds are events 5181 attends, plus occasional big events (Champs).
 - **v1 draft:** happens in real life; the commissioner enters picks. The live in-app draft room is v2.
-- **v1 access:** no player accounts. A public view link, plus a secret commissioner link (token in the URL `#fragment`). Accounts are v2.
+- **Access (v2):** Google/Discord sign-in via Supabase Auth; every player has an account; per-league visibility (`link` / `members`); invite codes. Admin-token links are gone.
 - **Scoring:** results-based (qual W/T, RP, rank tiers, alliance selection, playoff wins, winner/finalist, awards) plus an OPR bonus for the top 3 after quals. The config is copied into each round.
 - **Stats source:** TBA OPR. Statbotics is not used; it had no data for offseasons.
 - **Stack:** Next.js App Router plus TypeScript, Tailwind, Supabase Postgres (free tier, service-role key server-only, RLS on with no policies), zod, Vitest, deployed on Vercel Hobby (free).
@@ -41,3 +41,5 @@ The design spec: `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md`. Read
 - A GateGuard hook asks for "facts" before the first Bash and Write calls in a session. State them briefly, then retry.
 - TBA API key needed: a free read key from thebluealliance.com/account, stored as `TBA_API_KEY` in `.env.local` (never committed).
 - **The Supabase free tier pauses after about 7 days idle.** Wake it in the dashboard before events.
+- Sign-in needs `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and the Supabase redirect allow-list must include the site URL.
+- Local sign-in without OAuth (Playwright): `POST /api/test/login` with `Authorization: Bearer $E2E_AUTH_SECRET` — local only.
