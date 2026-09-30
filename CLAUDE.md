@@ -10,10 +10,9 @@ The design spec: `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md`. Read
 
 ## Current status
 
-- Spec is **Draft v2**, approved by Joey on 2026-09-29.
-- **Implementation plan written** (2026-09-29), 28 tasks in four files: `docs/superpowers/plans/2026-09-29-frc-fantasy-v1.md` (index: constraints, deviations, review focus) plus `-part-1-engine.md`, `-part-2-data-api.md`, `-part-3-ui.md`.
-- **Joey has NOT yet reviewed the plan.** The first step in a new session is to confirm the plan (and its 7 flagged deviations in the index) or collect changes, and pick an execution method (subagent-driven vs native).
-- No product code exists yet. Task 11 needs Joey's TBA key in `.env.local`; Task 12 needs a Supabase project.
+- v1 is implemented on branch `v1` (Tasks 1–27 of `docs/superpowers/plans/2026-09-29-frc-fantasy-v1*.md`), reviewed task-by-task, with a design layer from `design-system/frc-fantasy/`.
+- Local dev works against the real Supabase project; demo league seeded (`scripts/seed-demo.ts`).
+- Waiting on Joey: fill `HAND_VERIFIED` in `tests/scoring/fixture-2025parr.test.ts` (Task 11 step 7), push to GitHub, deploy to Vercel, run the caching proof and the family replay (Task 28 steps 2–6), then merge `v1` into `main`.
 
 ## Locked decisions (don't re-litigate)
 
