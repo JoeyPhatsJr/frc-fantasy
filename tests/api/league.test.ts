@@ -135,9 +135,9 @@ describe('GET /admin/state', () => {
       slug: league.slug, name: 'Habich Fam', homeTeamNumber: 5181, defaultScoring: DEFAULT_SCORING,
     });
     expect(body.players).toEqual([
-      { id: commissioner.id, name: 'Commish', inUse: false },
-      { id: mom.id, name: 'Mom', inUse: true },
-      { id: dad.id, name: 'Dad', inUse: false },
+      { id: commissioner.id, name: 'Commish', inUse: false, role: 'commissioner', linked: true },
+      { id: mom.id, name: 'Mom', inUse: true, role: 'player', linked: false },
+      { id: dad.id, name: 'Dad', inUse: false, role: 'player', linked: false },
     ]);
     expect(body.rounds).toEqual([
       {

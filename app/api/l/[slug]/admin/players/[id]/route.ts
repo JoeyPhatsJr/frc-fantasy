@@ -1,46 +1,51 @@
 import { z } from 'zod';
-import {
-  handle,
-  HttpError,
-  isUuid,
-  json,
-  noContent,
-  parseBody,
-} from '@/lib/api/http';
+import { handle, HttpError, isUuid, json, noContent, parseBody } from '@/lib/api/http';
+import type { AdminPlayer } from '@/lib/api/types';
 import { requireLeagueRole } from '@/lib/auth/roles';
 import { getRepo } from '@/lib/db';
 import type { LeagueRow, PlayerRow } from '@/lib/db/types';
+import { assertKeepsCommissioner, removeMember } from '@/lib/leagues/membership';
+import { nameSchema } from '@/lib/leagues/names';
 import { playersInUse } from '@/lib/rounds/usage';
 
 export const dynamic = 'force-dynamic';
 
 type Ctx = { params: Promise<{ slug: string; id: string }> };
 
-const bodySchema = z.object({
-  name: z
-    .string('Player name is required')
-    .trim()
-    .min(1, 'Player name is required')
-    .max(40, 'Player name must be 40 characters or fewer'),
-});
+const patchSchema = z
+  .strictObject({
+    name: nameSchema.optional(),
+    role: z.enum(['commissioner', 'player'], 'role must be commissioner or player').optional(),
+  })
+  .refine((v) => v.name !== undefined || v.role !== undefined, { message: 'Nothing to change' });
 
-async function requirePlayer(league: LeagueRow, id: string): Promise<PlayerRow> {
+async function loadPlayers(league: LeagueRow, id: string): Promise<{ players: PlayerRow[]; player: PlayerRow }> {
   if (!isUuid(id)) throw new HttpError(404, 'Player not found');
-  const player = (await getRepo().listPlayers(league.id)).find((p) => p.id === id);
+  const players = await getRepo().listPlayers(league.id);
+  const player = players.find((p) => p.id === id);
   if (!player) throw new HttpError(404, 'Player not found');
-  return player;
+  return { players, player };
+}
+
+function toAdminPlayer(p: PlayerRow, used: Set<string>): AdminPlayer {
+  return { id: p.id, name: p.name, inUse: used.has(p.id), role: p.role, linked: p.userId !== null };
 }
 
 export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug, id } = await ctx.params;
     const { league } = await requireLeagueRole(slug, 'commissioner');
-    const player = await requirePlayer(league, id);
-    const { name } = await parseBody(req, bodySchema);
+    const { players, player } = await loadPlayers(league, id);
+    const patch = await parseBody(req, patchSchema);
+
+    if (patch.role === 'commissioner' && player.userId === null) {
+      throw new HttpError(409, `${player.name} has left the league, so they can't be a commissioner`);
+    }
+    if (patch.role === 'player') assertKeepsCommissioner(players, player);
+
     const repo = getRepo();
-    const saved = await repo.renamePlayer(player.id, name);
-    const used = await playersInUse(repo, league.id);
-    return json({ player: { id: saved.id, name: saved.name, inUse: used.has(saved.id) } });
+    const saved = await repo.updatePlayer(player.id, { name: patch.name, role: patch.role });
+    return json({ player: toAdminPlayer(saved, await playersInUse(repo, league.id)) });
   });
 }
 
@@ -48,16 +53,9 @@ export async function DELETE(_req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug, id } = await ctx.params;
     const { league } = await requireLeagueRole(slug, 'commissioner');
-    const player = await requirePlayer(league, id);
-    const repo = getRepo();
-    const used = await playersInUse(repo, league.id);
-    if (used.has(player.id)) {
-      throw new HttpError(
-        409,
-        `${player.name} is in a draft order or has picks or adjustments, so they can't be removed. You can rename them instead.`,
-      );
-    }
-    await repo.deletePlayer(player.id);
-    return noContent();
+    const { players, player } = await loadPlayers(league, id);
+    assertKeepsCommissioner(players, player);
+    const result = await removeMember(getRepo(), player);
+    return result === 'deleted' ? noContent() : json({ result });
   });
 }

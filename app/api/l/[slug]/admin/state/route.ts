@@ -30,7 +30,9 @@ export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
         homeTeamNumber: league.homeTeamNumber,
         defaultScoring: league.defaultScoring,
       },
-      players: players.map((p) => ({ id: p.id, name: p.name, inUse: used.has(p.id) })),
+      players: players.map((p) => ({
+        id: p.id, name: p.name, inUse: used.has(p.id), role: p.role, linked: p.userId !== null,
+      })),
       rounds: rounds.map((r) => {
         const pickCount = picks.filter((p) => p.roundId === r.id).length;
         return {

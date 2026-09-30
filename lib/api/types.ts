@@ -1,3 +1,4 @@
+import type { LeagueRole } from '@/lib/db/types';
 import type { RoundStatus } from '@/lib/rounds/status';
 import type { ScoringConfig } from '@/lib/scoring/config';
 import type { PoolTeam } from '@/lib/teams';
@@ -14,8 +15,11 @@ export type AdminLeague = {
 export type AdminPlayer = {
   id: string;
   name: string;
-  /** True when the player has picks or adjustments, or is in any draft order. Such players can't be removed. */
+  /** True when the player has picks or adjustments, or is in any draft order. Removing them unlinks instead of deleting. */
   inUse: boolean;
+  role: LeagueRole;
+  /** False for a former member ("Mom (left)"). */
+  linked: boolean;
 };
 
 export type AdminRoundSummary = {

@@ -12,18 +12,21 @@ import { DELETE as deletePlayer, PATCH as renamePlayer } from '@/app/api/l/[slug
 import type { Repo } from '@/lib/db/repo';
 import type { LeagueRow } from '@/lib/db/types';
 import { defaultScoring } from '@/lib/scoring/config';
-import { setUser, signInAsMember } from '../helpers/auth';
+import { LAST_COMMISSIONER_MESSAGE } from '@/lib/leagues/membership';
+import type { PlayerRow } from '@/lib/db/types';
+import { makeUser, setUser, signInAsMember } from '../helpers/auth';
 import { params, readJson, request, seedLeague } from '../helpers/api';
 import { createMemoryRepo } from '../helpers/memoryRepo';
 
 let repo: Repo;
 let league: LeagueRow;
+let commissioner: PlayerRow;
 
 beforeEach(async () => {
   setUser(null);
   repo = createMemoryRepo();
   h.repo = repo;
-  ({ league } = await seedLeague(repo));
+  ({ league, commissioner } = await seedLeague(repo));
 });
 
 async function addRound() {
@@ -89,31 +92,6 @@ describe('DELETE /admin/players/{id}', () => {
     expect(await repo.listPlayers(league.id)).toHaveLength(3);
   });
 
-  it('removes a player who is not in use', async () => {
-    const mom = await repo.createPlayer(league.id, 'Mom');
-    const res = await deletePlayer(request('DELETE', '/x', {}), params({ slug: league.slug, id: mom.id }));
-    expect(res.status).toBe(204);
-    expect((await repo.listPlayers(league.id)).map((p) => p.name)).toEqual(['Commish']);
-  });
-
-  it('answers 409 for a player who is in a draft order', async () => {
-    const mom = await repo.createPlayer(league.id, 'Mom');
-    const round = await addRound();
-    await repo.updateRound(round.id, { draftOrder: [mom.id] });
-    const res = await deletePlayer(request('DELETE', '/x', {}), params({ slug: league.slug, id: mom.id }));
-    expect(res.status).toBe(409);
-    expect((await readJson(res)).error).toMatch(/rename/i);
-    expect(await repo.listPlayers(league.id)).toHaveLength(2);
-  });
-
-  it('answers 409 for a player who has an adjustment', async () => {
-    const mom = await repo.createPlayer(league.id, 'Mom');
-    const round = await addRound();
-    await repo.insertAdjustment({ roundId: round.id, playerId: mom.id, teamKey: null, points: 5, reason: 'x' });
-    const res = await deletePlayer(request('DELETE', '/x', {}), params({ slug: league.slug, id: mom.id }));
-    expect(res.status).toBe(409);
-  });
-
   it("answers 404 for another league's player and leaves them alone", async () => {
     const other = await seedLeague(repo, { slug: 'other-league-bbbbbb', signIn: false });
     const stranger = await repo.createPlayer(other.league.id, 'Stranger');
@@ -123,5 +101,69 @@ describe('DELETE /admin/players/{id}', () => {
     );
     expect(res.status).toBe(404);
     expect(await repo.listPlayers(other.league.id)).toHaveLength(2);
+  });
+});
+
+describe('PATCH /admin/players/{id} role (spec §4.3)', () => {
+  it('promotes and demotes a member', async () => {
+    const mom = await repo.createMember({ leagueId: league.id, userId: (await makeUser(repo, 'Mom')).id, name: 'Mom', role: 'player' });
+    const up = await renamePlayer(request('PATCH', '/x', { body: { role: 'commissioner' } }), params({ slug: league.slug, id: mom.id }));
+    expect(up.status).toBe(200);
+    expect((await readJson(up)).player).toMatchObject({ role: 'commissioner', linked: true });
+    const down = await renamePlayer(request('PATCH', '/x', { body: { role: 'player' } }), params({ slug: league.slug, id: mom.id }));
+    expect((await readJson(down)).player.role).toBe('player');
+  });
+
+  it('refuses to demote the last commissioner', async () => {
+    const res = await renamePlayer(request('PATCH', '/x', { body: { role: 'player' } }), params({ slug: league.slug, id: commissioner.id }));
+    expect(res.status).toBe(409);
+    expect((await readJson(res)).error).toBe(LAST_COMMISSIONER_MESSAGE);
+    expect((await repo.listPlayers(league.id))[0].role).toBe('commissioner');
+  });
+
+  it('refuses to make an unlinked row a commissioner', async () => {
+    const gone = await repo.createPlayer(league.id, 'Gone');
+    const res = await renamePlayer(request('PATCH', '/x', { body: { role: 'commissioner' } }), params({ slug: league.slug, id: gone.id }));
+    expect(res.status).toBe(409);
+    expect((await readJson(res)).error).toBe("Gone has left the league, so they can't be a commissioner");
+  });
+
+  it('answers 400 for an empty patch or an unknown role', async () => {
+    for (const body of [{}, { role: 'admin' }]) {
+      const res = await renamePlayer(request('PATCH', '/x', { body }), params({ slug: league.slug, id: commissioner.id }));
+      expect(res.status).toBe(400);
+    }
+  });
+});
+
+describe('DELETE /admin/players/{id} (remove member)', () => {
+  it('deletes a member with no history', async () => {
+    const mom = await repo.createMember({ leagueId: league.id, userId: (await makeUser(repo, 'Mom')).id, name: 'Mom', role: 'player' });
+    const res = await deletePlayer(request('DELETE', '/x'), params({ slug: league.slug, id: mom.id }));
+    expect(res.status).toBe(204);
+    expect((await repo.listPlayers(league.id)).map((p) => p.name)).toEqual(['Commish']);
+  });
+
+  it('unlinks a member who has picks and says so', async () => {
+    const mom = await repo.createMember({ leagueId: league.id, userId: (await makeUser(repo, 'Mom')).id, name: 'Mom', role: 'player' });
+    const round = await addRound();
+    await repo.updateRound(round.id, { draftOrder: [mom.id] });
+    const res = await deletePlayer(request('DELETE', '/x'), params({ slug: league.slug, id: mom.id }));
+    expect(res.status).toBe(200);
+    expect(await readJson(res)).toEqual({ result: 'unlinked' });
+    expect((await repo.listPlayers(league.id)).find((p) => p.id === mom.id)!.userId).toBeNull();
+  });
+
+  it('refuses to remove the last commissioner (including yourself)', async () => {
+    const res = await deletePlayer(request('DELETE', '/x'), params({ slug: league.slug, id: commissioner.id }));
+    expect(res.status).toBe(409);
+    expect(await repo.listPlayers(league.id)).toHaveLength(1);
+  });
+
+  it('allows removing a commissioner when another linked one exists', async () => {
+    const mom = await repo.createMember({ leagueId: league.id, userId: (await makeUser(repo, 'Mom')).id, name: 'Mom', role: 'commissioner' });
+    const res = await deletePlayer(request('DELETE', '/x'), params({ slug: league.slug, id: commissioner.id }));
+    expect(res.status).toBe(204);
+    expect((await repo.listPlayers(league.id)).map((p) => p.id)).toEqual([mom.id]);
   });
 });
