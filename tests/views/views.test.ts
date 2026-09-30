@@ -3,9 +3,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({
   repo: undefined as unknown,
   getTba: undefined as unknown as (...args: unknown[]) => unknown,
+  scoreThrowsOnce: false,
 }));
 vi.mock('@/lib/db', () => ({ getRepo: () => h.repo }));
 vi.mock('@/lib/tba/client', () => ({ getTba: (...args: unknown[]) => h.getTba(...args) }));
+// Real scoring, except a test can make the first call blow up (the engine is tolerant, so it is hard to trip).
+vi.mock('@/lib/scoring/engine', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/scoring/engine')>();
+  return {
+    ...real,
+    scoreEvent: (...args: Parameters<typeof real.scoreEvent>) => {
+      if (h.scoreThrowsOnce) {
+        h.scoreThrowsOnce = false;
+        throw new Error('boom');
+      }
+      return real.scoreEvent(...args);
+    },
+  };
+});
 
 import type { Repo } from '@/lib/db/repo';
 import type { LeagueRow, PlayerRow, RoundRow } from '@/lib/db/types';
@@ -131,6 +146,30 @@ describe('loadRoundPage', () => {
     expect(page.view.scores[0].total).toBe(28); // still shows the last good data
   });
 
+  it('survives a null team entry in the TBA payload and scores from the rest', async () => {
+    const data = eventInProgress();
+    tba({ '2025parr': { ...data, teams: [null, ...data.teams!] as unknown as EventData['teams'] } });
+    const page = (await loadRoundPage(league.slug, round.id, NOW))!;
+    expect(page.view.scores.map((s) => [s.name, s.total])).toEqual([
+      ['Mom', 28],
+      ['Dad', 12],
+    ]);
+    expect(page.view.teamNames.frc1).toBe('Team 1');
+  });
+
+  it('falls back to empty data, marked stale, if scoring still throws', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    h.scoreThrowsOnce = true;
+    const page = (await loadRoundPage(league.slug, round.id, NOW))!;
+    expect(page.view.stale).toBe(true);
+    expect(page.view.scores.map((s) => [s.name, s.total])).toEqual([
+      ['Mom', 5], // only the adjustment: no event data
+      ['Dad', 0],
+    ]);
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
   // Review Focus 3
   it('returns null for a bad id, an unknown league, or a round from another league', async () => {
     expect(await loadRoundPage(league.slug, 'not-a-uuid', NOW)).toBeNull();
@@ -152,6 +191,37 @@ describe('cleanEventData', () => {
       oprs: [],
     } as unknown as EventData;
     expect(cleanEventData(broken)).toEqual(emptyEvent());
+  });
+
+  it('drops junk entries inside otherwise valid sections', () => {
+    const good = eventInProgress();
+    const dirty = {
+      ...good,
+      teams: [null, ...good.teams!, 'x'],
+      matches: [...good.matches!, 5],
+      alliances: [null],
+      awards: ['no'],
+      rankings: { ...good.rankings!, rankings: [null, ...good.rankings!.rankings!] },
+      oprs: { oprs: { frc1: 30 } },
+    } as unknown as EventData;
+    const cleaned = cleanEventData(dirty);
+    expect(cleaned.teams).toEqual(good.teams);
+    expect(cleaned.matches).toEqual(good.matches);
+    expect(cleaned.alliances).toEqual([]);
+    expect(cleaned.awards).toEqual([]);
+    expect(cleaned.rankings).toEqual(good.rankings);
+    expect(cleaned.oprs).toEqual({ oprs: { frc1: 30 } });
+  });
+
+  it('treats rankings.rankings as a string, and oprs.oprs as an array, as no data', () => {
+    const cleaned = cleanEventData({
+      ...emptyEvent(),
+      rankings: { rankings: 'nope' },
+      oprs: { oprs: [1, 2] },
+    } as unknown as EventData);
+    expect(cleaned.rankings).toBeNull();
+    expect(cleaned.oprs).toBeNull();
+    expect(cleanEventData({ ...emptyEvent(), oprs: { oprs: [1] } } as unknown as EventData).oprs).toBeNull();
   });
 
   it('keeps correctly shaped sections', () => {
@@ -192,6 +262,30 @@ describe('loadLeaguePage', () => {
     const page = (await loadLeaguePage(league.slug, NOW))!;
     expect(page.fetchedAt).toBe('2026-10-01T15:00:00.000Z');
     expect(page.stale).toBe(true);
+  });
+
+  it('takes "last updated" from live rounds, not from a finalized round on its long window', async () => {
+    await repo.updateRound(round.id, { finalizedAt: '2026-10-01T10:00:00.000Z' });
+    const live = await newRound('2026parr', '2026-10-01');
+    await repo.updateRound(live.id, { draftOrder: [joey.id], rosterSize: 1 });
+    await repo.insertPick({ roundId: live.id, pickNumber: 0, playerId: joey.id, teamKey: 'frc4' });
+    h.getTba = vi.fn(async (path: unknown) => ({
+      data: null,
+      fetchedAt: String(path).startsWith('/event/2025parr') ? '2026-09-30T21:00:00.000Z' : '2026-10-01T15:59:00.000Z',
+      stale: String(path).startsWith('/event/2025parr'),
+    }));
+    const page = (await loadLeaguePage(league.slug, NOW))!;
+    expect(page.rounds.map((r) => r.status).sort()).toEqual(['final', 'live']);
+    expect(page.fetchedAt).toBe('2026-10-01T15:59:00.000Z');
+    expect(page.stale).toBe(false); // the stale final round is not what people are watching
+  });
+
+  it('uses the final rounds for "last updated" when every round is final', async () => {
+    await repo.updateRound(round.id, { finalizedAt: '2026-10-01T10:00:00.000Z' });
+    tba({ '2025parr': eventInProgress() }, { fetchedAt: '2026-09-30T21:00:00.000Z' });
+    const page = (await loadLeaguePage(league.slug, NOW))!;
+    expect(page.rounds.map((r) => r.status)).toEqual(['final']);
+    expect(page.fetchedAt).toBe('2026-09-30T21:00:00.000Z');
   });
 
   it('works for a league with no rounds or players', async () => {

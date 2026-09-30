@@ -116,6 +116,7 @@ export function qualLines(
 
   for (const row of data.rankings?.rankings ?? []) {
     if (num(row.matches_played) <= 0) continue; // a rank before any match is a placeholder
+    if (typeof row.rank !== 'number' || !Number.isFinite(row.rank) || row.rank <= 0) continue;
     push(row.team_key, {
       category: 'rank',
       label: `${qualsDone ? 'Final' : 'Current'} rank #${row.rank}`,

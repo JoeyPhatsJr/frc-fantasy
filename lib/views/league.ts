@@ -9,7 +9,7 @@ export type LeaguePage = {
   /** In date order. */
   rounds: RoundView[];
   anyLive: boolean;
-  /** The oldest fetch among the rounds: the honest "last updated". */
+  /** The oldest fetch among the rounds people are watching (live, else unfinished, else all). */
   fetchedAt: string | null;
   stale: boolean;
 };
@@ -38,13 +38,17 @@ export async function loadLeaguePage(slug: string, now: Date): Promise<LeaguePag
     ),
   );
 
-  const times = views.map((v) => v.fetchedAt).filter((t): t is string => t !== null);
+  // A finalized round sits on a 24 h cache window; it must not drag "last updated" back on event day.
+  const live = views.filter((v) => v.status === 'live');
+  const unfinished = views.filter((v) => v.status !== 'final');
+  const relevant = live.length > 0 ? live : unfinished.length > 0 ? unfinished : views;
+  const times = relevant.map((v) => v.fetchedAt).filter((t): t is string => t !== null);
   return {
     league: { slug: league.slug, name: league.name },
     standings: seasonStandings(players, views.map((v) => v.scores)),
     rounds: views,
     anyLive: views.some((v) => v.status === 'live'),
     fetchedAt: times.length > 0 ? times.sort()[0] : null,
-    stale: views.some((v) => v.stale),
+    stale: relevant.some((v) => v.stale),
   };
 }

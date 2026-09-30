@@ -4,6 +4,8 @@ import type { CacheRow } from '@/lib/db/types';
 const TBA_BASE = 'https://www.thebluealliance.com/api/v3';
 const TIMEOUT_MS = 5_000;
 const FORCE_MIN_AGE_MS = 15_000;
+/** After a TBA failure, serve the cache for this long instead of retrying on every page view. */
+const ERROR_BACKOFF_MS = 30_000;
 
 export type TbaResult<T> = { data: T | null; fetchedAt: string | null; stale: boolean };
 
@@ -41,6 +43,11 @@ export async function getTba<T>(
     const age = now.getTime() - Date.parse(row.fetchedAt);
     const fresh = opts.force ? age < FORCE_MIN_AGE_MS : age < opts.windowMs;
     if (fresh) return { data: row.body as T | null, fetchedAt: row.fetchedAt, stale: false };
+
+    const errorAge = row.lastErrorAt ? now.getTime() - Date.parse(row.lastErrorAt) : Number.NaN;
+    if (errorAge >= 0 && errorAge < ERROR_BACKOFF_MS) {
+      return { data: row.body as T | null, fetchedAt: row.fetchedAt, stale: true };
+    }
   }
 
   const failed = async (message: string): Promise<TbaResult<T>> => {

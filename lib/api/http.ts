@@ -51,7 +51,11 @@ export async function handle(fn: () => Promise<Response>): Promise<Response> {
     if (err instanceof UniqueViolation) {
       return jsonError(409, CONSTRAINT_MESSAGES[err.constraint] ?? 'That already exists');
     }
-    if (err instanceof DbUnavailableError) return jsonError(503, DB_ASLEEP_MESSAGE);
+    if (err instanceof DbUnavailableError) {
+      // Logged so a paused database can be told apart from a missing env var in the function logs.
+      console.error(err);
+      return jsonError(503, DB_ASLEEP_MESSAGE);
+    }
     console.error(err);
     return jsonError(500, 'Something went wrong');
   }

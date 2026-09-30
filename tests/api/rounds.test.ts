@@ -236,6 +236,21 @@ describe('PATCH /admin/rounds/{id}', () => {
     expect((await readJson(res)).error).toMatch(/add teams/i);
   });
 
+  it('answers 503 (not "add teams") when TBA could not be reached for the team list', async () => {
+    h.getTba = vi.fn(async () => ({ data: null, fetchedAt: null, stale: true }));
+    const round = await seedRound();
+    const [mom] = await seedPlayers('Mom');
+    const res = await patchRound(
+      request('PATCH', '/x', { token, body: { draftOrder: [mom.id], rosterSize: 1 } }),
+      at(round),
+    );
+    expect(res.status).toBe(503);
+    expect((await readJson(res)).error).toBe(
+      "Couldn't reach The Blue Alliance for the team list. Try again in a minute.",
+    );
+    expect((await repo.getRound(round.id))!.draftOrder).toEqual([]);
+  });
+
   it('answers 400 for a draft order with duplicates or non-players', async () => {
     const round = await seedRound();
     const [mom] = await seedPlayers('Mom');

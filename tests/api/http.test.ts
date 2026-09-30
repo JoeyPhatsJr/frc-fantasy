@@ -68,7 +68,10 @@ describe('handle', () => {
   });
 
   it('reports a sleeping database as 503 with the friendly message', async () => {
-    expect(await status(new DbUnavailableError('fetch failed'))).toEqual([503, DB_ASLEEP_MESSAGE]);
+    const spy = vi.spyOn(console, 'error');
+    const err = new DbUnavailableError('fetch failed');
+    expect(await status(err)).toEqual([503, DB_ASLEEP_MESSAGE]);
+    expect(spy).toHaveBeenCalledWith(err); // logged, so a paused DB is distinguishable from a missing env var
   });
 
   it('hides unexpected errors behind a generic 500', async () => {

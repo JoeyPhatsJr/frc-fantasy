@@ -31,7 +31,10 @@ export default function LeagueError({ error, reset }: { error: Error & { digest?
         <h1 className="break-words font-display text-3xl font-bold uppercase leading-tight tracking-wide text-fg">
           The league database is asleep
         </h1>
-        <p className="text-fg">The commissioner needs to wake it up. Your picks and scores are safe.</p>
+        <p className="text-fg">
+          This usually means the league database is asleep, or The Blue Alliance data couldn&rsquo;t be read.
+          Your picks and scores are safe.
+        </p>
         <p className="text-sm text-fg-muted">
           If you are the commissioner: open the Supabase dashboard and press &ldquo;Restore project&rdquo;, wait
           a minute, then try again.

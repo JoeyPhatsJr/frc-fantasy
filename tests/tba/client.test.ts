@@ -59,7 +59,7 @@ describe('getTba (§7.3)', () => {
   });
 
   it('200: stores the new body and etag', async () => {
-    const store = storeWith(cached(2 * MIN, { lastError: 'old problem', lastErrorAt: NOW.toISOString() }));
+    const store = storeWith(cached(2 * MIN, { lastError: 'old problem', lastErrorAt: new Date(NOW.getTime() - 40_000).toISOString() }));
     const out = await getTba(PATH, { windowMs: MIN }, deps(store, vi.fn(async () => ok({ version: 2 }))));
     expect(out).toEqual({ data: { version: 2 }, fetchedAt: NOW.toISOString(), stale: false });
     expect(store.rows.get(PATH)).toEqual({
@@ -86,7 +86,7 @@ describe('getTba (§7.3)', () => {
   });
 
   it('304: keeps the body, moves fetchedAt forward, clears the error', async () => {
-    const store = storeWith(cached(2 * MIN, { lastError: 'old problem', lastErrorAt: NOW.toISOString() }));
+    const store = storeWith(cached(2 * MIN, { lastError: 'old problem', lastErrorAt: new Date(NOW.getTime() - 40_000).toISOString() }));
     const fetchImpl = vi.fn(async () => new Response(null, { status: 304 }));
     const out = await getTba(PATH, { windowMs: MIN }, deps(store, fetchImpl));
     expect(out).toEqual({ data: { version: 1 }, fetchedAt: NOW.toISOString(), stale: false });
@@ -122,6 +122,29 @@ describe('getTba (§7.3)', () => {
     expect(out.stale).toBe(true);
     expect(out.data).toEqual({ version: 1 });
     expect(store.rows.get(PATH)?.lastError).toBe(`TBA returned HTTP ${status}`);
+  });
+
+  describe('error back-off', () => {
+    it('within 30 s of a recorded failure: serves the cache as stale without calling TBA', async () => {
+      const row = cached(2 * MIN, { lastError: 'TBA timed out', lastErrorAt: new Date(NOW.getTime() - 10_000).toISOString() });
+      const store = storeWith(row);
+      const fetchImpl = vi.fn(async () => ok({ version: 2 }));
+      const out = await getTba(PATH, { windowMs: MIN }, deps(store, fetchImpl));
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(out).toEqual({ data: { version: 1 }, fetchedAt: row.fetchedAt, stale: true });
+      expect(store.rows.get(PATH)).toEqual(row); // untouched: the back-off does not extend itself
+    });
+
+    it('40 s after a recorded failure: tries TBA again', async () => {
+      const store = storeWith(
+        cached(2 * MIN, { lastError: 'TBA timed out', lastErrorAt: new Date(NOW.getTime() - 40_000).toISOString() }),
+      );
+      const fetchImpl = vi.fn(async () => ok({ version: 2 }));
+      const out = await getTba(PATH, { windowMs: MIN }, deps(store, fetchImpl));
+      expect(fetchImpl).toHaveBeenCalledOnce();
+      expect(out).toMatchObject({ data: { version: 2 }, stale: false });
+      expect(store.rows.get(PATH)).toMatchObject({ lastError: null, lastErrorAt: null });
+    });
   });
 
   it('failure with nothing cached: returns null and stale, stores nothing', async () => {

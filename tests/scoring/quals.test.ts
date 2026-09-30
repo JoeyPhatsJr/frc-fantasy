@@ -134,6 +134,13 @@ describe('qualLines', () => {
     ]);
   });
 
+  it('skips the rank line when the rank is missing or not a positive number', () => {
+    const bad = rankRow(1, 'frc1', [2, 0, 0], { extra_stats: [4] });
+    (bad as { rank: unknown }).rank = null;
+    const { lines } = qualLines({ rankings: rankings([bad]), matches: null }, DEFAULT_SCORING, false);
+    expect(lines.get('frc1')!.map((l) => l.category)).toEqual(['qualRecord', 'rankingPoints']);
+  });
+
   it('says "Final rank" once quals are complete', () => {
     const r = rankings([rankRow(1, 'frc1', [9, 0, 0], { extra_stats: [30] })]);
     const { lines } = qualLines({ rankings: r, matches: null }, DEFAULT_SCORING, true);

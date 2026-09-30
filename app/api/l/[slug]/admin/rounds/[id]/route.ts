@@ -75,7 +75,12 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
       }
       const P = draftOrder.length;
       if (P > 0) {
-        const T = (await loadPool(round, now)).teams.length;
+        const pool = await loadPool(round, now);
+        if (pool.stale && pool.tbaCount === 0) {
+          // TBA was never reached (or has no list yet): the team count is unknown, not zero.
+          throw new HttpError(503, "Couldn't reach The Blue Alliance for the team list. Try again in a minute.");
+        }
+        const T = pool.teams.length;
         if (P * rosterSize > T) {
           const max = Math.floor(T / P);
           throw new HttpError(

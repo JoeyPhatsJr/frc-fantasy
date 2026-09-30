@@ -9,7 +9,7 @@ import { mergePool, type PoolTeam } from '@/lib/teams';
 export async function loadPool(
   round: RoundRow,
   now: Date,
-): Promise<{ teams: PoolTeam[]; stale: boolean }> {
+): Promise<{ teams: PoolTeam[]; stale: boolean; tbaCount: number }> {
   const [tba, extras] = await Promise.all([
     getTba<TeamSimple[]>(`/event/${round.eventKey}/teams/simple`, {
       windowMs: cacheWindowFor(round, now),
@@ -17,5 +17,5 @@ export async function loadPool(
     getRepo().listExtraTeams(round.id),
   ]);
   const tbaTeams = Array.isArray(tba.data) ? tba.data : null;
-  return { teams: mergePool(tbaTeams, extras), stale: tba.stale };
+  return { teams: mergePool(tbaTeams, extras), stale: tba.stale, tbaCount: tbaTeams?.length ?? 0 };
 }
