@@ -107,6 +107,20 @@ export function RefreshCw(props: IconProps) {
   );
 }
 
+export function Replace(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M14 4a1 1 0 0 1 1-1" />
+      <path d="M15 10a1 1 0 0 1-1-1" />
+      <path d="M21 4a1 1 0 0 0-1-1" />
+      <path d="M21 9a1 1 0 0 1-1 1" />
+      <path d="m3 7 3 3 3-3" />
+      <path d="M6 10V5a2 2 0 0 1 2-2h2" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+    </Icon>
+  );
+}
+
 export function Trash2(props: IconProps) {
   return (
     <Icon {...props}>
@@ -159,6 +173,65 @@ export function X(props: IconProps) {
     <Icon {...props}>
       <path d="M18 6 6 18" />
       <path d="m6 6 12 12" />
+    </Icon>
+  );
+}
+
+/* App shell: theme toggle and league tabs. */
+
+export function Sun(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2" />
+      <path d="M12 20v2" />
+      <path d="m4.93 4.93 1.41 1.41" />
+      <path d="m17.66 17.66 1.41 1.41" />
+      <path d="M2 12h2" />
+      <path d="M20 12h2" />
+      <path d="m6.34 17.66-1.41 1.41" />
+      <path d="m19.07 4.93-1.41 1.41" />
+    </Icon>
+  );
+}
+
+export function Moon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+    </Icon>
+  );
+}
+
+export function ListOrdered(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M10 12h11" />
+      <path d="M10 18h11" />
+      <path d="M10 6h11" />
+      <path d="M4 10h2" />
+      <path d="M4 6h1v4" />
+      <path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" />
+    </Icon>
+  );
+}
+
+export function Flag(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+      <line x1="4" x2="4" y1="22" y2="15" />
+    </Icon>
+  );
+}
+
+export function Settings2(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M20 7h-9" />
+      <path d="M14 17H5" />
+      <circle cx="17" cy="17" r="3" />
+      <circle cx="7" cy="7" r="3" />
     </Icon>
   );
 }

@@ -3,7 +3,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { AdminGate } from '@/components/admin/AdminGate';
 import { AddRoundForm } from '@/components/admin/DashboardParts';
+import { bannerParts } from '@/components/admin/DraftEntry';
 import { ScoringForm } from '@/components/admin/ScoringForm';
+import { draftBanner } from '@/lib/draft';
 import { DEFAULT_SCORING } from '@/lib/scoring/config';
 
 const render = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(el);
@@ -72,5 +74,31 @@ describe('AddRoundForm', () => {
     expect(html).toContain('placeholder="2026parr"');
     expect(html).toMatch(/<button[^>]*type="submit"[^>]*>Check<\/button>/);
     expect(html).not.toContain('Add this round');
+  });
+});
+
+describe('bannerParts (draft-night banner)', () => {
+  const order = ['a', 'b', 'c'];
+  const names = { a: 'Mom', b: 'Dad', c: 'Joey' };
+
+  it('agrees with draftBanner() at every point of the draft', () => {
+    for (let pickCount = 0; pickCount <= 6; pickCount++) {
+      const parts = bannerParts(pickCount, order, 2, names);
+      const text = draftBanner({ pickCount, draftOrder: order, rosterSize: 2, playerNames: names });
+      if (parts.kind === 'pick') {
+        expect(text).toBe(`Pick ${parts.pick} of ${parts.total} — ${parts.picker}'s turn (round ${parts.draftRound})`);
+      } else {
+        expect(parts).toEqual({ kind: 'complete', total: 6 });
+        expect(text).toBe('Draft complete — 6 of 6 picks');
+      }
+    }
+  });
+
+  it('follows the snake: pick 4 is the last player again, in round 2', () => {
+    expect(bannerParts(3, order, 2, names)).toEqual({ kind: 'pick', pick: 4, total: 6, picker: 'Joey', draftRound: 2 });
+  });
+
+  it('asks for a draft order when there is none', () => {
+    expect(bannerParts(0, [], 2, names)).toEqual({ kind: 'no-order' });
   });
 });

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AdjustmentEditor } from '@/components/admin/AdjustmentEditor';
 import { AdminGate } from '@/components/admin/AdminGate';
@@ -91,23 +92,27 @@ function RoundManager({ slug, roundId, api }: { slug: string; roundId: string; a
   return (
     <main id="main" className="space-y-6">
       <header className="space-y-3">
-        <Button href={`/l/${slug}/admin`} variant="ghost" className="-ml-3">
+        {/* The league bar shows the league name and "Commissioner"; this is the compact way back. */}
+        <Link
+          href={`/l/${slug}/admin`}
+          className="-ml-2 inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-lg pr-3 pl-1 text-[15px] font-semibold text-primary motion-safe:transition-colors duration-150 hover:bg-surface-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+        >
           <ChevronLeft className="size-5 shrink-0" />
-          Commissioner dashboard
-        </Button>
-        <p className="text-xs font-bold uppercase tracking-wider text-secondary">Commissioner</p>
-        <div className="flex items-start gap-3">
-          <h1 className="min-w-0 flex-1 break-words font-display text-3xl font-bold uppercase leading-tight tracking-wide text-fg">
-            {round.eventName}
-          </h1>
+          Dashboard
+        </Link>
+        <h1 className="break-words font-display text-[28px] font-bold leading-[30px] text-fg">{round.eventName}</h1>
+        <div className="space-y-0.5">
+          <p className="text-[15px] font-medium text-fg-muted">{formatDateRange(round.startDate, round.endDate)}</p>
+          <p className="break-words text-[13px] leading-[18px] text-fg-muted">{round.eventKey}</p>
+        </div>
+        <div>
           <StatusBadge status={detail.status} />
         </div>
-        <p className="break-words text-sm font-medium text-fg-muted">
-          {formatDateRange(round.startDate, round.endDate)} · {round.eventKey}
-        </p>
-        <Button href={`/l/${slug}/r/${round.id}`} variant="secondary">
-          View public round page
-        </Button>
+        <div>
+          <Button href={`/l/${slug}/r/${round.id}`} variant="secondary">
+            View public round page
+          </Button>
+        </div>
       </header>
 
       {detail.nudgeFinalize ? (
@@ -116,7 +121,7 @@ function RoundManager({ slug, roundId, api }: { slug: string; roundId: string; a
 
       {/* Sticks under the top bar, so a pick that fails (say, another tab drafted first) is seen mid-draft. */}
       {error || notice ? (
-        <div className="sticky top-16 z-10 flex items-start gap-2 rounded-xl bg-surface shadow-card">
+        <div className="sticky top-16 z-20 flex items-start gap-2 rounded-xl bg-surface shadow-card">
           <div className="min-w-0 flex-1">
             {error ? <Alert tone="danger">{error}</Alert> : <Alert tone="success">{notice}</Alert>}
           </div>

@@ -7,44 +7,55 @@ export type LeaderboardRow = {
   detail?: string;
 };
 
-// Gold, silver and bronze medals for the top three; everyone else gets a plain circle.
-const MEDAL: Record<number, string> = {
-  1: 'bg-accent text-fg',
-  2: 'bg-slate-300 text-fg',
-  3: 'bg-amber-700 text-on-primary',
+// Gold, silver and bronze circles for the top three; everyone else gets a quiet one.
+const RANK_CIRCLE: Record<number, string> = {
+  1: 'bg-accent text-on-accent',
+  2: 'bg-silver text-on-accent',
+  3: 'bg-bronze text-on-accent',
 };
 
+/**
+ * The scoreboard: rank circle, name, big tabular score. The leader's row carries the gold (a rail
+ * and a faint tint). Rows fade up with a 40ms stagger when they first appear (motion-safe only);
+ * a refresh reuses the same DOM nodes, so the animation doesn't replay.
+ */
 export function Leaderboard({ rows, emptyText }: { rows: LeaderboardRow[]; emptyText: string }) {
   if (rows.length === 0) return <p className="text-sm text-fg-muted">{emptyText}</p>;
   return (
-    <ol className="space-y-2">
-      {rows.map((row) => {
+    <ol className="divide-y divide-border">
+      {rows.map((row, index) => {
         const leader = row.rank === 1;
         return (
           <li
             key={row.id}
+            style={{ animationDelay: `${index * 40}ms` }}
             className={[
-              'flex min-h-14 items-center gap-3 rounded-xl border border-border px-3 py-2',
-              leader ? 'border-l-4 border-l-accent bg-accent/5' : 'bg-surface',
+              'flex min-h-14 items-center gap-3 py-2 pr-3 motion-safe:animate-fade-up',
+              // Gold tint: /15 reads as gold in dark; light keeps /10, where accent-text on /15 would drop to 4.47:1.
+              leader
+                ? 'rounded-lg border-l-[3px] border-l-accent bg-accent/15 pl-[9px] [[data-theme=light]_&]:bg-accent/10'
+                : 'pl-3',
             ].join(' ')}
           >
             <span
               className={[
-                'flex size-9 shrink-0 items-center justify-center rounded-full font-display text-lg font-bold tabular-nums',
-                MEDAL[row.rank] ?? 'bg-surface-2 text-fg-muted',
+                'flex size-8 shrink-0 items-center justify-center rounded-full font-display text-[17px] font-bold leading-none tabular-nums',
+                RANK_CIRCLE[row.rank] ?? 'bg-surface-2 text-fg-muted',
               ].join(' ')}
             >
               {row.rank}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate font-semibold text-fg" title={row.name}>
+              <span className="block truncate text-[17px] font-semibold leading-6 text-fg" title={row.name}>
                 {row.name}
               </span>
               {row.detail ? (
-                <span className="block truncate text-xs text-fg-muted tabular-nums">{row.detail}</span>
+                <span className="block truncate text-[13px] leading-[18px] text-fg-muted tabular-nums [word-spacing:0.35em]">
+                  {row.detail}
+                </span>
               ) : null}
             </span>
-            <span className="shrink-0 font-display text-2xl font-bold leading-none text-primary tabular-nums">
+            <span className="shrink-0 text-right font-display text-[28px] font-bold leading-[30px] text-fg tabular-nums">
               {row.total}
             </span>
           </li>

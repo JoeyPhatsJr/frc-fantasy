@@ -72,7 +72,7 @@ export function AdjustmentEditor({ detail, busy, run, api, playerNames }: Sectio
       </p>
 
       <form onSubmit={submit} className="space-y-3 rounded-xl border border-border bg-surface-2 p-3">
-        <h3 className="font-display text-lg font-bold uppercase tracking-wide text-fg">
+        <h3 className="font-display text-[17px] font-bold leading-6 text-fg">
           {form.id === null ? 'Add an adjustment' : 'Edit adjustment'}
         </h3>
         <fieldset className="min-w-0">
@@ -179,7 +179,7 @@ export function AdjustmentEditor({ detail, busy, run, api, playerNames }: Sectio
                   <span
                     className={[
                       'shrink-0 rounded-pill px-2.5 py-0.5 font-display text-lg font-bold tabular-nums',
-                      a.points < 0 ? 'bg-red-alliance text-on-primary' : 'bg-accent text-fg',
+                      a.points < 0 ? 'bg-red-alliance text-on-primary' : 'bg-accent text-on-accent',
                     ].join(' ')}
                   >
                     {signed(a.points)}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AddForm, AddRoundForm, PlayerRow, RenameLeague } from '@/components/admin/DashboardParts';
+import { AddForm, AddRoundForm, EventRow, PlayerRow, RenameLeague } from '@/components/admin/DashboardParts';
 import { AdminGate } from '@/components/admin/AdminGate';
 import { ScoringForm } from '@/components/admin/ScoringForm';
 import { usePolling } from '@/components/admin/usePolling';
@@ -103,18 +103,14 @@ function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
 
   return (
     <main id="main" className="space-y-6">
-      <header className="space-y-3">
-        <p className="text-xs font-bold uppercase tracking-wider text-secondary">Commissioner</p>
-        <h1 className="break-words font-display text-4xl font-bold uppercase leading-tight tracking-wide text-fg">
-          {state.league.name}
-        </h1>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button href={`/l/${slug}`} variant="secondary">
-            View public page
-          </Button>
-          <CopyButton text={publicLink} label="Copy public link" />
-        </div>
-      </header>
+      {/* The league bar (app/l/[slug]/layout.tsx) shows the name and "Commissioner"; this keeps a page heading for screen readers. */}
+      <h1 className="sr-only">Commissioner dashboard for {state.league.name}</h1>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button href={`/l/${slug}`} variant="secondary">
+          View public page
+        </Button>
+        <CopyButton text={publicLink} label="Copy public link" />
+      </div>
 
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {notice ? <Alert tone="success">{notice}</Alert> : null}
@@ -129,8 +125,8 @@ function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
 
       <section>
         <Card title="Players" className="space-y-3">
-          {state.players.length === 0 ? <p className="text-sm text-fg-muted">No players yet.</p> : null}
-          <ul className="space-y-2">
+          {state.players.length === 0 ? <p className="text-[15px] text-fg-muted">No players yet.</p> : null}
+          <ul className="divide-y divide-border">
             {state.players.map((player) => (
               <PlayerRow
                 key={`${player.id}:${player.name}`}
@@ -160,27 +156,31 @@ function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
 
       <section>
         <Card title="Rounds" className="space-y-3">
-          {state.rounds.length === 0 ? <p className="text-sm text-fg-muted">No rounds yet.</p> : null}
-          <ul className="space-y-2">
+          {state.rounds.length === 0 ? <p className="text-[15px] text-fg-muted">No rounds yet.</p> : null}
+          <ul className="-mx-2 divide-y divide-border">
             {state.rounds.map((round) => (
-              <li key={round.id} className="space-y-3 rounded-xl border border-border bg-surface p-3">
-                <div className="flex items-start gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="break-words font-semibold text-fg">{round.eventName}</p>
-                    <p className="break-words text-sm text-fg-muted">
-                      {formatDateRange(round.startDate, round.endDate)} · {round.eventKey}
-                    </p>
-                    <p className="text-sm text-fg-muted tabular-nums">
-                      {round.totalPicks === 0 ? 'Draft not set up' : `${round.pickCount} of ${round.totalPicks} picks`}
-                    </p>
-                  </div>
-                  <StatusBadge status={round.status} />
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button href={`/l/${slug}/admin/r/${round.id}`}>Manage round</Button>
+              <li
+                key={round.id}
+                className="space-y-3 rounded-lg px-2 py-3 motion-safe:transition-colors duration-200 hover:bg-fg/5"
+              >
+                <EventRow
+                  startDate={round.startDate}
+                  title={round.eventName}
+                  lines={[
+                    formatDateRange(round.startDate, round.endDate),
+                    round.eventKey,
+                    round.totalPicks === 0 ? 'Draft not set up' : `${round.pickCount} of ${round.totalPicks} picks`,
+                  ]}
+                  trailing={<StatusBadge status={round.status} />}
+                />
+                <div className="flex flex-wrap gap-2 pl-15">
+                  <Button href={`/l/${slug}/admin/r/${round.id}`} aria-label={`Manage ${round.eventName}`}>
+                    Manage
+                  </Button>
                   <Button
                     type="button"
                     variant="danger"
+                    aria-label={`Delete ${round.eventName}`}
                     busy={pending === `delete:${round.id}`}
                     disabled={busy}
                     onClick={() => {
@@ -216,7 +216,7 @@ function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
               })
             }
           />
-          <p className="text-xs text-fg-muted">
+          <p className="text-[13px] leading-[18px] text-fg-muted">
             The event key is the last part of the event&apos;s address on thebluealliance.com, such as 2026parr.
           </p>
         </Card>
@@ -224,11 +224,11 @@ function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
 
       <section>
         <Card title="Default scoring" className="space-y-3">
-          <p className="text-sm text-fg-muted">
+          <p className="text-[15px] text-fg-muted">
             New rounds copy these values. Changing them does not change rounds that already exist.
           </p>
           <details className="group">
-            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-xl border border-primary/40 bg-surface px-4 font-semibold text-primary-strong motion-safe:transition-colors duration-200 hover:bg-surface-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-xl border border-primary/40 bg-surface px-4 font-semibold text-primary motion-safe:transition-colors duration-200 hover:bg-surface-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden">
               Edit default scoring
               <ChevronDown className="size-5 shrink-0 motion-safe:transition-transform duration-200 group-open:rotate-180" />
             </summary>

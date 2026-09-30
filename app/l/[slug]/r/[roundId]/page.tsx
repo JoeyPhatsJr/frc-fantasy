@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { AdjustmentList } from '@/components/AdjustmentList';
@@ -34,7 +35,7 @@ export default async function RoundPage({ params }: Props) {
   const page = await loadRoundPage(slug, roundId, now);
   if (!page) notFound();
 
-  // Only { slug, name } of the league reaches this page; the admin token hash never does.
+  // The league bar in app/l/[slug]/layout.tsx shows the league name; the back link below is the compact way home.
   const { league, view, playerNames } = page;
   const { round } = view;
   const draftInProgress = view.status === 'setup' || view.status === 'drafting';
@@ -47,17 +48,18 @@ export default async function RoundPage({ params }: Props) {
       <AutoRefresh seconds={60} />
 
       <header className="space-y-3">
-        <Button href={`/l/${league.slug}`} variant="ghost" className="-ml-3 max-w-full">
+        <Link
+          href={`/l/${league.slug}`}
+          className="-ml-2 inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-lg pr-3 pl-1 text-[15px] font-semibold text-primary motion-safe:transition-colors duration-150 hover:bg-surface-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+        >
           <ChevronLeft className="size-5 shrink-0" />
-          <span className="min-w-0 truncate">{league.name}</span>
-        </Button>
-        <div className="flex items-start gap-3">
-          <h1 className="min-w-0 flex-1 break-words font-display text-3xl font-bold uppercase leading-tight tracking-wide text-fg">
-            {round.eventName}
-          </h1>
+          Standings
+        </Link>
+        <h1 className="break-words font-display text-[28px] font-bold leading-[30px] text-fg">{round.eventName}</h1>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <StatusBadge status={view.status} />
+          <p className="text-[15px] font-medium text-fg-muted">{formatDateRange(round.startDate, round.endDate)}</p>
         </div>
-        <p className="text-sm font-medium text-fg-muted">{formatDateRange(round.startDate, round.endDate)}</p>
         <Button
           href={tbaEventUrl(round.eventKey)}
           variant="secondary"
@@ -90,7 +92,7 @@ export default async function RoundPage({ params }: Props) {
 
       <section>
         <Card title="Rosters">
-          <p className="-mt-1 mb-3 text-sm text-fg-muted">Tap a player to see where their points came from.</p>
+          <p className="-mt-1 mb-3 text-[15px] text-fg-muted">Tap a player to see where their points came from.</p>
           <RosterList scores={view.scores} teamNames={view.teamNames} draftInProgress={draftInProgress} />
         </Card>
       </section>

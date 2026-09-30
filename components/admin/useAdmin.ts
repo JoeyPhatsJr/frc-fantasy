@@ -24,6 +24,7 @@ function store(slug: string, token: string | null) {
   } catch {
     // Without storage the admin link still works; it just has to be opened with its #k= part each time.
   }
+  window.dispatchEvent(new Event('frcf:admin')); // tells the TabBar to show or hide the Admin tab now
 }
 
 /**

@@ -6,24 +6,90 @@ import { usePending } from '@/components/admin/usePending';
 import { DraftBoard } from '@/components/DraftBoard';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
-import { Check } from '@/components/ui/icons';
+import { BumperPlate } from '@/components/ui/BumperPlate';
+import { Check, Replace } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
 import { availableTeams, draftBanner } from '@/lib/draft';
+import { pickerFor } from '@/lib/scoring/round';
 import { teamLabel } from '@/lib/teams';
 
 const SHOW_AT_MOST = 60;
 
-const SUBHEAD = 'font-display text-lg font-bold uppercase tracking-wide text-fg';
+const SUBHEAD = 'font-display text-[17px] font-bold leading-6 text-fg';
 
-// A chip reacts the instant it's touched (active:), then keeps the highlight while its pick saves.
-const CHIP =
-  'flex min-h-12 w-full min-w-0 cursor-pointer select-none flex-col items-start justify-center rounded-xl border px-3 py-1.5 ' +
-  'text-left shadow-sm motion-safe:transition duration-150 ' +
-  'hover:border-primary/60 active:border-primary active:bg-primary/10 motion-safe:active:scale-[0.97] ' +
-  'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ' +
+// A cell reacts the instant it's touched (active:), then keeps the gold ring while its pick saves.
+// Focus uses an outline, so it never hides behind (or reads as) the gold pressed ring.
+const CELL =
+  'relative flex min-h-14 w-full min-w-0 cursor-pointer select-none flex-col items-center justify-center gap-1 ' +
+  'rounded-xl border border-border bg-surface px-2 py-2 motion-safe:transition duration-150 ' +
+  'hover:bg-surface-2 active:ring-2 active:ring-accent motion-safe:active:scale-[0.97] ' +
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ' +
   'disabled:cursor-not-allowed';
-const CHIP_IDLE = 'border-border bg-surface disabled:opacity-50';
-const CHIP_SAVING = 'border-primary bg-primary/10';
+const CELL_IDLE = 'disabled:opacity-50';
+const CELL_SAVING = 'ring-2 ring-accent';
+
+export type Banner =
+  | { kind: 'no-order' }
+  | { kind: 'complete'; total: number }
+  | { kind: 'pick'; pick: number; total: number; picker: string; draftRound: number };
+
+/** The same facts as `draftBanner()` (lib/draft.ts), split into the big number and the line under it. */
+export function bannerParts(
+  pickCount: number,
+  draftOrder: string[],
+  rosterSize: number,
+  playerNames: Record<string, string>,
+): Banner {
+  const P = draftOrder.length;
+  if (P === 0) return { kind: 'no-order' };
+  const total = P * rosterSize;
+  if (pickCount >= total) return { kind: 'complete', total };
+  return {
+    kind: 'pick',
+    pick: pickCount + 1,
+    total,
+    picker: playerNames[pickerFor(pickCount, draftOrder)] ?? 'Unknown',
+    draftRound: Math.floor(pickCount / P) + 1,
+  };
+}
+
+function DraftBanner({ banner, text }: { banner: Banner; text: string }) {
+  const tone = banner.kind === 'complete' ? 'bg-success text-on-success' : 'bg-primary-fill text-on-primary';
+  return (
+    <div className={`rounded-card px-4 py-4 ${tone}`}>
+      {/* Screen readers hear the one-line banner; the big layout below is for eyes. */}
+      <p aria-live="polite" className="sr-only">
+        {text}
+      </p>
+      <div aria-hidden="true">
+        {banner.kind === 'no-order' ? (
+          <p className="font-display text-[22px] font-bold leading-[26px]">{text}</p>
+        ) : banner.kind === 'complete' ? (
+          <>
+            <p className="flex items-center gap-2 font-display text-[56px] font-bold leading-[56px]">
+              <Check className="size-10 shrink-0" />
+              <span className="min-w-0 break-words">Draft complete</span>
+            </p>
+            <p className="mt-1 text-[17px] font-semibold leading-6 tabular-nums">
+              {banner.total} of {banner.total} picks
+            </p>
+          </>
+        ) : (
+          <>
+            {/* Two no-wrap chunks, so a long count wraps as "Pick 17" / "of 20", never mid-phrase. */}
+            <p className="flex flex-wrap gap-x-3 font-display text-[56px] font-bold leading-[56px] tabular-nums">
+              <span className="whitespace-nowrap">Pick {banner.pick}</span>
+              <span className="whitespace-nowrap">of {banner.total}</span>
+            </p>
+            <p className="mt-1 break-words text-[17px] font-semibold leading-6">
+              {banner.picker}&apos;s turn, round {banner.draftRound}
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function DraftEntry({ detail, busy, run, api, playerNames }: SectionProps) {
   const { round, picks, pool } = detail;
@@ -65,15 +131,15 @@ export function DraftEntry({ detail, busy, run, api, playerNames }: SectionProps
 
   return (
     <div className="space-y-5">
-      <p
-        aria-live="polite"
-        className="flex items-center justify-center gap-2 rounded-card bg-primary px-4 py-4 text-center font-display text-2xl font-bold leading-tight tracking-wide text-on-primary shadow-card"
-      >
-        {complete ? <Check className="size-6 shrink-0" /> : null}
-        <span className="min-w-0 break-words">
-          {draftBanner({ pickCount: picks.length, draftOrder: round.draftOrder, rosterSize: round.rosterSize, playerNames })}
-        </span>
-      </p>
+      <DraftBanner
+        banner={bannerParts(picks.length, round.draftOrder, round.rosterSize, playerNames)}
+        text={draftBanner({
+          pickCount: picks.length,
+          draftOrder: round.draftOrder,
+          rosterSize: round.rosterSize,
+          playerNames,
+        })}
+      />
 
       {replacing !== null ? (
         <div ref={replaceNote} className="scroll-mt-20">
@@ -92,19 +158,23 @@ export function DraftEntry({ detail, busy, run, api, playerNames }: SectionProps
 
       {canPick ? (
         <div className="space-y-3">
-          <Input
-            label="Search available teams"
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by number or name"
-            autoCapitalize="none"
-            autoCorrect="off"
-            autoComplete="off"
-            enterKeyHint="search"
-          />
-          {available.length === 0 ? <p className="text-sm text-fg-muted">No available teams match.</p> : null}
-          <ul className="grid grid-cols-2 gap-2">
+          {/* Stays under the 56px sticky site header while the grid scrolls (the league bar doesn't stick).
+              Bleeds to the card's edges so rows scrolling under it are hidden. */}
+          <div className="sticky top-[56px] z-10 -mx-4 bg-surface px-4 py-2">
+            <Input
+              label="Search available teams"
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by number or name"
+              autoCapitalize="none"
+              autoCorrect="off"
+              autoComplete="off"
+              enterKeyHint="search"
+            />
+          </div>
+          {available.length === 0 ? <p className="text-[15px] text-fg-muted">No available teams match.</p> : null}
+          <ul className="grid grid-cols-2 gap-3">
             {available.slice(0, SHOW_AT_MOST).map((t) => {
               const saving = pending === `team:${t.teamKey}`;
               return (
@@ -114,27 +184,25 @@ export function DraftEntry({ detail, busy, run, api, playerNames }: SectionProps
                     disabled={busy}
                     aria-busy={saving || undefined}
                     onClick={() => choose(t.teamKey)}
-                    className={`${CHIP} ${saving ? CHIP_SAVING : CHIP_IDLE}`}
+                    className={`${CELL} ${saving ? CELL_SAVING : CELL_IDLE}`}
                   >
-                    <span className="flex w-full items-center gap-2">
-                      <span className="font-display text-2xl font-bold leading-none text-fg tabular-nums">{t.label}</span>
-                      {saving ? (
-                        <span
-                          aria-hidden="true"
-                          className="ml-auto size-4 shrink-0 rounded-full border-2 border-primary border-r-transparent motion-safe:animate-spin"
-                        />
-                      ) : null}
-                    </span>
-                    <span className="w-full truncate text-xs text-fg-muted">
+                    <BumperPlate number={t.label} size="lg" className="max-w-full" />
+                    <span className="w-full truncate text-center text-[13px] leading-[18px] text-fg-muted">
                       {t.nickname ?? (t.manual ? 'added by hand' : '')}
                     </span>
+                    {saving ? (
+                      <span
+                        aria-hidden="true"
+                        className="absolute top-2 right-2 size-4 shrink-0 rounded-full border-2 border-accent-text border-r-transparent motion-safe:animate-spin"
+                      />
+                    ) : null}
                   </button>
                 </li>
               );
             })}
           </ul>
           {available.length > SHOW_AT_MOST ? (
-            <p className="text-xs text-fg-muted">
+            <p className="text-[13px] leading-[18px] text-fg-muted">
               Showing {SHOW_AT_MOST} of {available.length}. Type to narrow the list.
             </p>
           ) : null}
@@ -175,28 +243,32 @@ export function DraftEntry({ detail, busy, run, api, playerNames }: SectionProps
       {picks.length > 0 ? (
         <div className="space-y-2">
           <h3 className={SUBHEAD}>Replace a pick</h3>
-          <p className="text-xs text-fg-muted">For a team that withdrew. The pick keeps its number and owner.</p>
+          <p className="text-[13px] leading-[18px] text-fg-muted">
+            For a team that withdrew. The pick keeps its number and owner.
+          </p>
           <ul className="divide-y divide-border rounded-xl border border-border">
             {picks.map((p) => (
               <li
                 key={p.pickNumber}
-                className={`flex min-h-12 items-center gap-2 px-3 py-1 ${replacing === p.pickNumber ? 'bg-accent/10' : ''}`}
+                className={`flex min-h-14 items-center gap-3 py-1.5 pr-1.5 pl-3 ${replacing === p.pickNumber ? 'bg-accent/10' : ''}`}
               >
-                <span className="w-9 shrink-0 text-sm text-fg-muted tabular-nums">#{p.pickNumber + 1}</span>
-                <span className="min-w-0 flex-1 truncate">
-                  <span className="font-display text-lg font-bold text-fg tabular-nums">{teamLabel(p.teamKey)}</span>{' '}
-                  <span className="text-sm text-fg-muted">{playerNames[p.playerId] ?? 'Unknown'}</span>
+                <span className="w-9 shrink-0 text-[13px] leading-[18px] text-fg-muted tabular-nums">
+                  #{p.pickNumber + 1}
+                </span>
+                <BumperPlate number={teamLabel(p.teamKey)} size="sm" />
+                <span className="min-w-0 flex-1 truncate text-[15px] text-fg-muted">
+                  {playerNames[p.playerId] ?? 'Unknown'}
                 </span>
                 <Button
                   type="button"
                   variant="secondary"
-                  size="sm"
-                  className="shrink-0"
+                  size="icon"
                   disabled={busy}
                   aria-label={`Replace pick ${p.pickNumber + 1} (${teamLabel(p.teamKey)})`}
+                  title="Replace"
                   onClick={() => setReplacing(p.pickNumber)}
                 >
-                  Replace
+                  <Replace className="size-5" />
                 </Button>
               </li>
             ))}

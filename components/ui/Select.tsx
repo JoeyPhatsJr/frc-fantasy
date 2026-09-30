@@ -34,7 +34,7 @@ export function Select({ label, error, id, className, children, ...selectProps }
         {children}
       </select>
       {error && (
-        <p id={errorId} className="text-sm font-medium text-red-700">
+        <p id={errorId} className="text-sm font-medium text-red-alliance-text">
           {error}
         </p>
       )}
