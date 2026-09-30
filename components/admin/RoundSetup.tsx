@@ -20,7 +20,6 @@ export const DETAILS_SUMMARY =
   '[&::-webkit-details-marker]:hidden';
 
 const SUBHEAD = 'font-display text-lg font-bold uppercase tracking-wide text-fg';
-const ICON_BUTTON = 'size-11 shrink-0 px-0';
 
 export function RoundSetup({ detail, busy, run, api, playerNames }: SectionProps) {
   const { round } = detail;
@@ -53,7 +52,7 @@ export function RoundSetup({ detail, busy, run, api, playerNames }: SectionProps
               <Button
                 type="button"
                 variant="secondary"
-                className={ICON_BUTTON}
+                size="icon"
                 disabled={locked || i === 0}
                 aria-label="Move up"
                 onClick={() => setOrder(moveItem(order, i, -1))}
@@ -63,7 +62,7 @@ export function RoundSetup({ detail, busy, run, api, playerNames }: SectionProps
               <Button
                 type="button"
                 variant="secondary"
-                className={ICON_BUTTON}
+                size="icon"
                 disabled={locked || i === order.length - 1}
                 aria-label="Move down"
                 onClick={() => setOrder(moveItem(order, i, 1))}
@@ -73,13 +72,12 @@ export function RoundSetup({ detail, busy, run, api, playerNames }: SectionProps
               <Button
                 type="button"
                 variant="danger"
-                className="shrink-0 px-3"
+                size="icon"
                 disabled={locked}
                 aria-label={`Take ${playerNames[id] ?? 'this player'} out of the draft`}
                 onClick={() => setOrder(order.filter((x) => x !== id))}
               >
-                <X className="size-4 shrink-0" />
-                Out
+                <X className="size-5" />
               </Button>
             </li>
           ))}
@@ -128,7 +126,7 @@ export function RoundSetup({ detail, busy, run, api, playerNames }: SectionProps
             Randomize order
           </Button>
         </div>
-        <p className={`text-sm tabular-nums ${tooBig ? 'font-semibold text-red-700' : 'text-fg-muted'}`}>
+        <p className={`text-sm tabular-nums ${tooBig ? 'font-semibold text-red-alliance' : 'text-fg-muted'}`}>
           {order.length} {order.length === 1 ? 'player' : 'players'} × {rosterSize} teams = {order.length * rosterSize}{' '}
           picks from a pool of {detail.pool.length}.{' '}
           {order.length > 0 ? `Roster size can be at most ${maxAllowed}.` : ''}
@@ -164,12 +162,18 @@ export function RoundSetup({ detail, busy, run, api, playerNames }: SectionProps
             e.preventDefault();
             const key = parseTeamInput(teamInput);
             if (!key) return;
+            // Clear the box only when the add worked, so a rejected number can be fixed in place.
+            let added = false;
             go(
               'add-team',
-              () => api(`/rounds/${round.id}/teams`, { method: 'POST', body: { teamNumber: teamInput } }),
+              async () => {
+                await api(`/rounds/${round.id}/teams`, { method: 'POST', body: { teamNumber: teamInput } });
+                added = true;
+              },
               `Added ${key.slice(3)}.`,
-            );
-            setTeamInput('');
+            ).then(() => {
+              if (added) setTeamInput('');
+            });
           }}
         >
           <Input
@@ -202,7 +206,7 @@ export function RoundSetup({ detail, busy, run, api, playerNames }: SectionProps
                 <Button
                   type="button"
                   variant="danger"
-                  className={ICON_BUTTON}
+                  size="icon"
                   busy={pending === `remove:${t.teamKey}`}
                   disabled={busy}
                   aria-label={`Take team ${t.label} out of the pool`}

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from 'react';
 
 export type ButtonVariant = 'primary' | 'accent' | 'secondary' | 'danger' | 'ghost';
-export type ButtonSize = 'md' | 'sm';
+export type ButtonSize = 'md' | 'sm' | 'icon';
 
 type CommonProps = {
   variant?: ButtonVariant;
@@ -39,6 +39,8 @@ const VARIANTS: Record<ButtonVariant, string> = {
 const SIZES: Record<ButtonSize, string> = {
   md: 'min-h-11 px-4 text-base',
   sm: 'min-h-9 px-3 text-sm before:absolute before:inset-x-0 before:-inset-y-1',
+  // A 44px square for icon-only controls (give it an aria-label). No padding, so the icon is centred.
+  icon: 'size-11 shrink-0 p-0 justify-center',
 };
 
 /** The classes a <Button> of this variant and size gets, for the rare element that can't be a <Button>. */

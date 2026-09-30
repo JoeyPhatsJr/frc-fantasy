@@ -115,7 +115,7 @@ function RoundManager({ slug, roundId, api }: { slug: string; roundId: string; a
           <Button
             type="button"
             variant="ghost"
-            className="size-11 shrink-0 px-0"
+            size="icon"
             aria-label="Dismiss message"
             onClick={() => {
               setError(null);

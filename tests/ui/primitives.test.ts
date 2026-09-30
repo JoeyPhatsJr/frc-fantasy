@@ -35,6 +35,13 @@ describe('Button', () => {
     expect(html).not.toContain('min-h-11');
   });
 
+  it('size icon is a square 44px button with no padding', () => {
+    const html = render(h(Button, { size: 'icon', 'aria-label': 'Move up' }, null));
+    expect(html).toContain('size-11');
+    expect(html).toContain('p-0');
+    expect(html).not.toContain('px-4');
+  });
+
   it('is disabled with a spinner and aria-busy while busy', () => {
     const html = render(h(Button, { busy: true }, 'Saving'));
     expect(html).toContain('disabled=""');
