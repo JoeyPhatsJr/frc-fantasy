@@ -3,9 +3,10 @@ import type { InvitePreview } from '@/lib/api/types';
 import { getRepo } from '@/lib/db';
 import type { LeagueRow } from '@/lib/db/types';
 import { normalizeInviteCode } from '@/lib/leagues/inviteCode';
+import { BAD_CODE_MESSAGE } from '@/lib/leagues/inviteMessages';
 import { MAX_PLAYERS } from '@/lib/leagues/membership';
 
-export const BAD_CODE_MESSAGE = "That invite code doesn't work — check with your commissioner.";
+export { BAD_CODE_MESSAGE } from '@/lib/leagues/inviteMessages';
 
 /** Uniform 404 for junk and unknown codes (spec §4.4, §4.8). */
 export async function leagueForCode(raw: string): Promise<LeagueRow> {
