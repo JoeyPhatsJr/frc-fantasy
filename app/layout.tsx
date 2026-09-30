@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Barlow, Barlow_Condensed } from 'next/font/google';
+import Link from 'next/link';
 import { ExternalLink } from '@/components/ui/icons';
 import './globals.css';
 
@@ -40,12 +41,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="flex min-h-dvh flex-col bg-bg font-body text-fg">
         <header className="sticky top-0 z-20 bg-primary text-on-primary shadow-md">
           <div className="mx-auto flex h-14 w-full max-w-2xl items-center px-4 md:max-w-3xl">
-            <div className="flex items-center gap-2">
+            <Link
+              href="/"
+              className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-on-primary"
+            >
               <Mark />
               <span className="font-display text-2xl font-bold uppercase leading-none tracking-wide">
                 FRC FANTASY
               </span>
-            </div>
+            </Link>
           </div>
         </header>
 
