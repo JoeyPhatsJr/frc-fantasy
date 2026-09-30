@@ -45,6 +45,23 @@
   --color-on-secondary: #0f1b2d;
   --color-ring: #6199ff;           /* focus */
 
+  /* Rank circles #2 and #3 (gold #1 is accent). Both carry on-accent text (≥ 4.5:1 in both themes). */
+  --color-silver: #c3ccd8;
+  --color-bronze: #d08c4f;
+
+  /* The standings' one orchestrated moment: rows fade up with a 40ms stagger (motion-safe only). */
+  --animate-fade-up: fade-up 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
   --font-display: var(--font-barlow-condensed), "Barlow Condensed", system-ui, sans-serif;
   --font-body: var(--font-barlow), "Barlow", system-ui, sans-serif;
 
@@ -107,6 +124,9 @@
     --color-secondary: #7c3aed;
     --color-on-secondary: #ffffff;
     --color-ring: #2563eb;
+
+    --color-silver: #aeb8c6;
+    --color-bronze: #c47f3f;
 
     --card-shadow: 0 1px 2px rgb(15 23 42 / 0.06), 0 8px 24px -12px rgb(37 99 235 / 0.25);
   }
