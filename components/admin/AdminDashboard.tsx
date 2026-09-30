@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { AddForm, PlayerRow, RenameLeague } from '@/components/admin/DashboardParts';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AddForm, AddRoundForm, PlayerRow, RenameLeague } from '@/components/admin/DashboardParts';
 import { AdminGate } from '@/components/admin/AdminGate';
 import { ScoringForm } from '@/components/admin/ScoringForm';
+import { usePolling } from '@/components/admin/usePolling';
 import { CopyButton } from '@/components/CopyButton';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Alert } from '@/components/ui/Alert';
@@ -11,7 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ChevronDown, Trash2 } from '@/components/ui/icons';
 import type { AdminApi } from '@/lib/admin/client';
-import type { AdminState } from '@/lib/api/types';
+import type { AdminState, EventLookup } from '@/lib/api/types';
 import { formatDateRange } from '@/lib/format';
 
 export function AdminDashboard({ slug }: { slug: string }) {
@@ -26,13 +27,20 @@ function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
   const [pending, setPending] = useState<string | null>(null);
   const busy = pending !== null;
 
+  /** Counts reloads, so a slow background poll can't overwrite the fresher state a change just loaded. */
+  const latestReload = useRef(0);
   const reload = useCallback(async () => {
-    setState(await api<AdminState>('/state'));
+    const n = ++latestReload.current;
+    const next = await api<AdminState>('/state');
+    if (n === latestReload.current) setState(next);
   }, [api]);
 
   useEffect(() => {
     reload().catch((err: unknown) => setError(err instanceof Error ? err.message : 'Something went wrong'));
   }, [reload]);
+
+  // Picks up changes from another device. Paused while a change runs; `run` reloads when it finishes.
+  usePolling(reload, 30_000, { paused: busy });
 
   /**
    * Runs one change, then reloads so the screen always shows what the server has.
@@ -57,6 +65,24 @@ function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
       return ok;
     },
     [reload],
+  );
+
+  /** Looks an event up on TBA without adding it. A look-up changes nothing, so there is no reload. */
+  const lookUpEvent = useCallback(
+    async (eventKey: string): Promise<EventLookup | null> => {
+      setPending('check-round');
+      setError(null);
+      setNotice(null);
+      try {
+        return await api<EventLookup>(`/events/${encodeURIComponent(eventKey.trim())}`);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Something went wrong');
+        return null;
+      } finally {
+        setPending(null);
+      }
+    },
+    [api],
   );
 
   if (!state) {
@@ -173,13 +199,11 @@ function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
               </li>
             ))}
           </ul>
-          <AddForm
-            label="Add a round by event key"
-            placeholder="2026parr"
-            maxLength={40}
-            button="Add round"
+          <AddRoundForm
             busy={busy}
+            checking={pending === 'check-round'}
             saving={pending === 'add-round'}
+            onCheck={lookUpEvent}
             onAdd={(eventKey) =>
               run('add-round', async () => {
                 const out = await api<{ round: { eventName: string; startDate: string; endDate: string } }>(

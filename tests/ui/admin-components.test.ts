@@ -2,6 +2,7 @@ import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { AdminGate } from '@/components/admin/AdminGate';
+import { AddRoundForm } from '@/components/admin/DashboardParts';
 import { ScoringForm } from '@/components/admin/ScoringForm';
 import { DEFAULT_SCORING } from '@/lib/scoring/config';
 
@@ -52,5 +53,24 @@ describe('ScoringForm', () => {
   it('starts from the given values', () => {
     expect(html).toContain('value="3"'); // qualWin
     expect(html).toContain('value="15"'); // eventWinner
+  });
+});
+
+describe('AddRoundForm', () => {
+  const html = render(
+    h(AddRoundForm, {
+      busy: false,
+      checking: false,
+      saving: false,
+      onCheck: async () => null,
+      onAdd: async () => true,
+    }),
+  );
+
+  it('starts with a labelled key box and a Check button, and no Add button until a check', () => {
+    expect(html).toContain('Add a round by event key');
+    expect(html).toContain('placeholder="2026parr"');
+    expect(html).toMatch(/<button[^>]*type="submit"[^>]*>Check<\/button>/);
+    expect(html).not.toContain('Add this round');
   });
 });

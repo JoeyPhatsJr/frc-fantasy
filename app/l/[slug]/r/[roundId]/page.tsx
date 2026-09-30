@@ -44,7 +44,7 @@ export default async function RoundPage({ params }: Props) {
 
   return (
     <main id="main" className="space-y-6">
-      {view.status === 'live' ? <AutoRefresh seconds={60} /> : null}
+      <AutoRefresh seconds={60} />
 
       <header className="space-y-3">
         <Button href={`/l/${league.slug}`} variant="ghost" className="-ml-3 max-w-full">

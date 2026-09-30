@@ -231,7 +231,7 @@ All pages must be usable one-handed on a phone at 360px width. No horizontal scr
 - **Rounds list**: each round with event name, dates, status badge (Setup / Drafting / Upcoming / Live / Awaiting final / Final — §7.8), and link to the round page.
 - If a round is Live, it is pinned at the top with its current leaderboard.
 - "Last updated X min ago" for live data; stale warning if the TBA fetch failed (§8).
-- Auto-refresh every 60 s while any round is Live and the tab is visible.
+- Auto-refresh every 60 s while the tab is visible.
 
 ### 5.3 `/l/{slug}/r/{roundId}` — Round page (public)
 
@@ -648,6 +648,7 @@ All admin endpoints require the `x-commissioner-key` header (403 otherwise). All
 | POST | `/api/l/{slug}/admin/players` | `{ name }` | 201 | 409 name exists |
 | PATCH | `/api/l/{slug}/admin/players/{id}` | `{ name }` | 200 | 409 name exists |
 | DELETE | `/api/l/{slug}/admin/players/{id}` | — | 204 | 409 player in use (§5.4) |
+| GET | `/api/l/{slug}/admin/events/{eventKey}` | — (look-up only; adds nothing) | 200 `{ found: false, eventKey }` or `{ found: true, eventKey, name, startDate, endDate, alreadyInLeague }` | 400 malformed key, 403, 503 TBA unreachable |
 | POST | `/api/l/{slug}/admin/rounds` | `{ eventKey }` | 201 (event validated on TBA) | 404 unknown event, 409 already in league |
 | GET | `/api/l/{slug}/admin/rounds/{id}` | — | 200 round + pool + picks + adjustments | 403, 404 |
 | PATCH | `/api/l/{slug}/admin/rounds/{id}` | `{ rosterSize?, draftOrder?, scoring?, finalized? }` | 200 | 409 draft order/roster size changed with picks present; 400 `P × R > T` |
@@ -670,7 +671,7 @@ Public pages read directly from the database in server components; no public API
 1. Server component loads round, players, picks, adjustments from Supabase.
 2. In parallel, `getTba` for teams, matches, rankings, alliances, awards, oprs, with `windowMs = cacheWindowFor(round, now)`.
 3. `scoreEvent` → `scoreRound` → render.
-4. Client auto-refresh (§5.2) calls `router.refresh()` every 60 s while Live and visible.
+4. Client auto-refresh (§5.2) calls `router.refresh()` every 60 s while the tab is visible.
 
 The league page does the same for every round (season standings). Finalized rounds use the 24 h window, so a league page view costs at most 6 TBA requests per non-final round, and usually 6 × 304s.
 

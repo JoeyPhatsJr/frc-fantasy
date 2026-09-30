@@ -26,7 +26,7 @@ export default async function LeaguePage({ params }: Props) {
 
   return (
     <main id="main" className="space-y-6">
-      {page.anyLive ? <AutoRefresh seconds={60} /> : null}
+      <AutoRefresh seconds={60} />
 
       <header className="space-y-3">
         <h1 className="break-words font-display text-4xl font-bold uppercase leading-tight tracking-wide text-fg">
