@@ -4,9 +4,11 @@ import { AutoRefresh } from '@/components/AutoRefresh';
 import { DateBlock } from '@/components/DateBlock';
 import { Freshness } from '@/components/Freshness';
 import { Leaderboard } from '@/components/Leaderboard';
+import { PrivateLeague } from '@/components/PrivateLeague';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { leagueAccess } from '@/lib/auth/roles';
 import { formatDateRange } from '@/lib/format';
 import { loadLeaguePage } from '@/lib/views/league';
 
@@ -17,6 +19,10 @@ type Props = { params: Promise<{ slug: string }> };
 
 export default async function LeaguePage({ params }: Props) {
   const { slug } = await params;
+  const access = await leagueAccess(slug);
+  if (!access) notFound();
+  if (!access.canView) return <PrivateLeague signedIn={access.user !== null} next={`/l/${slug}`} />;
+
   const now = new Date();
   const page = await loadLeaguePage(slug, now);
   if (!page) notFound();

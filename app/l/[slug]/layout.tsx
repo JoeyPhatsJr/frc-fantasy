@@ -12,6 +12,7 @@ export const dynamic = 'force-dynamic';
 type Props = { children: ReactNode; params: Promise<{ slug: string }> };
 
 type Shell = {
+  canView: boolean;
   league: { slug: string; name: string };
   anyLive: boolean;
   targetRoundId: string | null;
@@ -23,6 +24,10 @@ async function loadShell(slug: string, now: Date): Promise<Shell | null> {
   const access = await leagueAccess(slug);
   if (!access) return null;
   const { league } = access;
+  // Non-members get no league data at all: the page renders the private card instead.
+  if (!access.canView) {
+    return { canView: false, league: { slug: league.slug, name: '' }, anyLive: false, targetRoundId: null, isCommissioner: false };
+  }
   const repo = getRepo();
   const rounds = await repo.listRounds(league.id);
   const picks = await repo.listPicksForRounds(rounds.map((r) => r.id));
@@ -33,6 +38,7 @@ async function loadShell(slug: string, now: Date): Promise<Shell | null> {
   }));
 
   return {
+    canView: true,
     // Only { slug, name } leaves this function.
     league: { slug: league.slug, name: league.name },
     anyLive: statuses.some((r) => r.status === 'live'),
@@ -54,6 +60,7 @@ export default async function LeagueLayout({ children, params }: Props) {
     return children;
   }
   if (!shell) notFound();
+  if (!shell.canView) return children;
 
   return (
     <>
