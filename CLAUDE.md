@@ -12,7 +12,7 @@ The design spec: `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md`. Read
 
 - v1 is implemented on branch `v1` (Tasks 1–27 of `docs/superpowers/plans/2026-09-29-frc-fantasy-v1*.md`), reviewed task-by-task, with a design layer from `design-system/frc-fantasy/`.
 - Local dev works against the real Supabase project; demo league seeded (`scripts/seed-demo.ts`).
-- Deployed: https://frc-fantasy-6yo3.vercel.app (PR #1 merged to main 2026-09-30). Next: create the real league on production, run the caching proof, family replay (README "Deploy checklist" steps 4–6).
+- Deployed: https://frc-fantasy-6yo3.vercel.app (PR #1 merged 2026-09-30). Real league created (testleague-o3alja) and the caching proof passed. Next: family replay dry run on 2025parr, then scoring tuning. v2 idea parked (see memory: v2-league-formats-idea).
 
 ## Locked decisions (don't re-litigate)
 
