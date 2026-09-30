@@ -12,7 +12,7 @@ type Ctx = { params: Promise<{ slug: string }> };
 export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug } = await ctx.params;
-    const { league } = await requireLeagueRole(slug, 'commissioner');
+    const { league, player } = await requireLeagueRole(slug, 'commissioner');
     const repo = getRepo();
     const now = new Date();
 
@@ -24,6 +24,7 @@ export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
     const picks = await repo.listPicksForRounds(rounds.map((r) => r.id));
 
     const state: AdminState = {
+      me: player.id,
       league: {
         slug: league.slug,
         name: league.name,

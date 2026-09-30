@@ -1,8 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AddForm, AddRoundForm, EventRow, PlayerRow, RenameLeague } from '@/components/admin/DashboardParts';
+import { AddRoundForm, EventRow, RenameLeague } from '@/components/admin/DashboardParts';
 import { AdminGate } from '@/components/admin/AdminGate';
+import { DangerZone } from '@/components/admin/DangerZone';
+import { MembersCard } from '@/components/admin/MembersCard';
 import { ScoringForm } from '@/components/admin/ScoringForm';
 import { usePolling } from '@/components/admin/usePolling';
 import { CopyButton } from '@/components/CopyButton';
@@ -124,34 +126,18 @@ function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
       />
 
       <section>
-        <Card title="Players" className="space-y-3">
-          {state.players.length === 0 ? <p className="text-[15px] text-fg-muted">No players yet.</p> : null}
-          <ul className="divide-y divide-border">
-            {state.players.map((player) => (
-              <PlayerRow
-                key={`${player.id}:${player.name}`}
-                player={player}
-                busy={busy}
-                pending={
-                  pending === `rename:${player.id}` ? 'rename' : pending === `remove:${player.id}` ? 'remove' : null
-                }
-                onRename={(name) =>
-                  run(`rename:${player.id}`, () => api(`/players/${player.id}`, { method: 'PATCH', body: { name } }))
-                }
-                onRemove={() => run(`remove:${player.id}`, () => api(`/players/${player.id}`, { method: 'DELETE' }))}
-              />
-            ))}
-          </ul>
-          <AddForm
-            label="Add a player"
-            placeholder="Name"
-            maxLength={40}
-            button="Add player"
-            busy={busy}
-            saving={pending === 'add-player'}
-            onAdd={(name) => run('add-player', () => api('/players', { method: 'POST', body: { name } }))}
-          />
-        </Card>
+        <MembersCard
+          inviteLink={typeof window === 'undefined' ? '' : `${window.location.origin}/join/${state.league.inviteCode}`}
+          league={state.league}
+          players={state.players}
+          me={state.me}
+          busy={busy}
+          pending={pending}
+          onReset={() => run('reset', () => api('/invite', { method: 'POST' }), 'New invite code made. The old one no longer works.')}
+          onVisibility={(visibility) => run('visibility', () => api('/league', { method: 'PATCH', body: { visibility } }))}
+          onRole={(id, role) => run(`role:${id}`, () => api(`/players/${id}`, { method: 'PATCH', body: { role } }))}
+          onRemove={(p) => run(`remove:${p.id}`, () => api(`/players/${p.id}`, { method: 'DELETE' }), `${p.name} was removed.`)}
+        />
       </section>
 
       <section>
@@ -244,6 +230,19 @@ function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
             </div>
           </details>
         </Card>
+      </section>
+
+      <section>
+        <DangerZone
+          leagueName={state.league.name}
+          busy={busy}
+          onDelete={(confirmName) =>
+            run('delete-league', async () => {
+              await api('/league', { method: 'DELETE', body: { confirmName } });
+              window.location.assign('/leagues');
+            })
+          }
+        />
       </section>
     </main>
   );

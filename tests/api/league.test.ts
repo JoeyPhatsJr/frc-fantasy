@@ -199,6 +199,7 @@ describe('GET /admin/state', () => {
       slug: league.slug, name: 'Habich Fam', homeTeamNumber: 5181, defaultScoring: DEFAULT_SCORING,
       inviteCode: league.inviteCode, visibility: 'link',
     });
+    expect(body.me).toBe(commissioner.id);
     expect(body.players).toEqual([
       { id: commissioner.id, name: 'Commish', inUse: false, role: 'commissioner', linked: true },
       { id: mom.id, name: 'Mom', inUse: true, role: 'player', linked: false },

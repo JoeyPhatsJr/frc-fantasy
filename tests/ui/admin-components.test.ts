@@ -2,6 +2,8 @@ import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { AdminGateView } from '@/components/admin/AdminGate';
+import { DangerZone } from '@/components/admin/DangerZone';
+import { MembersCard, removeConfirmText } from '@/components/admin/MembersCard';
 import { AddRoundForm } from '@/components/admin/DashboardParts';
 import { bannerParts, pickFontSize } from '@/components/admin/DraftEntry';
 import { ScoringForm } from '@/components/admin/ScoringForm';
@@ -119,5 +121,55 @@ describe('pickFontSize (draft banner stays on one line)', () => {
     expect(pickFontSize(9, 20)).toBe('min(56px, 21.7cqw)');
     expect(pickFontSize(10, 20)).toBe('min(56px, 19.6cqw)');
     expect(pickFontSize(100, 120)).toBe('min(56px, 16.4cqw)');
+  });
+});
+
+const members = [
+  { id: 'p1', name: 'Joey', inUse: true, role: 'commissioner' as const, linked: true },
+  { id: 'p2', name: 'Mom', inUse: true, role: 'player' as const, linked: true },
+  { id: 'p3', name: 'Grandpa', inUse: true, role: 'player' as const, linked: false },
+];
+const league = { slug: 'fam', name: 'Habich Fam', homeTeamNumber: 5181, defaultScoring: DEFAULT_SCORING, inviteCode: 'ABC234', visibility: 'link' as const };
+const noop = () => {};
+
+describe('MembersCard (spec §4.6 admin additions)', () => {
+  const html = render(
+    h(MembersCard, {
+      inviteLink: 'https://x.test/join/ABC234', league, players: members, me: 'p1', busy: false, pending: null,
+      onReset: noop, onVisibility: noop, onRole: noop, onRemove: noop,
+    }),
+  );
+  it('shows the invite code, copy link and reset', () => {
+    expect(html).toContain('ABC234');
+    expect(html).toContain('Copy invite link');
+    expect(html).toContain('Reset code');
+  });
+  it('shows roles, "(you)", and former members as "(left)" without a role toggle', () => {
+    expect(html).toContain('Joey (you)');
+    expect(html).toContain('Grandpa (left)');
+    expect(html).toContain('Make commissioner'); // for Mom
+    expect(html).toContain('Make player'); // for Joey
+    expect(html.match(/Make commissioner/g)).toHaveLength(1); // not for Grandpa
+  });
+  it('shows the visibility choice', () => {
+    expect(html).toContain('Anyone with the link');
+    expect(html).toContain('Members only');
+  });
+});
+
+describe('removeConfirmText', () => {
+  it('explains that someone with history stays in past standings', () => {
+    expect(removeConfirmText(members[1])).toBe(
+      'Remove Mom? They have picks or are in a draft order, so they stay in past standings as "Mom (left)".',
+    );
+    expect(removeConfirmText({ ...members[1], inUse: false })).toBe('Remove Mom from the league?');
+  });
+});
+
+describe('DangerZone', () => {
+  it('asks for the league name and starts disabled', () => {
+    const out = render(h(DangerZone, { leagueName: 'Habich Fam', busy: false, onDelete: noop }));
+    expect(out).toContain('Type Habich Fam to confirm');
+    expect(out).toMatch(/<button[^>]*disabled=""[^>]*>[^<]*Delete league/);
   });
 });

@@ -39,6 +39,8 @@ export type AdminState = {
   league: AdminLeague;
   players: AdminPlayer[];
   rounds: AdminRoundSummary[];
+  /** The viewer's own player id, for "(you)". */
+  me: string;
 };
 
 export type AdminRoundDetail = {
