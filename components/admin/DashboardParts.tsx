@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { INPUT } from '@/components/admin/AdminGate';
+import { DateBlock } from '@/components/DateBlock';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Plus, Trash2 } from '@/components/ui/icons';
@@ -73,9 +74,9 @@ export function PlayerRow({
 }) {
   const [value, setValue] = useState(player.name);
   return (
-    <li className="space-y-2 rounded-xl border border-border bg-surface p-3">
+    <li className="space-y-1 py-2">
       <form
-        className="flex flex-col gap-2 sm:flex-row"
+        className="flex items-center gap-2"
         onSubmit={(e) => {
           e.preventDefault();
           onRename(value);
@@ -87,37 +88,66 @@ export function PlayerRow({
           maxLength={40}
           required
           aria-label={`Name for ${player.name}`}
-          className={`${INPUT} w-full sm:flex-1`}
+          className={`${INPUT} flex-1`}
         />
-        <div className="flex gap-2">
-          <Button
-            type="submit"
-            variant="secondary"
-            className="flex-1 sm:flex-none"
-            busy={pending === 'rename'}
-            disabled={busy || value.trim() === '' || value.trim() === player.name}
-          >
-            Rename
-          </Button>
-          <Button
-            type="button"
-            variant="danger"
-            className="flex-1 sm:flex-none"
-            busy={pending === 'remove'}
-            disabled={busy || player.inUse}
-            onClick={onRemove}
-          >
-            {pending === 'remove' ? null : <Trash2 className="size-4 shrink-0" />}
-            Remove
-          </Button>
-        </div>
+        <Button
+          type="submit"
+          variant="secondary"
+          className="shrink-0"
+          busy={pending === 'rename'}
+          disabled={busy || value.trim() === '' || value.trim() === player.name}
+        >
+          Rename
+        </Button>
+        <Button
+          type="button"
+          variant="danger"
+          size="icon"
+          busy={pending === 'remove'}
+          disabled={busy || player.inUse}
+          aria-label={`Remove ${player.name}`}
+          onClick={onRemove}
+        >
+          {pending === 'remove' ? null : <Trash2 className="size-5" />}
+        </Button>
       </form>
       {player.inUse ? (
-        <p className="text-xs text-fg-muted">
+        <p className="text-[13px] leading-[18px] text-fg-muted">
           Can&apos;t be removed: this player is in a draft order or has picks or adjustments. Renaming is fine.
         </p>
       ) : null}
     </li>
+  );
+}
+
+/**
+ * The date-block row the public standings page uses for rounds: a calendar tile, the event name,
+ * then muted 13px lines (date range, event key...). `trailing` sits at the right (a status badge).
+ */
+export function EventRow({
+  startDate,
+  title,
+  lines,
+  trailing,
+}: {
+  startDate: string;
+  title: ReactNode;
+  lines: ReactNode[];
+  trailing?: ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <DateBlock date={startDate} />
+      <div className="min-w-0 flex-1">
+        <p className="break-words text-[17px] font-semibold leading-6 text-fg">{title}</p>
+        {lines.map((line, i) => (
+          <p key={i} className="break-words text-[13px] leading-[18px] text-fg-muted tabular-nums">
+            {line}
+          </p>
+        ))}
+      </div>
+      {trailing}
+    </div>
   );
 }
 
@@ -224,13 +254,16 @@ export function AddRoundForm({
       </form>
       <div aria-live="polite">
         {preview?.found ? (
-          <div className="space-y-3 rounded-xl border border-border bg-surface-2 p-3">
-            <p className="break-words text-sm font-semibold text-fg">
-              Found: {preview.name} · {formatDateRange(preview.startDate, preview.endDate)}
-            </p>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="space-y-3 rounded-xl border border-border p-3">
+            <EventRow
+              startDate={preview.startDate}
+              title={`Found: ${preview.name}`}
+              lines={[formatDateRange(preview.startDate, preview.endDate), preview.eventKey]}
+            />
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pl-15">
               <Button
                 type="button"
+                variant="accent"
                 busy={saving}
                 disabled={busy || preview.alreadyInLeague}
                 onClick={async () => {

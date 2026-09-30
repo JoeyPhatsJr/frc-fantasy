@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { CommissionerTag } from '@/components/CommissionerTag';
 
 export type LeagueBarProps = {
   slug: string;
@@ -26,6 +27,7 @@ export function LeagueBar({ slug, name, anyLive, back }: LeagueBarProps) {
           {name}
         </span>
       </Link>
+      <CommissionerTag slug={slug} />
       {anyLive ? (
         <span className="ml-auto flex shrink-0 items-center pl-2">
           <span
