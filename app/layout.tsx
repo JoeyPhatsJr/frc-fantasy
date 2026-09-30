@@ -1,8 +1,12 @@
 import type { Metadata, Viewport } from 'next';
 import { Barlow, Barlow_Condensed } from 'next/font/google';
 import Link from 'next/link';
+import { AppTabBar } from '@/components/AppTabBar';
+import { HeaderAccount, type HeaderUser } from '@/components/HeaderAccount';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { ExternalLink } from '@/components/ui/icons';
+import { getUser } from '@/lib/auth/session';
+import { getRepo } from '@/lib/db';
 import { THEME_BOOT_SCRIPT } from '@/lib/theme';
 import './globals.css';
 
@@ -38,7 +42,20 @@ function Mark() {
   );
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+async function loadHeaderUser(): Promise<HeaderUser> {
+  try {
+    const user = await getUser();
+    if (!user) return null;
+    const profile = await getRepo().getProfile(user.id);
+    return { displayName: profile?.displayName ?? 'Player', avatarUrl: profile?.avatarUrl ?? null };
+  } catch (err) {
+    console.error(err); // a sleeping database or missing env var: render signed-out rather than a blank page
+    return null;
+  }
+}
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const headerUser = await loadHeaderUser();
   return (
     // data-theme is set by the boot script before React hydrates, so the attribute legitimately
     // differs from the server markup.
@@ -58,22 +75,29 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 FRC FANTASY
               </span>
             </Link>
-            <ThemeToggle />
+            <div className="flex items-center gap-1">
+              <ThemeToggle />
+              <HeaderAccount user={headerUser} />
+            </div>
           </div>
         </header>
 
         <div className="mx-auto w-full max-w-2xl flex-1 px-4 py-6 pb-24 md:max-w-3xl md:pb-8">{children}</div>
+        {headerUser ? <AppTabBar /> : null}
 
         <footer className="mx-auto w-full max-w-2xl px-4 pb-6 text-center md:max-w-3xl">
-          <a
-            href="https://www.thebluealliance.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-sm text-fg-muted underline-offset-4 motion-safe:transition-colors duration-200 hover:text-fg hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            Scores from The Blue Alliance
-            <ExternalLink className="size-3.5" />
-          </a>
+          <p className="text-sm text-fg-muted">
+            Made by students on FRC Team 5181 ·{' '}
+            <a
+              href="https://www.thebluealliance.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-11 cursor-pointer items-center gap-1 underline-offset-4 hover:text-fg hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Data from The Blue Alliance
+              <ExternalLink className="size-3.5" />
+            </a>
+          </p>
         </footer>
       </body>
     </html>

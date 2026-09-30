@@ -126,3 +126,53 @@ describe('theme boot script', () => {
     expect(boot(null, true, true)).toBe('light');
   });
 });
+
+import { AppTabBarView } from '@/components/AppTabBar';
+import { HeaderAccountView } from '@/components/HeaderAccount';
+import { appTab, showAppTabBar } from '@/lib/nav';
+
+describe('appTab / showAppTabBar (spec §4.6)', () => {
+  it('maps paths to the Me and Leagues tabs', () => {
+    expect(appTab('/')).toBe('me');
+    expect(appTab('/me/settings')).toBe('me');
+    expect(appTab('/leagues')).toBe('leagues');
+    expect(appTab('/leagues/new')).toBe('leagues');
+    expect(appTab('/join/ABC234')).toBe('leagues');
+    expect(appTab('/l/fam-abc234')).toBeNull();
+  });
+  it('hides the app bar on league pages, which have their own bottom bar', () => {
+    expect(showAppTabBar('/')).toBe(true);
+    expect(showAppTabBar('/leagues')).toBe(true);
+    expect(showAppTabBar('/l/fam-abc234')).toBe(false);
+    expect(showAppTabBar('/l/fam-abc234/admin')).toBe(false);
+  });
+});
+
+describe('AppTabBarView', () => {
+  it('renders Me and Leagues with the active one marked', () => {
+    const html = render(h(AppTabBarView, { pathname: '/leagues' }));
+    expect(html).toContain('href="/"');
+    expect(html).toContain('href="/leagues"');
+    // React renders aria-current before href, so match the anchor tag in either attribute order.
+    const leaguesTag = html.match(/<a [^>]*href="\/leagues"[^>]*>/)?.[0] ?? '';
+    expect(leaguesTag).toContain('aria-current="page"');
+    expect(html.match(/<a [^>]*href="\/"[^>]*>/)?.[0]).not.toContain('aria-current');
+  });
+  it('renders nothing on league pages', () => {
+    expect(render(h(AppTabBarView, { pathname: '/l/x' }))).toBe('');
+  });
+});
+
+describe('HeaderAccountView', () => {
+  it('signed out: a Sign in link that comes back to this page', () => {
+    const html = render(h(HeaderAccountView, { user: null, pathname: '/join/ABC234' }));
+    expect(html).toContain('Sign in');
+    expect(html).toContain('href="/?next=%2Fjoin%2FABC234"');
+  });
+  it('signed in: an account link to settings with the initial when there is no avatar', () => {
+    const html = render(h(HeaderAccountView, { user: { displayName: 'Joey', avatarUrl: null }, pathname: '/' }));
+    expect(html).toContain('href="/me/settings"');
+    expect(html).toContain('aria-label="Account settings for Joey"');
+    expect(html).toContain('>J<');
+  });
+});
