@@ -22,11 +22,11 @@ const SUBHEAD = 'font-display text-[17px] font-bold leading-6 text-fg';
 const CELL =
   'relative flex min-h-14 w-full min-w-0 cursor-pointer select-none flex-col items-center justify-center gap-1 ' +
   'rounded-xl border border-border bg-surface px-2 py-2 motion-safe:transition duration-150 ' +
-  'hover:bg-surface-2 active:ring-2 active:ring-accent motion-safe:active:scale-[0.97] ' +
+  'hover:bg-surface-2 active:ring-2 active:ring-accent-strong motion-safe:active:scale-[0.97] ' +
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ' +
   'disabled:cursor-not-allowed';
 const CELL_IDLE = 'disabled:opacity-50';
-const CELL_SAVING = 'ring-2 ring-accent';
+const CELL_SAVING = 'ring-2 ring-accent-strong';
 
 export type Banner =
   | { kind: 'no-order' }
@@ -53,10 +53,21 @@ export function bannerParts(
   };
 }
 
+/**
+ * Font size for "Pick N of M": 56px when it fits, otherwise shrunk to the banner's width so it stays on
+ * one line. Barlow Condensed bold measures ~4.4em for "Pick 9 of 20", plus ~0.5em per extra character
+ * (0.2em slack on top). cqw is 1% of the banner's content width; the banner is an inline-size container.
+ */
+export function pickFontSize(pick: number, total: number): string {
+  const chars = `Pick ${pick} of ${total}`.length;
+  const ems = 4.6 + 0.5 * Math.max(0, chars - 12);
+  return `min(56px, ${(100 / ems).toFixed(1)}cqw)`;
+}
+
 function DraftBanner({ banner, text }: { banner: Banner; text: string }) {
   const tone = banner.kind === 'complete' ? 'bg-success text-on-success' : 'bg-primary-fill text-on-primary';
   return (
-    <div className={`rounded-card px-4 py-4 ${tone}`}>
+    <div className={`@container rounded-card px-4 py-4 ${tone}`}>
       {/* Screen readers hear the one-line banner; the big layout below is for eyes. */}
       <p aria-live="polite" className="sr-only">
         {text}
@@ -76,8 +87,11 @@ function DraftBanner({ banner, text }: { banner: Banner; text: string }) {
           </>
         ) : (
           <>
-            {/* Two no-wrap chunks, so a long count wraps as "Pick 17" / "of 20", never mid-phrase. */}
-            <p className="flex flex-wrap gap-x-3 font-display text-[56px] font-bold leading-[56px] tabular-nums">
+            {/* Sized to fit one line; the two no-wrap chunks are a fallback so it never wraps mid-phrase. */}
+            <p
+              className="flex flex-wrap gap-x-3 font-display font-bold leading-none tabular-nums"
+              style={{ fontSize: pickFontSize(banner.pick, banner.total) }}
+            >
               <span className="whitespace-nowrap">Pick {banner.pick}</span>
               <span className="whitespace-nowrap">of {banner.total}</span>
             </p>

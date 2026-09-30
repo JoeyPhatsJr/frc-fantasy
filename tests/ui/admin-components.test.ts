@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { AdminGate } from '@/components/admin/AdminGate';
 import { AddRoundForm } from '@/components/admin/DashboardParts';
-import { bannerParts } from '@/components/admin/DraftEntry';
+import { bannerParts, pickFontSize } from '@/components/admin/DraftEntry';
 import { ScoringForm } from '@/components/admin/ScoringForm';
 import { draftBanner } from '@/lib/draft';
 import { DEFAULT_SCORING } from '@/lib/scoring/config';
@@ -100,5 +100,13 @@ describe('bannerParts (draft-night banner)', () => {
 
   it('asks for a draft order when there is none', () => {
     expect(bannerParts(0, [], 2, names)).toEqual({ kind: 'no-order' });
+  });
+});
+
+describe('pickFontSize (draft banner stays on one line)', () => {
+  it('shrinks more as the "Pick N of M" label gets longer, capped at 56px', () => {
+    expect(pickFontSize(9, 20)).toBe('min(56px, 21.7cqw)');
+    expect(pickFontSize(10, 20)).toBe('min(56px, 19.6cqw)');
+    expect(pickFontSize(100, 120)).toBe('min(56px, 16.4cqw)');
   });
 });

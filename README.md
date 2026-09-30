@@ -79,27 +79,27 @@ It prints a new admin link. The old one stops working.
 Skip any item that is already done.
 
 1. **Put the repo on GitHub.**
-   - [ ] `gh auth status || gh auth login`
-   - [ ] `gh repo create frc-fantasy --private --source=. --remote=origin --push`
-   - [ ] Confirm `.env.local` is not in the file list on GitHub (`gh repo view --web`).
+   - [x] `gh auth status || gh auth login`
+   - [x] `gh repo create frc-fantasy --private --source=. --remote=origin --push`
+   - [x] Confirm `.env.local` is not in the file list on GitHub (`gh repo view --web`).
 2. **Deploy to Vercel.**
-   - [ ] At `https://vercel.com/new`, import the `frc-fantasy` repo. Framework preset: Next.js. Leave build
+   - [x] At `https://vercel.com/new`, import the `frc-fantasy` repo. Framework preset: Next.js. Leave build
      settings alone.
-   - [ ] Under Environment Variables, add `TBA_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and
+   - [x] Under Environment Variables, add `TBA_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and
      `CREATE_LEAGUE_PASSCODE` (same values as `.env.local`).
-   - [ ] Press Deploy. Expect a green build and a URL like `https://frc-fantasy-xxxx.vercel.app`.
-   - [ ] Open the URL. Expect the home page.
+   - [x] Press Deploy. Expect a green build and a URL like `https://frc-fantasy-xxxx.vercel.app`.
+   - [x] Open the URL. Expect the home page.
 3. **Create the real league on production.**
-   - [ ] On the production home page, create the league (for example "Habich Fam") with the passcode.
-   - [ ] Save the admin link in a password manager or private note. Copy the public link too.
+   - [x] On the production home page, create the league (for example "Habich Fam") with the passcode.
+   - [x] Save the admin link in a password manager or private note. Copy the public link too.
    - [ ] In the admin page, add the family as players and add round `2025parr` for the replay.
 4. **Prove nothing is cached by Next.js (spec section 9.2).**
-   - [ ] Open the public round page for `2025parr` on your phone. Note a player's total.
-   - [ ] On your laptop, in the round admin, add a player adjustment of +100 with the reason "cache test".
-   - [ ] Reload the phone. The total should be 100 higher within a second or two, with no redeploy. If not,
+   - [x] Open the public round page for `2025parr` on your phone. Note a player's total.
+   - [x] On your laptop, in the round admin, add a player adjustment of +100 with the reason "cache test".
+   - [x] Reload the phone. The total should be 100 higher within a second or two, with no redeploy. If not,
      stop: something is caching. Check that the page exports `dynamic = 'force-dynamic'` and that no
      `fetch` lost its `cache: 'no-store'`.
-   - [ ] Delete the "cache test" adjustment and reload. The total should be back.
+   - [x] Delete the "cache test" adjustment and reload. The total should be back.
 
 ## Before every event
 
