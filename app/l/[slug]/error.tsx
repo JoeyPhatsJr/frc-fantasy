@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { startTransition, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { RefreshCw, TriangleAlert } from '@/components/ui/icons';
@@ -8,9 +9,20 @@ import { RefreshCw, TriangleAlert } from '@/components/ui/icons';
 // In production Next.js hides the real error message from the browser, so every failure gets this
 // one friendly page; by far the most likely cause is the paused Supabase database (spec §8.2).
 export default function LeagueError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  const router = useRouter();
+
   useEffect(() => {
     console.error(error);
   }, [error]);
+
+  // reset() alone only re-renders on the client; refresh() refetches the server page too, so retrying
+  // after the database wakes up actually loads fresh data.
+  function retry() {
+    startTransition(() => {
+      router.refresh();
+      reset();
+    });
+  }
 
   return (
     <main id="main" className="space-y-6">
@@ -24,7 +36,7 @@ export default function LeagueError({ error, reset }: { error: Error & { digest?
           If you are the commissioner: open the Supabase dashboard and press &ldquo;Restore project&rdquo;, wait
           a minute, then try again.
         </p>
-        <Button type="button" onClick={reset}>
+        <Button type="button" onClick={retry}>
           <RefreshCw className="size-4 shrink-0" />
           Try again
         </Button>
