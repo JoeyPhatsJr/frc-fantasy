@@ -648,6 +648,7 @@ All admin endpoints require the `x-commissioner-key` header (403 otherwise). All
 | POST | `/api/l/{slug}/admin/players` | `{ name }` | 201 | 409 name exists |
 | PATCH | `/api/l/{slug}/admin/players/{id}` | `{ name }` | 200 | 409 name exists |
 | DELETE | `/api/l/{slug}/admin/players/{id}` | — | 204 | 409 player in use (§5.4) |
+| GET | `/api/l/{slug}/admin/events/{eventKey}` | — (look-up only; adds nothing) | 200 `{ found: false, eventKey }` or `{ found: true, eventKey, name, startDate, endDate, alreadyInLeague }` | 400 malformed key, 403, 503 TBA unreachable |
 | POST | `/api/l/{slug}/admin/rounds` | `{ eventKey }` | 201 (event validated on TBA) | 404 unknown event, 409 already in league |
 | GET | `/api/l/{slug}/admin/rounds/{id}` | — | 200 round + pool + picks + adjustments | 403, 404 |
 | PATCH | `/api/l/{slug}/admin/rounds/{id}` | `{ rosterSize?, draftOrder?, scoring?, finalized? }` | 200 | 409 draft order/roster size changed with picks present; 400 `P × R > T` |

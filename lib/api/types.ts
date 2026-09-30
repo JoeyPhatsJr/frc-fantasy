@@ -67,3 +67,16 @@ export type AdminRoundDetail = {
   /** Largest roster size the pool allows for the current draft order, capped at 10. null with no drafters. */
   maxRosterSize: number | null;
 };
+
+/** GET /admin/events/{eventKey}: a look-up only, so the commissioner can check the event before adding it. */
+export type EventLookup =
+  | { found: false; eventKey: string }
+  | {
+      found: true;
+      eventKey: string;
+      name: string;
+      startDate: string;
+      endDate: string;
+      /** True when this league already has a round for the event (adding it again would answer 409). */
+      alreadyInLeague: boolean;
+    };

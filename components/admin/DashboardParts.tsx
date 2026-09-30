@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Plus, Trash2 } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
-import type { AdminPlayer } from '@/lib/api/types';
+import type { AdminPlayer, EventLookup } from '@/lib/api/types';
+import { formatDateRange } from '@/lib/format';
 
 // Pieces of the commissioner dashboard that hold their own text-box state.
 // The dashboard gives RenameLeague and PlayerRow a `key` that includes the name: when a rename succeeds and
@@ -163,5 +164,96 @@ export function AddForm({
         {button}
       </Button>
     </form>
+  );
+}
+
+/**
+ * "Add a round by event key": Check looks the event up on TBA first and shows its name and dates
+ * (spec §5.4), and only then offers "Add this round". Typing a different key clears the preview.
+ */
+export function AddRoundForm({
+  busy,
+  checking,
+  saving,
+  onCheck,
+  onAdd,
+}: {
+  busy: boolean;
+  checking: boolean;
+  saving: boolean;
+  /** Resolves to the look-up, or null when it failed (the dashboard shows the error). */
+  onCheck: (eventKey: string) => Promise<EventLookup | null>;
+  /** Resolves to true when the round was added; the box and preview are cleared only then. */
+  onAdd: (eventKey: string) => Promise<boolean>;
+}) {
+  const [value, setValue] = useState('');
+  const [preview, setPreview] = useState<EventLookup | null>(null);
+  return (
+    <div className="space-y-3">
+      <form
+        className="flex items-end gap-2"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setPreview(null);
+          setPreview(await onCheck(value));
+        }}
+      >
+        <Input
+          label="Add a round by event key"
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setPreview(null);
+          }}
+          maxLength={40}
+          required
+          placeholder="2026parr"
+          autoCapitalize="none"
+          autoCorrect="off"
+          className="min-w-0 flex-1"
+        />
+        <Button
+          type="submit"
+          variant="secondary"
+          busy={checking}
+          disabled={busy || value.trim() === ''}
+          className="shrink-0"
+        >
+          Check
+        </Button>
+      </form>
+      <div aria-live="polite">
+        {preview?.found ? (
+          <div className="space-y-3 rounded-xl border border-border bg-surface-2 p-3">
+            <p className="break-words text-sm font-semibold text-fg">
+              Found: {preview.name} · {formatDateRange(preview.startDate, preview.endDate)}
+            </p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <Button
+                type="button"
+                busy={saving}
+                disabled={busy || preview.alreadyInLeague}
+                onClick={async () => {
+                  if (await onAdd(preview.eventKey)) {
+                    setValue('');
+                    setPreview(null);
+                  }
+                }}
+              >
+                {saving ? null : <Plus className="size-4 shrink-0" />}
+                Add this round
+              </Button>
+              {preview.alreadyInLeague ? (
+                <p className="text-sm font-medium text-fg-muted">Already in this league</p>
+              ) : null}
+            </div>
+          </div>
+        ) : preview ? (
+          <p className="rounded-xl border border-border bg-surface-2 p-3 text-sm font-medium text-fg">
+            Not on The Blue Alliance yet — try again in a few days.
+          </p>
+        ) : null}
+      </div>
+    </div>
   );
 }
