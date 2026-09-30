@@ -27,6 +27,7 @@ const CONSTRAINT_MESSAGES: Record<string, string> = {
   picks_round_team_key: 'That team was just taken',
   picks_round_pick_number_key: 'Draft changed in another tab — refresh',
   players_league_name_ci: "There's already a player with that name",
+  players_league_user: "You're already in this league",
   rounds_league_event_key: 'That event is already in this league',
 };
 

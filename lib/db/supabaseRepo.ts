@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { generateInviteCode } from '@/lib/leagues/inviteCode';
 import { DbUnavailableError, UniqueViolation, type Repo } from '@/lib/db/repo';
 import type {
   AdjustmentRow,
@@ -6,12 +7,21 @@ import type {
   LeagueRow,
   PickRow,
   PlayerRow,
+  ProfileRow,
   RoundRow,
 } from '@/lib/db/types';
 
 // Database rows arrive in snake_case. These mappers are the only place that knows that.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Raw = Record<string, any>;
+
+const toProfile = (r: Raw): ProfileRow => ({
+  id: r.id,
+  displayName: r.display_name,
+  avatarUrl: r.avatar_url ?? null,
+  frcTeam: r.frc_team ?? null,
+  createdAt: r.created_at,
+});
 
 const toLeague = (r: Raw): LeagueRow => ({
   id: r.id,
@@ -172,6 +182,34 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
     async deleteLeague(id) {
       await run(db.from('leagues').delete().eq('id', id));
     },
+    async getLeagueByInviteCode(code) {
+      const rows = await run(db.from('leagues').select().eq('invite_code', code).limit(1));
+      return rows[0] ? toLeague(rows[0]) : null;
+    },
+    async resetInviteCode(leagueId) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const rows = await run(
+            db.from('leagues').update({ invite_code: generateInviteCode() }).eq('id', leagueId).select(),
+          );
+          return first(rows, toLeague, 'league');
+        } catch (err) {
+          if (err instanceof UniqueViolation && err.constraint === 'leagues_invite_code_key') continue;
+          throw err;
+        }
+      }
+      throw new UniqueViolation('leagues_invite_code_key');
+    },
+    async countLeaguesCreatedBy(userId) {
+      const rows = await run(db.from('leagues').select('id').eq('created_by', userId));
+      return rows.length;
+    },
+    async listLeaguesForUser(userId) {
+      const rows = await run(db.from('players').select('*, leagues(*)').eq('user_id', userId));
+      return rows
+        .map((r) => ({ league: toLeague(r.leagues), player: toPlayer(r) }))
+        .sort((a, b) => a.league.createdAt.localeCompare(b.league.createdAt));
+    },
 
     async listPlayers(leagueId) {
       const rows = await run(db.from('players').select().eq('league_id', leagueId).order('created_at'));
@@ -187,6 +225,68 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
     },
     async deletePlayer(id) {
       await run(db.from('players').delete().eq('id', id));
+    },
+
+    async createMember(input) {
+      const rows = await run(
+        db
+          .from('players')
+          .insert({ league_id: input.leagueId, user_id: input.userId, name: input.name, role: input.role })
+          .select(),
+      );
+      return first(rows, toPlayer, 'player');
+    },
+    async getMemberByUser(leagueId, userId) {
+      const rows = await run(
+        db.from('players').select().eq('league_id', leagueId).eq('user_id', userId).limit(1),
+      );
+      return rows[0] ? toPlayer(rows[0]) : null;
+    },
+    async updatePlayer(id, patch) {
+      const rows = await run(
+        db
+          .from('players')
+          .update(defined({ name: patch.name, role: patch.role, user_id: patch.userId }))
+          .eq('id', id)
+          .select(),
+      );
+      return first(rows, toPlayer, 'player');
+    },
+
+    async getProfile(id) {
+      const rows = await run(db.from('profiles').select().eq('id', id).limit(1));
+      return rows[0] ? toProfile(rows[0]) : null;
+    },
+    async createProfile(input) {
+      try {
+        const rows = await run(
+          db
+            .from('profiles')
+            .insert({ id: input.id, display_name: input.displayName, avatar_url: input.avatarUrl })
+            .select(),
+        );
+        return first(rows, toProfile, 'profile');
+      } catch (err) {
+        // Two tabs finishing sign-in at once: the second insert loses, and that's fine.
+        if (err instanceof UniqueViolation && err.constraint === 'profiles_pkey') {
+          return first(await run(db.from('profiles').select().eq('id', input.id).limit(1)), toProfile, 'profile');
+        }
+        throw err;
+      }
+    },
+    async updateProfile(id, patch) {
+      const rows = await run(
+        db
+          .from('profiles')
+          .update(defined({ display_name: patch.displayName, frc_team: patch.frcTeam }))
+          .eq('id', id)
+          .select(),
+      );
+      return first(rows, toProfile, 'profile');
+    },
+    async deleteUser(id) {
+      const { error } = await db.auth.admin.deleteUser(id);
+      if (error) throw new Error(`Couldn't delete the account: ${error.message}`);
     },
 
     async listRounds(leagueId) {
