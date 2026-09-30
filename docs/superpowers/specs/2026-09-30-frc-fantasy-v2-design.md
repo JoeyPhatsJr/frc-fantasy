@@ -367,3 +367,142 @@ create table event_scores (
 - Round pages (v1 `tba` rounds), season rounds, the Me tab, and `team_stats` (§6) all read scores through `getEventScores`.
 - The replay test asserts that `2025parr` round scores through `getEventScores` equal v1's direct `scoreEvent` output.
 - CLAUDE.md's locked caching decision is updated to: "`tba_cache` is the only cache of *TBA data*; `event_scores` and `team_stats` are derived, rebuildable caches of *computed* values."
+
+---
+
+## 6. Sub-project 3 — Pre-draft team info
+
+### 6.1 `team_stats` (derived, rebuildable)
+
+```sql
+create table team_stats (
+  team_key          text not null check (team_key ~ '^frc[1-9][0-9]{0,4}[A-Z]?$'),
+  season            integer not null,
+  events_played     integer not null,          -- events with ≥ 1 qual match for this team
+  total_points      integer not null,          -- fantasy points summed over those events, DEFAULT_SCORING
+  qual_wins         integer not null,
+  qual_losses       integer not null,
+  qual_ties         integer not null,
+  best_finish       text check (best_finish in ('winner', 'finalist', 'captain', 'picked')),  -- null = not picked
+  awards            jsonb not null default '[]',   -- [{ "type": 0, "name": "Impact Award", "eventKey": "2026paca" }]
+  events            jsonb not null default '[]',   -- [{ "eventKey", "name", "endDate", "rank", "finish", "points" }]
+  latest_event_key  text,
+  latest_opr        numeric(6, 1),
+  latest_rank       integer,
+  updated_at        timestamptz not null default now(),
+  primary key (team_key, season)
+);
+```
+
+- **Events counted:** every event in that season except preseason (`100`), including offseason (`99`) when TBA has match data. Events with no qual matches for the team are skipped.
+- **Points** always use `DEFAULT_SCORING` (`lib/scoring/config.ts`), via `getEventScores` (§5.6), so `event_scores` rows for the default config double as the stats source.
+- **Projection** (`lib/stats/projection.ts`, pure), for a draft in season `Y`:
+  `proj = (2 × total_points[Y] + total_points[Y−1]) / (2 × events_played[Y] + events_played[Y−1])`, rounded to 1 decimal. Missing seasons count as 0/0. If the denominator is 0 → `null`, shown as **"New"**.
+- **Latest OPR / rank:** from the team's most recent event (by `end_date`) in season `Y` with data; falls back to `Y−1`.
+- **Best finish:** best of winner > finalist > captain > picked across the season (from `eventResult` and `alliance` lines).
+
+### 6.2 Building it
+
+- **Past seasons (immutable):** `scripts/build-team-stats.ts <season>` runs locally with the service key. It walks `/events/{season}/simple`, loads each event through `getEventScores` + `loadEventData`, and upserts every team's row. It is resumable (skips events already reflected, tracked by `event_scores` presence) and throttled to ~5 TBA requests/s. Run for **2025 and 2026** before Ramp Riot (Ramp Riot projections = 2026 ×2 + 2025 ×1).
+- **Current season:** the daily cron (§5.4) re-scores events of the current season with any day in `[today − 8, today]`, then recomputes `team_stats` rows for every team at those events. Each run stops at 50 s and continues on the next run.
+- Teams with no row for either season show "New". Nothing is computed on the fly during page loads.
+
+### 6.3 Draft pool UI
+
+Used by the commissioner draft entry (v1), the live draft room (§7), and the round setup pool view.
+
+- **Pool endpoint:** `GET /api/l/{slug}/rounds/{id}/pool` (anyone who can view the league) → `[{ teamKey, nickname, proj, record: [w, l, t], bestFinish, opr, rank, available }]`. For season pools (up to ~3,500 teams) the payload is ~350 KB before gzip; acceptable, fetched once per draft session and then patched by draft-state updates.
+- **Row:** bumper plate · nickname · **Proj** · W-L-T · best finish badge · OPR / rank. "New" teams show a "New" chip instead of Proj.
+- **Sort:** Proj (default, desc; "New" last), OPR, team number. **Search** by number or nickname (all pools; required for season pools). **Filter:** "Available only" (default on).
+- **Team sheet** (tap a row): per-event history from `team_stats.events` for Y and Y−1 — event, rank, finish, fantasy points — plus awards.
+- Stats are labelled "Proj. uses standard scoring" in a footnote, since leagues can customize scoring.
+
+---
+
+## 7. Sub-project 4 — Live draft room
+
+### 7.1 Data
+
+```sql
+alter table rounds
+  add column draft_mode           text not null default 'commissioner' check (draft_mode in ('commissioner', 'live')),
+  add column pick_seconds         integer check (pick_seconds in (30, 60, 90, 120)),   -- null = no timer
+  add column draft_started_at     timestamptz,
+  add column draft_paused_at      timestamptz,          -- non-null = paused
+  add column paused_remaining_ms  integer,              -- remaining time when paused (timer only)
+  add column pick_deadline        timestamptz;          -- current pick's deadline; null if no timer, paused, not started, or done
+
+create table draft_queue (
+  round_id   uuid not null references rounds(id) on delete cascade,
+  player_id  uuid not null references players(id) on delete cascade,
+  team_key   text not null check (team_key ~ '^frc[1-9][0-9]{0,4}[A-Z]?$'),
+  position   integer not null check (position >= 0),
+  primary key (round_id, player_id, team_key)
+);
+
+create table draft_prefs (
+  round_id   uuid not null references rounds(id) on delete cascade,
+  player_id  uuid not null references players(id) on delete cascade,
+  autodraft  boolean not null default false,
+  primary key (round_id, player_id)
+);
+```
+
+**Draft phase** (derived, `lib/draft/live.ts`): `setup` (not started) → `live` ⇄ `paused` → `done` (`picks = P × R`). Commissioner-mode rounds behave exactly as v1. Draft order, roster size, and pool filter lock once `draft_started_at` is set (v1 already locks them once any pick exists).
+
+### 7.2 Atomic pick writes
+
+supabase-js can't run multi-statement transactions, so every live-draft pick goes through one Postgres function called via RPC:
+
+```
+draft_make_pick(p_round_id, p_pick_number, p_player_id, p_team_key, p_require_due boolean) returns boolean
+```
+
+In one transaction it: locks the round row (`for update`); checks the phase is `live`; checks `count(picks) = p_pick_number`; if `p_require_due`, checks `now() >= pick_deadline` (database clock); inserts the pick (the v1 unique constraints on `(round_id, pick_number)` and `(round_id, team_key)` still guard); sets `pick_deadline = now() + pick_seconds` (or null when the timer is off or the draft is now done). It returns `false` (no-op) instead of raising when a check fails, so racing callers get a clean "someone beat you" answer. The server still validates the picker (`pickerFor`) and pool membership before calling it.
+
+### 7.3 Endpoints
+
+Player role (§4.5) unless marked *commissioner*. All bodies zod-validated.
+
+| Method | Path | Body | Result |
+|---|---|---|---|
+| GET | `/api/l/{slug}/rounds/{id}/draft/state` | — | `{ phase, pickNumber, onClock: { playerId, name }, deadline, serverNow, pickSeconds, order, rosterSize, picks, me: { playerId, queue, autodraft } }` (viewers of `link` leagues get it without `me`) |
+| POST | `…/draft/pick` | `{ expectedPickNumber, teamKey }` | 201; 409 `not_your_turn` / `stale` / `taken` / `not_live`; 400 not in pool |
+| POST | `…/draft/tick` | `{ expectedPickNumber }` | 200 `{ picked: boolean }` — auto-picks for the on-clock player if the deadline has passed |
+| PUT | `…/draft/queue` | `{ teamKeys: string[] }` (≤ 100, all in pool, no dupes) | 200 — replaces my whole queue |
+| PUT | `…/draft/autodraft` | `{ on: boolean }` | 200 |
+| PATCH | `/api/l/{slug}/admin/rounds/{id}` (*commissioner*) | adds `{ draftMode?, pickSeconds? }` | `draftMode` only before start; `pickSeconds` before start or while paused |
+| POST | `/api/l/{slug}/admin/rounds/{id}/draft/start` (*commissioner*) | — | 200; 409 if order empty, `P × R > T`, not live mode, or already started |
+| POST | `…/admin/rounds/{id}/draft/pause` · `/resume` (*commissioner*) | — | 200 |
+
+- **Commissioner picks:** the v1 `POST …/admin/rounds/{id}/picks` endpoint (always the current snake picker) keeps working in live mode ("Pick for Mom"), going through `draft_make_pick`.
+- **Undo** (v1 `DELETE` last pick): in live mode it also resets `pick_deadline = now() + pick_seconds`.
+- Every successful mutation above **rings the doorbell** (§7.5).
+
+### 7.4 Auto-pick
+
+`chooseAutoPick(queue, available, proj)` (pure): the first team in the player's queue that is still available; otherwise the available team with the highest `proj`; ties and "New" teams go by lowest team number, after all projected teams.
+
+Auto-picks happen when:
+1. **Timeout:** a client calls `tick` after its corrected clock passes `deadline + 500 ms`. The server calls `draft_make_pick(…, p_require_due = true)`. Clients retry `tick` every 2 s while the deadline is overdue.
+2. **Auto-draft:** after any successful pick, while the phase is `live` and the next on-clock player has `autodraft = true`, the server immediately auto-picks for them (bounded by the remaining picks).
+
+If nobody has the draft open when a deadline passes, nothing happens until someone opens it; then `tick` catches up one pick at a time (each auto-pick sets a fresh deadline).
+
+### 7.5 Realtime doorbell
+
+- **Ring (server):** `ring(roundId)` POSTs to Supabase Realtime's HTTP broadcast endpoint (`{SUPABASE_URL}/realtime/v1/api/broadcast`, service key) with topic `draft:{roundId}`, event `changed`, **empty payload**. Failures are logged and ignored (polling covers them).
+- **Listen (browser):** the draft page subscribes with the anon key: `channel('draft:{roundId}').on('broadcast', { event: 'changed' }, refetch)`. Refetches are debounced 250 ms.
+- **Polling fallback:** every 3 s while the channel isn't `SUBSCRIBED`, every 15 s while it is, and immediately when the tab becomes visible again.
+- **Clock sync:** each state response carries `serverNow`; the client keeps `offset = serverNow − (receivedAt − rtt/2)` and renders `remaining = deadline − (Date.now() + offset)`.
+- Free-tier headroom: Realtime allows far more concurrent connections than a 30-player league needs; the doorbell adds one small message per pick.
+
+### 7.6 Draft room UI — `/l/{slug}/r/{roundId}/draft`
+
+- **Who:** members interact; non-members of `link` leagues watch read-only; members-only leagues show the private card (§4.5). Signed-in members see a "Draft is live — join" banner on the league and round pages while the phase is `live` or `paused`.
+- **Sticky banner:** "On the clock: Mom · 0:42" (timer turns red under 10 s) / "You're up in 2 picks" / "Paused by commissioner" / "Draft complete". Menu: **Auto-draft for me** toggle; commissioners also get Pause/Resume, Undo last pick, Pick for {name}.
+- **Your turn:** the tab title flashes "Your pick!" and `navigator.vibrate(200)` fires once (no-op on iOS).
+- **Tabs:** **Pool** (§6.3, with a Draft button enabled only on your turn → confirm sheet "Draft 341 · Proj 38.2?") · **Queue** (my queue with up/down and remove, "Add to queue" from Pool rows; taken teams disappear automatically) · **Board** (pick grid: rounds × players, newest pick highlighted) · **Rosters**.
+- **Errors:** 409 `taken` → "341 was just taken — pick again"; `stale`/`not_your_turn` → silent refetch; network loss → "Reconnecting…" banner while the local countdown continues; the server stays authoritative.
+- **Season drafts:** same room; search is prominent; "Timer off" makes a slow draft that can run for days.
+- Commissioner-mode rounds keep the v1 draft entry screen unchanged.
