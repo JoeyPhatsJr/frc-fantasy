@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { CommissionerTag } from '@/components/CommissionerTag';
 
 export type LeagueBarProps = {
   slug: string;
@@ -9,13 +8,15 @@ export type LeagueBarProps = {
   anyLive: boolean;
   /** Optional compact back link, rendered before the name. */
   back?: ReactNode;
+  /** True when the signed-in viewer is a commissioner of this league. */
+  isCommissioner?: boolean;
 };
 
 /**
  * The league's name at the top of every /l/[slug] page, server-rendered so it can show whether a
  * round is live. The name links back to the standings.
  */
-export function LeagueBar({ slug, name, anyLive, back }: LeagueBarProps) {
+export function LeagueBar({ slug, name, anyLive, back, isCommissioner }: LeagueBarProps) {
   return (
     <div className="flex min-h-11 items-center gap-2">
       {back}
@@ -27,7 +28,9 @@ export function LeagueBar({ slug, name, anyLive, back }: LeagueBarProps) {
           {name}
         </span>
       </Link>
-      <CommissionerTag slug={slug} />
+      {isCommissioner ? (
+        <span className="shrink-0 text-[15px] font-semibold leading-[22px] text-secondary">Commissioner</span>
+      ) : null}
       {anyLive ? (
         <span className="ml-auto flex shrink-0 items-center pl-2">
           <span

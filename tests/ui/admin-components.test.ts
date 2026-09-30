@@ -1,7 +1,7 @@
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { AdminGate } from '@/components/admin/AdminGate';
+import { AdminGateView } from '@/components/admin/AdminGate';
 import { AddRoundForm } from '@/components/admin/DashboardParts';
 import { bannerParts, pickFontSize } from '@/components/admin/DraftEntry';
 import { ScoringForm } from '@/components/admin/ScoringForm';
@@ -10,13 +10,24 @@ import { DEFAULT_SCORING } from '@/lib/scoring/config';
 
 const render = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(el);
 
-describe('AdminGate', () => {
-  it('shows the checking state before the token has been verified', () => {
-    // Effects don't run on the server, so this is exactly what the browser shows first.
-    const html = render(h(AdminGate, { slug: 'abc', children: () => h('p', null, 'secret dashboard') }));
-    expect(html).toContain('Checking your admin link…');
-    expect(html).toContain('id="main"');
+describe('AdminGateView', () => {
+  const kids = () => h('p', null, 'secret dashboard');
+  it('shows the checking state first', () => {
+    const html = render(h(AdminGateView, { slug: 'abc', next: '/l/abc/admin', session: { status: 'checking' }, children: kids }));
+    expect(html).toContain('Checking your account…');
     expect(html).not.toContain('secret dashboard');
+  });
+  it('asks a signed-out visitor to sign in and come back here', () => {
+    const html = render(h(AdminGateView, { slug: 'abc', next: '/l/abc/admin/r/1', session: { status: 'signed_out' }, children: kids }));
+    expect(html).toContain('Sign in to manage this league');
+    expect(html).toContain('Continue with Google');
+    expect(html).toContain('Continue with Discord');
+    expect(html).not.toContain('secret dashboard');
+  });
+  it('tells a signed-in non-commissioner plainly', () => {
+    const html = render(h(AdminGateView, { slug: 'abc', next: '/l/abc/admin', session: { status: 'forbidden' }, children: kids }));
+    expect(html).toContain("You&#x27;re not a commissioner of this league");
+    expect(html).toContain('href="/l/abc"');
   });
 });
 

@@ -20,3 +20,8 @@ export function safeNext(raw: string | null | undefined): string {
   if (out.startsWith('//') || out.startsWith('/\\')) return '/';
   return out;
 }
+
+/** Where the OAuth provider sends the browser back to (spec §4.1). */
+export function oauthRedirectUrl(origin: string, next: string): string {
+  return `${origin.replace(/\/+$/, '')}/auth/callback?next=${encodeURIComponent(safeNext(next))}`;
+}

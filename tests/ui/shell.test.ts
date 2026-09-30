@@ -57,6 +57,11 @@ describe('LeagueBar', () => {
     expect(html).not.toContain('A round is live');
   });
 
+  it('shows the Commissioner label only when told the viewer is one', () => {
+    expect(render(h(LeagueBar, { slug: 'habich', name: 'Habich Fam', anyLive: false }))).not.toContain('Commissioner');
+    expect(render(h(LeagueBar, { slug: 'habich', name: 'Habich Fam', anyLive: false, isCommissioner: true }))).toContain('Commissioner');
+  });
+
   it('renders an optional back slot before the name', () => {
     const html = render(
       h(LeagueBar, { slug: 'habich', name: 'Habich Fam', anyLive: false, back: h('a', { href: '/x' }, 'Back') }),

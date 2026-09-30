@@ -2,39 +2,19 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Flag, ListOrdered, Settings2, type IconProps } from '@/components/ui/icons';
-import { storageKey, tokenFromHash } from '@/lib/admin/client';
 import { activeTab, type LeagueTab } from '@/lib/nav';
 
 type Tab = { id: LeagueTab; label: string; href: string; Icon: (props: IconProps) => ReactNode };
-
-function hasAdminToken(slug: string): boolean {
-  try {
-    return window.localStorage.getItem(storageKey(slug)) !== null;
-  } catch {
-    return false; // private browsing can block localStorage
-  }
-}
 
 /**
  * League navigation. Small screens: a fixed bottom bar (64px plus the iPhone home-indicator inset).
  * From md up: the same links as a segmented control under the league bar.
  */
-export function TabBar({ slug, targetRoundId }: { slug: string; targetRoundId: string | null }) {
+export function TabBar({ slug, targetRoundId, showAdmin }: { slug: string; targetRoundId: string | null; showAdmin: boolean }) {
   const pathname = usePathname();
   const current = activeTab(pathname ?? '', slug);
-
-  // Only this device knows it has the commissioner link, so the Admin tab appears after mount.
-  // On the first visit the token is still in the #k= fragment; the admin page then stores it and
-  // fires 'frcf:admin' (same tab, so no 'storage' event). Re-checked on navigation too.
-  const [showAdmin, setShowAdmin] = useState(false);
-  useEffect(() => {
-    const check = () => setShowAdmin(hasAdminToken(slug) || tokenFromHash(window.location.hash) !== null);
-    check();
-    window.addEventListener('frcf:admin', check);
-    return () => window.removeEventListener('frcf:admin', check);
-  }, [slug, pathname]);
 
   const tabs: Tab[] = [{ id: 'standings', label: 'Standings', href: `/l/${slug}`, Icon: ListOrdered }];
   if (targetRoundId) tabs.push({ id: 'round', label: 'Round', href: `/l/${slug}/r/${targetRoundId}`, Icon: Flag });
