@@ -86,3 +86,14 @@ export type EventLookup =
       /** True when this league already has a round for the event (adding it again would answer 409). */
       alreadyInLeague: boolean;
     };
+
+/** GET /api/invites/{code}: what the /join page shows before joining (spec §4.6). */
+export type InvitePreview = {
+  slug: string;
+  name: string;
+  /** The first commissioner who still has an account. */
+  commissioner: string | null;
+  memberCount: number;
+  full: boolean;
+  alreadyMember: boolean;
+};
