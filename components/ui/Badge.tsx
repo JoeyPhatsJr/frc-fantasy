@@ -8,12 +8,13 @@ export type BadgeProps = {
   children: ReactNode;
 };
 
-// Solid fills with their paired on-* text colour, so every tone is 4.5:1+ in both themes.
+// Fills with their paired on-* text colour, so every tone is 4.5:1+ in both themes. Final is the
+// quiet one: a finished round shouldn't compete with a live or upcoming one.
 const TONES: Record<BadgeTone, string> = {
   neutral: 'bg-surface-2 text-fg-muted ring-1 ring-inset ring-border',
   live: 'bg-success text-on-success',
   upcoming: 'bg-primary-fill text-on-primary',
-  final: 'bg-fg text-bg',
+  final: 'bg-surface-2 text-fg-muted ring-1 ring-inset ring-border',
   drafting: 'bg-secondary text-on-secondary',
   warning: 'bg-accent text-on-accent',
 };
