@@ -256,7 +256,7 @@ alter table rounds
   add column auto_added   boolean not null default false,
   add constraint rounds_kind_event_key check ((kind = 'tba') = (event_key is not null)),
   add constraint rounds_kind_season    check ((kind = 'season') = (season_year is not null));
-alter table rounds drop constraint rounds_roster_size_check;
+alter table rounds drop constraint if exists rounds_roster_size_check;   -- Postgres's auto-generated name for v1's inline check (0001_init.sql:28); confirm on the live DB first
 alter table rounds add constraint rounds_roster_size_check check (roster_size between 1 and 15);
 ```
 
@@ -291,7 +291,7 @@ create table manual_results (
 
 - `PUT /api/l/{slug}/admin/rounds/{id}/results/{teamKey}` upserts one row (team must be in the pool; 400 otherwise). `DELETE` clears it. Only allowed for `manual` rounds (409 otherwise).
 - Awards picker lists common TBA award types by name (Impact, Engineering Inspiration, Rookie All-Star, Winner/Finalist excluded as in the config, etc.) plus "Other award" (scored with `awards.default`).
-- **`scoreManualEvent(results, config): EventScores`** (`lib/scoring/manual.ts`, pure) emits the same `CategoryId`s and line labels as `scoreEvent` for: `qualRecord`, `rankingPoints`, `rank`, `alliance`, `playoffWins`, `eventResult`, `awards`. It never emits `oprBonus`. `qualsComplete = results.length > 0`; `rpMethod = 'manual'` (new union member). Unknown (`null`) RP or rank emits no line.
+- **`scoreManualEvent(results, config): EventScores`** (`lib/scoring/manual.ts`, pure) emits the same `CategoryId`s and line labels as `scoreEvent` for: `qualRecord`, `rankingPoints`, `rank`, `alliance`, `playoffWins`, `eventResult`, `awards`. It never emits `oprBonus`. `qualsComplete = results.length > 0`; `rpMethod = 'manual'` (new member of `RpMethod`, `lib/scoring/types.ts`). Unknown (`null`) RP or rank emits no line.
 - **Equivalence test:** entering `2025parr`'s real results into `manual_results` must produce, for every team, `scoreEvent` totals minus that team's OPR line (`scoreEvent` itself is unchanged).
 - Manual rounds are not cached in `event_scores` (scoring them is cheap; there's no TBA input).
 
@@ -337,13 +337,16 @@ create table league_skipped_events (
 - **Empty pool:** if TBA hasn't published the year's team list, the draft can't start: "TBA hasn't published {year} teams yet — usually by January." v1's `P × R ≤ T` check applies.
 - **Official events:** `event_type ∈ {0 Regional, 1 District, 2 District Championship, 3 Championship Division, 4 Championship Finals, 5 District Championship Division}`. Offseason (99) and preseason (100) never count.
 - **Scoring:** for each drafted team, list its official events that year (`/team/{key}/events/{year}/simple`), score each via `getEventScores` (§5.6) with the season round's `scoring`, and sum. `TeamScore.lines` are grouped per event. Team-targeted and player-targeted adjustments work as v1.
-- **Cache windows:** each event's TBA paths use `cacheWindowFor` computed from *that event's* dates (not the season round's), so finished events drop to the 24 h/10 min windows.
+- **Cache windows:** each event's TBA paths use `cacheWindowFor` computed from *that event's* `RoundTiming`: its `start_date`/`end_date` from the Event_Simple list, `timezone` = `America/New_York` (Event_Simple has no timezone; `localDate` already falls back to Eastern, and ±hours only shifts when the 1-minute window starts), and `finalizedAt` = the season round's. Finished events drop to the 10 min / 24 h windows.
+- **Fetch budget:** on a competition Saturday many drafted teams' events sit in the 1-minute window. A season page view refreshes stale events with **at most 4 TBA fetches in flight** and a **6-second budget**; events not refreshed in time are served from their existing `event_scores` row (or last cached TBA bodies) and marked stale, the same way v1 shows staleness. The next view (or auto-refresh) continues where it stopped.
 - **Round page (season):** per player, each team shows a season total, expandable to per-event subtotals ("Week 1 · Hatboro-Horsham · +41"), each expandable to v1-style lines. Upcoming events for the team are listed as "Next: {event} · {date}".
 - **Status:** v1 rules with the season's dates: Live once the first official event is within a day, Awaiting final after the last one ends; only the commissioner finalizes.
 
 ### 5.6 Derived cache: `event_scores`
 
-**Why:** a full-season league with 10 players × 10 teams touches ~60 events; re-scoring from raw TBA JSON on every page view would pull 15+ MB from Postgres per request. The Me tab across several leagues has the same problem.
+**Built in SP3** (it's the stats source, §6), then reused by SP2's season rounds.
+
+**Why:** a full-season league with 10 players × 10 teams touches ~60 events; re-scoring from raw TBA JSON on every page view would pull several MB (~60 events × ~70 KB) from Postgres and re-run `scoreEvent` 60 times per request. The Me tab across several leagues has the same problem.
 
 ```sql
 alter table tba_cache add column body_hash text;   -- sha256 of the stored body; null when body is null
@@ -359,11 +362,16 @@ create table event_scores (
 ```
 
 **`getEventScores(eventKey, config, windowMs)`** (`lib/scores/eventScores.ts`):
-1. Input paths = the fixed list `scoreEvent` needs (event teams, matches, rankings, alliances, awards, oprs — exactly the paths v1's `loadEventData` reads).
-2. Read those paths' `tba_cache` **metadata only** (`path, fetched_at, body_hash, last_error_at`; no bodies).
+1. Input paths = the fixed list `scoreEvent` needs (event teams, matches, rankings, alliances, awards, oprs — exactly the paths v1's `loadEventData` reads, `lib/tba/event.ts`).
+2. Read those paths' `tba_cache` **metadata only** (`path, fetched_at, body_hash, last_error_at`; no bodies) through a new batched repo method `getCacheMeta(paths: string[])` — one query for all paths of all events on the page, never one query per path.
 3. If every path is within `windowMs` and a row exists in `event_scores` for `(eventKey, config_hash)` whose `source_stamp` matches → return it (no body reads).
 4. Otherwise refresh through `getTba` as v1 (304s keep `body_hash`, so the stamp is unchanged and step 5 is skipped), recompute the stamp, and if it differs from the stored one: load bodies, run `scoreEvent`, and upsert the row.
 5. Staleness (`stale`, `fetchedAt`) is reported exactly as v1 does, from the TBA metadata.
+
+**Implementation notes (from spec review):**
+- `body_hash` is computed **inside the repo's `upsertCache`** from the row's `body` — callers never pass it. `getTba` re-upserts the full row on 304s and on failures (`lib/tba/client.ts`), so the hash stays stable whenever the body is unchanged.
+- "No body reads" on a hit means the TBA bodies; the `event_scores.scores` row itself is read.
+- `EventScores.teams` is a `Map` (`lib/scoring/types.ts`), so `lib/scores/eventScores.ts` has explicit `serializeEventScores` / `deserializeEventScores` functions (round-trip tested).
 
 **Rules:**
 - The cache is **derived and rebuildable**: `scripts/rebuild-event-scores.ts` truncates it and nothing breaks. It is never edited by hand or by the app except through `getEventScores`.
@@ -397,7 +405,7 @@ create table team_stats (
 );
 ```
 
-- **Events counted:** every event in that season except preseason (`100`), including offseason (`99`) when TBA has match data. Events with no qual matches for the team are skipped.
+- **Events counted:** every event in that season except preseason (`100`), including offseason (`99`) when TBA has match data. Events with no qual matches for the team are skipped. This skips Einstein (Championship Finals, no quals) on purpose: it keeps the projection a per-event average of full events. Season scoring (§5.5) still counts Einstein.
 - **Points** always use `DEFAULT_SCORING` (`lib/scoring/config.ts`), via `getEventScores` (§5.6), so `event_scores` rows for the default config double as the stats source.
 - **Projection** (`lib/stats/projection.ts`, pure), for a draft in season `Y`:
   `proj = (2 × total_points[Y] + total_points[Y−1]) / (2 × events_played[Y] + events_played[Y−1])`, rounded to 1 decimal. Missing seasons count as 0/0. If the denominator is 0 → `null`, shown as **"New"**.
@@ -406,15 +414,15 @@ create table team_stats (
 
 ### 6.2 Building it
 
-- **Past seasons (immutable):** `scripts/build-team-stats.ts <season>` runs locally with the service key. It walks `/events/{season}/simple`, loads each event through `getEventScores` + `loadEventData`, and upserts every team's row. It is resumable (skips events already reflected, tracked by `event_scores` presence) and throttled to ~5 TBA requests/s. Run for **2025 and 2026** before Ramp Riot (Ramp Riot projections = 2026 ×2 + 2025 ×1).
-- **Current season:** the daily cron (§5.4) re-scores events of the current season with any day in `[today − 8, today]`, then recomputes `team_stats` rows for every team at those events. Each run stops at 50 s and continues on the next run.
+- **Past seasons (immutable):** `scripts/build-team-stats.ts <season>` runs locally with the service key. It walks `/events/{season}/simple`, loads each event through `getEventScores` + `loadEventData`, and upserts every team's row. It is resumable (skips events already reflected, tracked by `event_scores` presence) and throttled to ~5 TBA requests/s. Past-season paths use a "never refetch" window once cached (the data is final). Run for **2025 and 2026** before Ramp Riot (Ramp Riot projections = 2026 ×2 + 2025 ×1). Storage: ~350 events × ~70–80 KB ≈ 25–30 MB of `tba_cache` per season (measured: `2025parr`'s six paths are ~39 KB), well inside the 500 MB free tier.
+- **Current season:** the daily cron (§3; created in SP3, and SP2 later adds follow-a-team sync to it) re-scores events of the current season with any day in `[today − 8, today]`, then recomputes `team_stats` rows for every team at those events. Each run stops at 50 s and continues on the next run.
 - Teams with no row for either season show "New". Nothing is computed on the fly during page loads.
 
 ### 6.3 Draft pool UI
 
 Used by the commissioner draft entry (v1), the live draft room (§7), and the round setup pool view.
 
-- **Pool endpoint:** `GET /api/l/{slug}/rounds/{id}/pool` (anyone who can view the league) → `[{ teamKey, nickname, proj, record: [w, l, t], bestFinish, opr, rank, available }]`. For season pools (up to ~3,500 teams) the payload is ~350 KB before gzip; acceptable, fetched once per draft session and then patched by draft-state updates.
+- **Pool endpoint:** `GET /api/l/{slug}/rounds/{id}/pool` (anyone who can view the league) → `[{ teamKey, nickname, proj, record: [w, l, t], bestFinish, opr, rank, available }]`. **Built in SP4** with the stats fields returned as `null` (every team shows "New"); SP3 fills them from `team_stats`; SP2 adds season-round pools. The response shape never changes, so the draft room needs no rework. For season pools (up to ~3,500 teams) the payload is ~350 KB before gzip; acceptable, fetched once per draft session and then patched by draft-state updates.
 - **Row:** bumper plate · nickname · **Proj** · W-L-T · best finish badge · OPR / rank. "New" teams show a "New" chip instead of Proj.
 - **Sort:** Proj (default, desc; "New" last), OPR, team number. **Search** by number or nickname (all pools; required for season pools). **Filter:** "Available only" (default on).
 - **Team sheet** (tap a row): per-event history from `team_stats.events` for Y and Y−1 — event, rank, finish, fantasy points — plus awards.
