@@ -79,9 +79,9 @@ app/api/cron/daily/route.ts               the cron endpoint (Task 13)
 vercel.json                               cron schedule (Task 13)
 lib/stats/pool.ts                         teamStatsPoolLookup (Task 14)
 lib/pool/entries.ts                       default stats lookup → teamStatsPoolLookup (Task 14)
-lib/pool/sort.ts                          sortPool, formatProj, formatRecord, BEST_FINISH_LABEL (Task 15)
+lib/pool/format.ts                        formatProj, formatRecord, formatOprRank, BEST_FINISH_LABEL, POOL_FOOTNOTE (Task 15)
 components/pool/PoolStats.tsx             PoolStatCells, NewChip, PoolFootnote (Task 15)
-components/pool/PoolSortControl.tsx       Proj / OPR / Team # control (Task 15)
+components/draft/PoolList.tsx             SP4's list: stat cells, footnote, slug/roundId props, sheet (Tasks 15–16)
 app/api/l/[slug]/rounds/[id]/pool/[teamKey]/route.ts   team sheet data (Task 16)
 components/pool/TeamSheet.tsx             per-event history sheet (Task 16)
 tests/scores/*.test.ts  tests/stats/*.test.ts  tests/cron/*.test.ts  tests/pool/*.test.ts
@@ -3402,7 +3402,7 @@ git commit -m "feat(sp3): daily cron route with team-stats job and 50 s budget"
 - Test: `tests/stats/poolLookup.test.ts`
 
 **Interfaces:**
-- Consumes: SP4's `PoolStatsLookup`, `PoolEntry`, `buildPoolEntries`, `noPoolStats` (`lib/pool/entries.ts`); `getTeamStats` (Task 4); `projection` (Task 9).
+- Consumes: SP4's `PoolStatsLookup`, `PoolEntry`, `buildPoolEntries`, `noPoolStats`, `activePoolStats` (`lib/pool/entries.ts`), `seedLiveDraft`/`T0` (`tests/helpers/draft.ts`), `mocks` (`tests/helpers/draftMocks.ts`); `getTeamStats` (Task 4); `projection` (Task 9).
 - Produces (contract name):
   ```ts
   export const teamStatsPoolLookup: PoolStatsLookup;
@@ -3603,35 +3603,35 @@ Expected: 7 PASS.
 
 - [ ] **Step 5: Make it the pool's default**
 
-In `lib/pool/entries.ts` (SP4), import `teamStatsPoolLookup` from `@/lib/stats/pool` and change the default of `buildPoolEntries`'s third parameter from `noPoolStats` to `teamStatsPoolLookup`:
+SP4 set up exactly one line for this. In `lib/pool/entries.ts` (SP4 Task 5), `buildPoolEntries`'s third parameter already defaults to `activePoolStats`, which SP4 defined as `noPoolStats`. Change only that constant:
 
 ```ts
-export async function buildPoolEntries(
-  round: RoundRow,
-  now: Date,
-  stats: PoolStatsLookup = teamStatsPoolLookup,
-): Promise<PoolEntry[]> {
+import { teamStatsPoolLookup } from '@/lib/stats/pool';
+
+/** The lookup the app uses. SP4 shipped noPoolStats here; SP3 swaps in team_stats. */
+export const activePoolStats: PoolStatsLookup = teamStatsPoolLookup;
 ```
 
-Keep `noPoolStats` exported (tests use it). Then find every caller that passes `noPoolStats` explicitly and drop that argument:
+Keep `noPoolStats` exported (tests use it). Nothing else changes: the pool endpoint, the draft room, and `advance`'s auto-pick all call `buildPoolEntries` without a third argument, so they now get real projections (spec §7.4: queue → projection).
 
 Run: `grep -rn "noPoolStats" app lib components`
-Expected after the edit: only the definition in `lib/pool/entries.ts` (and test files). The pool endpoint, the draft room, and `advance`'s auto-pick all go through `buildPoolEntries`, so they now get real projections (spec §7.4: queue → projection).
+Expected: only the definition in `lib/pool/entries.ts`.
 
 `lib/stats/pool.ts` imports only the *type* `PoolStatsLookup` from `lib/pool/entries.ts`, so the new import in the other direction is not a runtime cycle.
 
 - [ ] **Step 6: Add a wiring test to SP4's pool tests**
 
-Append to the test file SP4 wrote for `buildPoolEntries` (find it: `grep -rl "buildPoolEntries" tests`), inside its existing setup (which mocks `getTba` and `getRepo` with a memory repo and creates a round for a 2026 event whose pool includes `frc1`):
+Append inside `describe('buildPoolEntries', …)` in `tests/pool/entries.test.ts` (SP4 Task 5; it uses `mocks.repo`, `seedLiveDraft`, and the clock `T0`; `seedLiveDraft`'s round is the `2025parr` event, so the season is 2025):
 
 ```ts
 it('fills proj from team_stats by default (SP3)', async () => {
-  await repo.upsertTeamStats([{
-    teamKey: 'frc1', season: 2026, eventsPlayed: 2, totalPoints: 80, qualWins: 10, qualLosses: 4, qualTies: 0,
-    bestFinish: 'captain', awards: [], events: [], latestEventKey: '2026pahat', latestOpr: 40.1, latestRank: 5,
+  const { round } = await seedLiveDraft(mocks.repo);
+  await mocks.repo.upsertTeamStats([{
+    teamKey: 'frc1', season: 2025, eventsPlayed: 2, totalPoints: 80, qualWins: 10, qualLosses: 4, qualTies: 0,
+    bestFinish: 'captain', awards: [], events: [], latestEventKey: '2025pahat', latestOpr: 40.1, latestRank: 5,
     updatedAt: '2026-10-01T00:00:00.000Z',
   }]);
-  const entries = await buildPoolEntries(round, NOW);
+  const entries = await buildPoolEntries(round, T0);
   const one = entries.find((e) => e.teamKey === 'frc1')!;
   expect(one.proj).toBe(40);
   expect(one.opr).toBe(40.1);
@@ -3639,7 +3639,7 @@ it('fills proj from team_stats by default (SP3)', async () => {
 });
 ```
 
-Use that file's own names for the repo, round, and clock (`repo`, `round`, `NOW` here). If its round is not a 2026 event, set `season: Number(round.startDate.slice(0, 4))` in the row instead of `2026`.
+SP4's first test in that file ("lists every pool team with stats empty …") still passes: with no `team_stats` rows, the real lookup returns an empty map.
 
 - [ ] **Step 7: Run everything and commit**
 
@@ -3647,79 +3647,47 @@ Run: `npm test && npm run typecheck`
 Expected: all PASS, including SP4's auto-pick tests (they pass their own stats lookup or queue, so real projections don't change them; if one relied on the default being empty, pass `noPoolStats` in that test).
 
 ```bash
-git add lib/stats/pool.ts lib/pool/entries.ts tests/stats/poolLookup.test.ts
-git add -u tests   # SP4's buildPoolEntries test file (and any auto-pick test you adjusted)
-git status --short # nothing else should be staged
+git add lib/stats/pool.ts lib/pool/entries.ts tests/stats/poolLookup.test.ts tests/pool/entries.test.ts
+git status --short # nothing else should be staged (add an auto-pick test file only if you had to adjust it)
 git commit -m "feat(sp3): team_stats feed the draft pool and auto-pick"
 ```
 
 ---
 
-### Task 15: Draft pool columns, sort, "New" chip, footnote
+### Task 15: Pool rows show real stats (shared formatters + SP4's `PoolList`)
+
+SP4 already built the draft pool list — `components/draft/PoolList.tsx` renders each `PoolEntry` with a "New" badge or `Proj 38.2`, a one-line stats summary (`statsLine`), search, the Proj / OPR / Number sort (`filterSortPool` in `lib/draft/poolView.ts`, sort type `PoolSort`), "Available only", and the footnote. With `team_stats` empty it showed "New" everywhere. This task **does not add a second sort or list**: it pulls the stat formatting into shared helpers (the team sheet in Task 16 reuses them), renders the stats as separate cells with a best-finish badge, and checks the list with real numbers.
 
 **Files:**
-- Create: `lib/pool/sort.ts`, `components/pool/PoolStats.tsx`, `components/pool/PoolSortControl.tsx`
-- Modify: SP4's pool list component (the Draft room's **Pool** tab; also used by the commissioner draft entry and round setup, spec §6.3)
-- Test: `tests/pool/sort.test.ts`, `tests/ui/pool-stats.test.ts`
+- Create: `lib/pool/format.ts`, `components/pool/PoolStats.tsx`
+- Modify: `components/draft/PoolList.tsx` (SP4 Task 13)
+- Test: `tests/pool/format.test.ts`, `tests/ui/pool-stats.test.ts`
 
 **Interfaces:**
-- Consumes: `PoolEntry` (SP4); `BestFinish` (Task 1); v1 `Badge` (`components/ui/Badge.tsx`).
+- Consumes: `PoolEntry` (SP4, `lib/pool/entries.ts`); `BestFinish` (Task 1); v1 `Badge` (`components/ui/Badge.tsx`); SP4's `PoolList`, `filterSortPool`, `PoolSort` (unchanged).
 - Produces:
   ```ts
-  // lib/pool/sort.ts
-  export type PoolSortKey = 'proj' | 'opr' | 'number';
-  export const POOL_SORTS: { key: PoolSortKey; label: string }[];   // Proj, OPR, Team #
-  export function sortPool(entries: PoolEntry[], key: PoolSortKey): PoolEntry[];
+  // lib/pool/format.ts
   export function formatProj(proj: number | null): string;          // '38.2' | 'New'
   export function formatRecord(record: [number, number, number] | null): string;   // '12-4-0' | '—'
   export function formatOprRank(opr: number | null, rank: number | null): string;  // 'OPR 41.2 · #3'
   export const BEST_FINISH_LABEL: Record<BestFinish, string>;
+  export const POOL_FOOTNOTE = 'Proj. uses standard scoring.';
   // components/pool/PoolStats.tsx
   export function NewChip(): JSX.Element;
   export function PoolStatCells(props: { entry: PoolEntry }): JSX.Element;
-  export function PoolFootnote(): JSX.Element;                      // "Proj. uses standard scoring"
-  // components/pool/PoolSortControl.tsx ('use client')
-  export function PoolSortControl(props: { value: PoolSortKey; onChange: (key: PoolSortKey) => void }): JSX.Element;
+  export function PoolFootnote(): JSX.Element;
   ```
 
-- [ ] **Step 1: Write the failing sort test**
+- [ ] **Step 1: Write the failing formatter test**
 
-Create `tests/pool/sort.test.ts`:
+Create `tests/pool/format.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import type { PoolEntry } from '@/lib/pool/entries';
-import { formatOprRank, formatProj, formatRecord, sortPool } from '@/lib/pool/sort';
+import { BEST_FINISH_LABEL, formatOprRank, formatProj, formatRecord, POOL_FOOTNOTE } from '@/lib/pool/format';
 
-const e = (teamKey: string, proj: number | null, opr: number | null = null): PoolEntry => ({
-  teamKey, nickname: null, proj, record: null, bestFinish: null, opr, rank: null, available: true,
-});
-const keys = (list: PoolEntry[]) => list.map((x) => x.teamKey);
-
-describe('sortPool', () => {
-  const pool = [e('frc341', 20), e('frc5181', null), e('frc103', 38.2), e('frc2607', 20), e('frc1', null), e('frc341B', 5)];
-
-  it('Proj: highest first, ties by team number, "New" last (by team number)', () => {
-    expect(keys(sortPool(pool, 'proj'))).toEqual(['frc103', 'frc341', 'frc2607', 'frc341B', 'frc1', 'frc5181']);
-  });
-
-  it('OPR: highest first, teams without OPR last', () => {
-    const list = [e('frc1', null, 10), e('frc2', null, null), e('frc3', null, 30)];
-    expect(keys(sortPool(list, 'opr'))).toEqual(['frc3', 'frc1', 'frc2']);
-  });
-
-  it('Team #: numeric, with B-teams right after their A-team', () => {
-    expect(keys(sortPool(pool, 'number'))).toEqual(['frc1', 'frc103', 'frc341', 'frc341B', 'frc2607', 'frc5181']);
-  });
-
-  it('does not change the input array', () => {
-    const copy = [...pool];
-    sortPool(pool, 'proj');
-    expect(pool).toEqual(copy);
-  });
-});
-
-describe('formatting', () => {
+describe('pool formatters', () => {
   it('formats proj, record, and OPR/rank', () => {
     expect(formatProj(38.2)).toBe('38.2');
     expect(formatProj(40)).toBe('40.0');
@@ -3731,46 +3699,22 @@ describe('formatting', () => {
     expect(formatOprRank(null, 7)).toBe('#7');
     expect(formatOprRank(null, null)).toBe('—');
   });
+
+  it('labels every best finish and keeps SP4\'s footnote wording', () => {
+    expect(BEST_FINISH_LABEL).toEqual({ winner: 'Event winner', finalist: 'Finalist', captain: 'Captain', picked: 'Picked' });
+    expect(POOL_FOOTNOTE).toBe('Proj. uses standard scoring.');
+  });
 });
 ```
 
 - [ ] **Step 2: Run it to make sure it fails, then implement**
 
-Run: `npx vitest run tests/pool/sort.test.ts` → FAIL (`Failed to resolve import "@/lib/pool/sort"`).
+Run: `npx vitest run tests/pool/format.test.ts` → FAIL (`Failed to resolve import "@/lib/pool/format"`).
 
-Create `lib/pool/sort.ts`:
+Create `lib/pool/format.ts`:
 
 ```ts
 import type { BestFinish } from '@/lib/db/types';
-import type { PoolEntry } from '@/lib/pool/entries';
-
-export type PoolSortKey = 'proj' | 'opr' | 'number';
-
-export const POOL_SORTS: { key: PoolSortKey; label: string }[] = [
-  { key: 'proj', label: 'Proj' },
-  { key: 'opr', label: 'OPR' },
-  { key: 'number', label: 'Team #' },
-];
-
-/** frc341 < frc341B < frc2607: by number, then the B suffix. */
-function byTeam(a: string, b: string): number {
-  return Number.parseInt(a.slice(3), 10) - Number.parseInt(b.slice(3), 10) || a.localeCompare(b);
-}
-
-/** Highest first; null ("New" / no OPR) always last. */
-function highFirst(a: number | null, b: number | null): number {
-  if (a === null) return b === null ? 0 : 1;
-  if (b === null) return -1;
-  return b - a;
-}
-
-/** Spec §6.3 sorts. Returns a new array. */
-export function sortPool(entries: PoolEntry[], key: PoolSortKey): PoolEntry[] {
-  return [...entries].sort((a, b) => {
-    const primary = key === 'proj' ? highFirst(a.proj, b.proj) : key === 'opr' ? highFirst(a.opr, b.opr) : 0;
-    return primary || byTeam(a.teamKey, b.teamKey);
-  });
-}
 
 export function formatProj(proj: number | null): string {
   return proj === null ? 'New' : proj.toFixed(1);
@@ -3791,9 +3735,12 @@ export const BEST_FINISH_LABEL: Record<BestFinish, string> = {
   captain: 'Captain',
   picked: 'Picked',
 };
+
+/** Spec §6.3. SP4's PoolList test already checks this wording. */
+export const POOL_FOOTNOTE = 'Proj. uses standard scoring.';
 ```
 
-Run: `npx vitest run tests/pool/sort.test.ts` → PASS.
+Run: `npx vitest run tests/pool/format.test.ts` → PASS.
 
 - [ ] **Step 3: Write the failing component test**
 
@@ -3804,7 +3751,7 @@ import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { PoolFootnote, PoolStatCells } from '@/components/pool/PoolStats';
-import { PoolSortControl } from '@/components/pool/PoolSortControl';
+import { PoolList } from '@/components/draft/PoolList';
 import type { PoolEntry } from '@/lib/pool/entries';
 
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -3823,7 +3770,9 @@ describe('PoolStatCells', () => {
   });
 
   it('shows a "New" chip instead of Proj, and no badge for a team never picked', () => {
-    const html = renderToStaticMarkup(h(PoolStatCells, { entry: entry({ proj: null, bestFinish: null, record: null, opr: null, rank: null }) }));
+    const html = renderToStaticMarkup(
+      h(PoolStatCells, { entry: entry({ proj: null, bestFinish: null, record: null, opr: null, rank: null }) }),
+    );
     expect(text(html)).toContain('New');
     expect(text(html)).not.toContain('proj');
     expect(text(html)).not.toMatch(/winner|Finalist|Captain|Picked/);
@@ -3832,20 +3781,36 @@ describe('PoolStatCells', () => {
 
 describe('PoolFootnote', () => {
   it('says projections use standard scoring (spec §6.3)', () => {
-    expect(text(renderToStaticMarkup(h(PoolFootnote)))).toBe('Proj. uses standard scoring');
+    expect(text(renderToStaticMarkup(h(PoolFootnote)))).toBe('Proj. uses standard scoring.');
   });
 });
 
-describe('PoolSortControl', () => {
-  it('renders the three sorts as 44 px toggle buttons with the current one pressed', () => {
-    const html = renderToStaticMarkup(h(PoolSortControl, { value: 'opr', onChange: () => {} }));
-    expect(text(html)).toBe('Proj OPR Team #');
-    expect(html.match(/aria-pressed="true"/g)).toHaveLength(1);
-    expect(html).toMatch(/aria-pressed="true"[^>]*>OPR|>OPR<\/button>/);
-    expect(html.match(/min-h-11/g)).toHaveLength(3);
+describe("SP4's PoolList with real stats", () => {
+  it('renders the stat cells for a projected team and the New chip for a new one', () => {
+    const html = renderToStaticMarkup(
+      h(PoolList, {
+        slug: 'habich-fam-abc234',
+        roundId: '00000000-0000-4000-8000-000000000001',
+        entries: [entry(), entry({ teamKey: 'frc9999', nickname: 'Rookies', proj: null, record: null, bestFinish: null, opr: null, rank: null })],
+        taken: new Set<string>(),
+        queued: new Set<string>(),
+        canDraft: false,
+        draftLabel: 'Draft',
+        readOnly: true,
+        onDraft: () => {},
+        onToggleQueue: () => {},
+      }),
+    );
+    const t = text(html);
+    expect(t).toContain('Event winner');
+    expect(t).toContain('OPR 41.2 · #3');
+    expect(t).toContain('New');
+    expect(t).toContain('Proj. uses standard scoring.');
   });
 });
 ```
+
+(The `slug` and `roundId` props are added to `PoolList` in Task 16; add them in this task already — Step 5 — so this test compiles.)
 
 - [ ] **Step 4: Run it to make sure it fails, then implement**
 
@@ -3856,7 +3821,7 @@ Create `components/pool/PoolStats.tsx`:
 ```tsx
 import { Badge } from '@/components/ui/Badge';
 import type { PoolEntry } from '@/lib/pool/entries';
-import { BEST_FINISH_LABEL, formatOprRank, formatProj, formatRecord } from '@/lib/pool/sort';
+import { BEST_FINISH_LABEL, formatOprRank, formatProj, formatRecord, POOL_FOOTNOTE } from '@/lib/pool/format';
 
 /** Shown instead of a projection for teams with no results in the last two seasons. */
 export function NewChip() {
@@ -3885,79 +3850,33 @@ export function PoolStatCells({ entry }: { entry: PoolEntry }) {
 }
 
 export function PoolFootnote() {
-  return <p className="text-[13px] leading-[18px] text-fg-muted">Proj. uses standard scoring</p>;
+  return <p className="text-[13px] leading-[18px] text-fg-muted">{POOL_FOOTNOTE}</p>;
 }
 ```
 
-Create `components/pool/PoolSortControl.tsx`:
+- [ ] **Step 5: Use them in SP4's `components/draft/PoolList.tsx`**
 
-```tsx
-'use client';
+Edit SP4's `PoolList` (keep its search, `filterSortPool` sort, "Available only", queue and Draft buttons exactly as they are):
 
-import { POOL_SORTS, type PoolSortKey } from '@/lib/pool/sort';
+1. Add two props, `slug: string` and `roundId: string`, to the props type and destructuring (Task 16 uses them to open the team sheet). In `components/draft/DraftRoom.tsx`, pass `slug={slug} roundId={roundId}` where it renders `<PoolList …>` (DraftRoom already receives both from the page).
+2. Delete the `FINISH` map and the `statsLine` function.
+3. In each row, replace the `<p className="truncate …">{statsLine(e)}</p>` line with `<PoolStatCells entry={e} />`, and delete the separate `e.proj === null ? <Badge>New</Badge> : <span>Proj …</span>` block (the stat cells now show Proj or the New chip).
+4. Replace the footnote `<p className="text-[13px] text-fg-muted">Proj. uses standard scoring.</p>` with `<PoolFootnote />`.
+5. Imports: add `import { PoolFootnote, PoolStatCells } from '@/components/pool/PoolStats';`; drop `Badge` if nothing else in the file uses it.
 
-export function PoolSortControl({ value, onChange }: { value: PoolSortKey; onChange: (key: PoolSortKey) => void }) {
-  return (
-    <div role="group" aria-label="Sort teams" className="flex gap-1">
-      {POOL_SORTS.map((s) => {
-        const on = s.key === value;
-        return (
-          <button
-            key={s.key}
-            type="button"
-            aria-pressed={on}
-            onClick={() => onChange(s.key)}
-            className={[
-              'min-h-11 rounded-pill px-3 text-[15px] font-semibold',
-              on ? 'bg-primary-fill text-on-primary' : 'bg-surface-2 text-fg-muted ring-1 ring-inset ring-border',
-            ].join(' ')}
-          >
-            {s.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-```
+- [ ] **Step 6: Run the tests, then check it in the browser**
 
-Run: `npx vitest run tests/ui/pool-stats.test.ts tests/pool` → PASS. (If the "not.toContain('proj')" line fails for the New case, the Proj span is rendering — check the `entry.proj === null` branch.)
+Run: `npx vitest run tests/pool tests/ui/pool-stats.test.ts tests/ui` → PASS (SP4's own PoolList tests still pass: the footnote wording and "New" text are unchanged).
 
-- [ ] **Step 5: Wire them into SP4's pool list**
-
-Find the component that renders `PoolEntry` rows:
-
-Run: `grep -rln "PoolEntry" components app | grep -v "components/pool/"`
-
-In that component (SP4's Pool tab list; it already filters "Available only" and searches by number or nickname):
-
-1. Add sort state and apply it after filtering/search:
-   ```tsx
-   import { PoolFootnote, PoolStatCells } from '@/components/pool/PoolStats';
-   import { PoolSortControl } from '@/components/pool/PoolSortControl';
-   import { sortPool, type PoolSortKey } from '@/lib/pool/sort';
-   // inside the component:
-   const [sort, setSort] = useState<PoolSortKey>('proj'); // spec §6.3: Proj is the default
-   const shown = sortPool(filtered, sort);                  // `filtered` = SP4's search + "Available only" result
-   ```
-2. Render `<PoolSortControl value={sort} onChange={setSort} />` in the list's toolbar, next to SP4's search box and "Available only" toggle. At 360 px the toolbar may wrap onto two lines; it must not scroll sideways.
-3. In each row, under the bumper plate + nickname, replace SP4's stats placeholder (whatever it shows for the `null` stats — typically a "New" label) with `<PoolStatCells entry={e} />`.
-4. Render `<PoolFootnote />` once, below the list.
-5. Map over `shown` instead of `filtered`.
-
-- [ ] **Step 6: Check it in the browser**
-
-Run `npm run dev`, sign in, open a live-mode round's draft room (`/l/{slug}/r/{roundId}/draft`) → Pool tab, at 360 px wide in both themes. With `team_stats` still empty locally, every row shows the "New" chip and Proj sort falls back to team number; that's expected until Task 17. Sort buttons are ≥ 44 px tall and nothing scrolls sideways.
+Run `npm run dev`, sign in, open a live-mode round's draft room (`/l/{slug}/r/{roundId}/draft`) → Pool tab, at 360 px wide in both themes. With `team_stats` still empty locally every row shows the "New" chip; after Task 17's build, rows show Proj, W-L-T, badge, OPR/rank, and Proj sort puts the best teams first. Nothing scrolls sideways (the stat cells wrap onto a second line if needed).
 
 - [ ] **Step 7: Run everything and commit**
 
 Run: `npm test && npm run typecheck` → all PASS.
 
 ```bash
-git add lib/pool/sort.ts components/pool/PoolStats.tsx components/pool/PoolSortControl.tsx tests/pool/sort.test.ts tests/ui/pool-stats.test.ts
-git add -u components app   # SP4's pool list component, edited in Step 5
-git status --short          # nothing unexpected staged
-git commit -m "feat(sp3): draft pool shows Proj, W-L-T, best finish, OPR/rank with sorting"
+git add lib/pool/format.ts components/pool/PoolStats.tsx components/draft/PoolList.tsx components/draft/DraftRoom.tsx tests/pool/format.test.ts tests/ui/pool-stats.test.ts
+git commit -m "feat(sp3): draft pool rows show Proj, W-L-T, best finish, OPR/rank"
 ```
 
 ---
@@ -3970,7 +3889,7 @@ git commit -m "feat(sp3): draft pool shows Proj, W-L-T, best finish, OPR/rank wi
 - Test: `tests/api/teamSheet.test.ts`, `tests/ui/team-sheet.test.ts`
 
 **Interfaces:**
-- Consumes: `teamSheet`, `TeamSheetData` (Task 14); `getTeamStats` (Task 4); SP1 `requireLeagueView`; v1 `requireRound`, `handle`, `json`, `HttpError`, `TEAM_KEY_RE`, `teamLabel`; `BEST_FINISH_LABEL`, `formatProj`, `formatRecord` (Task 15); v1 `BumperPlate`.
+- Consumes: `teamSheet`, `TeamSheetData` (Task 14); `getTeamStats` (Task 4); SP1 `requireLeagueView`; v1 `requireRound`, `handle`, `json`, `HttpError`, `TEAM_KEY_RE`, `teamLabel`; `BEST_FINISH_LABEL`, `formatProj`, `formatRecord` (`lib/pool/format.ts`, Task 15); SP4's `components/draft/PoolList.tsx` (with the `slug`/`roundId` props added in Task 15); v1 `BumperPlate`.
 - Produces:
   ```ts
   // GET /api/l/{slug}/rounds/{id}/pool/{teamKey} → 200 TeamSheetData; 403 private league (non-member); 404 unknown league/round/team key
@@ -3985,22 +3904,17 @@ Create `tests/api/teamSheet.test.ts`:
 ```ts
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const h = vi.hoisted(() => ({
-  repo: undefined as unknown,
-  user: null as { id: string; email: string | null } | null,
-}));
+const h = vi.hoisted(() => ({ repo: undefined as unknown }));
 vi.mock('@/lib/db', () => ({ getRepo: () => h.repo }));
-// Same idea as SP1's tests/helpers/auth.ts session mock: the "signed-in user" is whatever h.user is.
-vi.mock('@/lib/auth/session', () => ({
-  getUser: async () => h.user,
-  requireUser: async () => h.user,
-}));
+// SP1's session mock: choose who is signed in with setUser().
+vi.mock('@/lib/auth/session', async () => (await import('../helpers/auth')).fakeSession);
 
 import { GET } from '@/app/api/l/[slug]/rounds/[id]/pool/[teamKey]/route';
 import type { Repo } from '@/lib/db/repo';
 import type { LeagueRow, RoundRow } from '@/lib/db/types';
 import { defaultScoring } from '@/lib/scoring/config';
 import { params, readJson, request, seedLeague } from '../helpers/api';
+import { setUser } from '../helpers/auth';
 import { createMemoryRepo } from '../helpers/memoryRepo';
 
 let repo: Repo;
@@ -4010,8 +3924,8 @@ let round: RoundRow;
 beforeEach(async () => {
   repo = createMemoryRepo();
   h.repo = repo;
-  h.user = null;
-  ({ league } = await seedLeague(repo));
+  ({ league } = await seedLeague(repo, { signIn: false })); // tests start signed out
+  setUser(null);
   round = await repo.createRound({
     leagueId: league.id, eventKey: '2026parr', eventName: 'Ramp Riot', startDate: '2026-10-24',
     endDate: '2026-10-24', timezone: 'America/New_York', scoring: defaultScoring(),
@@ -4046,7 +3960,7 @@ describe('GET …/pool/{teamKey}', () => {
   it('is 403 for non-members of a members-only league', async () => {
     await repo.updateLeague(league.id, { visibility: 'members' });
     expect((await get('frc341')).status).toBe(403);
-    h.user = { id: 'stranger', email: null };
+    setUser({ id: 'stranger', email: null });
     expect((await get('frc341')).status).toBe(403);
   });
 
@@ -4164,7 +4078,7 @@ Create `components/pool/TeamSheet.tsx`:
 import { useEffect, useState } from 'react';
 import { PoolFootnote } from '@/components/pool/PoolStats';
 import { BumperPlate } from '@/components/ui/BumperPlate';
-import { BEST_FINISH_LABEL, formatProj, formatRecord } from '@/lib/pool/sort';
+import { BEST_FINISH_LABEL, formatProj, formatRecord } from '@/lib/pool/format';
 import type { TeamSheetData } from '@/lib/stats/pool';
 import { teamLabel } from '@/lib/teams';
 
@@ -4291,7 +4205,7 @@ Run: `npx vitest run tests/ui/team-sheet.test.ts` → PASS.
 
 - [ ] **Step 5: Open the sheet from a pool row**
 
-In SP4's pool list component (same file as Task 15 Step 5), make the row's team area a button that opens the sheet, keeping SP4's separate Draft / Add-to-queue buttons as they are:
+In `components/draft/PoolList.tsx` (SP4; Task 15 added its `slug` and `roundId` props), make the row's team area a button that opens the sheet, keeping SP4's separate Draft / Add-to-queue buttons as they are:
 
 ```tsx
 import { TeamSheet } from '@/components/pool/TeamSheet';
@@ -4307,7 +4221,7 @@ const [sheet, setSheet] = useState<PoolEntry | null>(null);
 )}
 ```
 
-Use the component's existing names for the league slug and round id props.
+`slug` and `roundId` are the props Task 15 added.
 
 - [ ] **Step 6: Browser check**
 
@@ -4319,8 +4233,7 @@ Run: `npm test && npm run typecheck` → all PASS.
 
 ```bash
 git add "app/api/l/[slug]/rounds/[id]/pool/[teamKey]/route.ts" components/pool/TeamSheet.tsx tests/api/teamSheet.test.ts tests/ui/team-sheet.test.ts
-git add -u components app   # SP4's pool list component, edited in Step 5
-git status --short          # nothing unexpected staged
+git add components/draft/PoolList.tsx
 git commit -m "feat(sp3): team sheet with per-event history for Y and Y−1"
 ```
 

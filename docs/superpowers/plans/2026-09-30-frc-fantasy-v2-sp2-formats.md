@@ -102,32 +102,23 @@ tests/…                                         one test file per module above
 
 ## Test conventions for this plan
 
-Route tests follow v1 (`tests/api/*.test.ts`): mock `@/lib/db` with an in-memory repo and `@/lib/tba/client` with a fake `getTba`. Sessions follow the SP1 contract: `lib/auth/session.ts` is mocked and backed by a mutable user. Every route test file in this plan starts with this block (if SP1's `tests/helpers/auth.ts` exports an equivalent helper, use it instead — the behavior is the same):
+Route tests follow v1 (`tests/api/*.test.ts`): mock `@/lib/db` with an in-memory repo and `@/lib/tba/client` with a fake `getTba`. Sessions use SP1's helper (`tests/helpers/auth.ts`, SP1 Task 5), the same one SP1's converted v1 tests use, so tests appended to those files and new files behave alike. Every new route test file in this plan starts with this block:
 
 ```ts
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SessionUser } from '@/lib/auth/session';
 
 const h = vi.hoisted(() => ({
   repo: undefined as unknown,
-  user: null as SessionUser | null,
   getTba: undefined as unknown as (...args: unknown[]) => unknown,
 }));
 vi.mock('@/lib/db', () => ({ getRepo: () => h.repo }));
 vi.mock('@/lib/tba/client', () => ({ getTba: (...args: unknown[]) => h.getTba(...args) }));
-vi.mock('@/lib/auth/session', async () => {
-  const { HttpError } = await import('@/lib/api/http');
-  return {
-    getUser: async () => h.user,
-    requireUser: async () => {
-      if (!h.user) throw new HttpError(401, 'Sign in first');
-      return h.user;
-    },
-  };
-});
+vi.mock('@/lib/auth/session', async () => (await import('../helpers/auth')).fakeSession);
+
+import { setUser } from '../helpers/auth';
 ```
 
-`seedLeague(repo)` (SP1 version, `tests/helpers/api.ts`) returns `{ league, commissioner, user }`; tests set `h.user = user` to act as the commissioner.
+`seedLeague(repo, opts?)` (SP1 version, `tests/helpers/api.ts`) returns `{ league, commissioner, user }` and **signs that commissioner in** (`setUser(user)`) unless you pass `signIn: false`. `setUser(x)` picks who is signed in; `setUser(null)` signs out. When appending to a file SP1 already converted (for example `tests/api/rounds.test.ts`), it already imports `setUser`; if not, add `import { setUser } from '../helpers/auth';`.
 
 Run a single file with `npx vitest run tests/path/file.test.ts`; the full gate is `npm run typecheck && npm test`.
 
@@ -1410,7 +1401,7 @@ In `tests/helpers/api.ts`, add `format?: LeagueFormat` to `seedLeague`'s `opts` 
 
 - [ ] **Step 2: Write the failing route tests**
 
-In `tests/api/rounds.test.ts` (SP1 already switched it to sessions; `h.user = user` makes the request come from the commissioner), append:
+In `tests/api/rounds.test.ts` (SP1 already switched it to sessions; `setUser(user)` makes the request come from the commissioner), append:
 
 ```ts
 describe('POST rounds: manual events (spec §5.3)', () => {
@@ -1449,7 +1440,7 @@ describe('POST rounds: manual events (spec §5.3)', () => {
 
   it('answers 409 in a season league (its rounds are created for it)', async () => {
     const season = await seedLeague(repo, { slug: 'season-fam-abc234', format: 'season' });
-    h.user = season.user;
+    setUser(season.user);
     const res = await addRound(
       request('POST', '/x', { body: { kind: 'manual', name: 'G', startDate: '2026-11-07', endDate: '2026-11-07' } }),
       params({ slug: season.league.slug }),
@@ -1842,7 +1833,7 @@ beforeEach(async () => {
   h.getTba = vi.fn(async () => ({ data: null, fetchedAt: null, stale: true }));
   const seeded = await seedLeague(repo);
   league = seeded.league;
-  h.user = seeded.user;
+  setUser(seeded.user);
   round = await repo.createRound({
     leagueId: league.id, eventKey: null, kind: 'manual', eventName: 'Garage Games',
     startDate: '2026-11-07', endDate: '2026-11-07', timezone: 'America/New_York', scoring: defaultScoring(),
@@ -1912,7 +1903,7 @@ describe('PUT manual result', () => {
   });
 
   it('is commissioner-only', async () => {
-    h.user = null;
+    setUser(null);
     expect((await put('frc5181', {})).status).toBe(401);
   });
 });
@@ -2995,7 +2986,7 @@ beforeEach(async () => {
   );
   const seeded = await seedLeague(repo);
   league = seeded.league;
-  h.user = seeded.user;
+  setUser(seeded.user);
 });
 
 const put = (teams: unknown, slug = league.slug) =>
@@ -3033,14 +3024,14 @@ describe('PUT /admin/follows', () => {
 
   it('answers 409 in a season league', async () => {
     const season = await seedLeague(repo, { slug: 'season-fam-abc234', format: 'season' });
-    h.user = season.user;
+    setUser(season.user);
     const res = await put([5181], season.league.slug);
     expect(res.status).toBe(409);
     expect((await readJson(res)).error).toBe('Only event-by-event leagues can follow teams');
   });
 
   it('is commissioner-only', async () => {
-    h.user = null;
+    setUser(null);
     expect((await put([5181])).status).toBe(401);
   });
 });
@@ -3826,7 +3817,7 @@ beforeEach(async () => {
   const seeded = await seedLeague(repo, { format: 'season' });
   league = seeded.league;
   me = seeded.commissioner;
-  h.user = seeded.user;
+  setUser(seeded.user);
   round = await repo.createRound({
     leagueId: league.id, eventKey: null, kind: 'season', seasonYear: 2027, eventName: '2027 Season',
     startDate: '2027-01-01', endDate: '2027-12-31', timezone: 'America/New_York', scoring: defaultScoring(), rosterSize: 8,
@@ -3896,7 +3887,7 @@ describe('GET /api/districts/{year}', () => {
   });
   it('needs sign-in and a sane year', async () => {
     expect((await getDistricts(request('GET', '/x'), params({ year: '20x7' }))).status).toBe(404);
-    h.user = null;
+    setUser(null);
     expect((await getDistricts(request('GET', '/x'), params({ year: '2027' }))).status).toBe(401);
   });
 });
@@ -5398,7 +5389,7 @@ beforeEach(async () => {
   const seeded = await seedLeague(repo, { format: 'season' });
   league = seeded.league;
   me = seeded.commissioner;
-  h.user = seeded.user;
+  setUser(seeded.user);
   season = await repo.createRound({
     leagueId: league.id, eventKey: null, kind: 'season', seasonYear: 2027, eventName: '2027 Season',
     startDate: '2027-03-05', endDate: '2027-04-18', timezone: 'America/New_York', scoring: defaultScoring(),
@@ -5430,7 +5421,7 @@ describe('POST /admin/seasons', () => {
 
   it('is only for season leagues', async () => {
     const eventLeague = await seedLeague(repo, { slug: 'event-fam-abc234' });
-    h.user = eventLeague.user;
+    setUser(eventLeague.user);
     const res = await startSeason(request('POST', '/x'), params({ slug: eventLeague.league.slug }));
     expect(res.status).toBe(409);
     expect((await readJson(res)).error).toBe('Only full-season leagues have seasons');
