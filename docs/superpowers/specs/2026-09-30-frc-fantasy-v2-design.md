@@ -545,34 +545,36 @@ If nobody has the draft open when a deadline passes, nothing happens until someo
 
 ### 8.1 Security rules
 
-- **RLS stays on with no policies** for every table, old and new (`profiles`, `manual_results`, `league_follows`, `league_skipped_events`, `event_scores`, `team_stats`, `draft_queue`, `draft_prefs`). The anon key becomes public in v2 (`NEXT_PUBLIC_…`), so this is what keeps it harmless. A test queries `pg_class.relrowsecurity` for every `public` table and fails if any has RLS off.
-- **RPC lockdown:** `draft_make_pick` (and any future function) is created with `revoke execute … from public, anon, authenticated`; only the service role can call it.
+- **RLS stays on with no policies** for every table, old and new (`profiles`, `manual_results`, `league_follows`, `league_skipped_events`, `event_scores`, `team_stats`, `draft_queue`, `draft_prefs`). The anon key becomes public in v2 (`NEXT_PUBLIC_…`), so this is what keeps it harmless. The real-database smoke script (§9) queries `pg_class.relrowsecurity` for every `public` table and fails if any has RLS off (it needs a real database, so it isn't a Vitest test).
+- **RPC lockdown:** `draft_make_pick`, `draft_undo_pick`, and `gen_invite_code` (and any future function) are created with `revoke execute … from public, anon, authenticated` followed by an explicit `grant execute … to service_role`; only the service role can call them.
 - **Session checks** happen only in `lib/auth/session.ts` / `lib/auth/roles.ts`. Every route and page that mutates or reads members-only data goes through them; the route tests include "signed out → 401", "other league's commissioner → 403", "non-member of members-only league → private card/403".
 - **Cron:** `/api/cron/daily` requires `Authorization: Bearer $CRON_SECRET` (constant-time compare).
 - **Open redirect:** the `next` parameter rule (§4.1).
-- **E2E test sign-in** (§9): the `/api/test/login` route exists only when `E2E_AUTH=1` **and** `NODE_ENV !== 'production'`; it returns 404 otherwise, and a unit test asserts that.
+- **E2E test sign-in** (§9): the `/api/test/login` route works only when `E2E_AUTH_SECRET` is set, the request carries `Authorization: Bearer $E2E_AUTH_SECRET` (constant-time compare), **and** `process.env.VERCEL` is unset (never on any Vercel deploy). It returns 404 otherwise, and a unit test asserts that. (`NODE_ENV` isn't used as the gate because `next start` sets it to `production`, which would block Playwright against a built app.)
 
 ### 8.2 Migrations (all additive until cleanup)
 
+Numbered in build order (§1.2):
+
 | File | Sub-project | Contents |
 |---|---|---|
-| `0002_accounts.sql` | 1 | `profiles`; `players.user_id/role/claimable` (+ backfill `claimable = true`); `leagues.invite_code/visibility/created_by` (+ backfill codes, then `not null`); `admin_token_hash` nullable |
-| `0003_formats.sql` | 2 | `leagues.format/follows_synced_at`; `rounds.kind/season_year/pool_filter/auto_added` + constraints, `event_key` nullable, roster check 1–15; `manual_results`; `league_follows`; `league_skipped_events`; `tba_cache.body_hash`; `event_scores` |
-| `0004_team_stats.sql` | 3 | `team_stats` |
-| `0005_live_draft.sql` | 4 | draft columns on `rounds`; `draft_queue`; `draft_prefs`; `draft_make_pick` function + revoke |
-| `0006_cleanup.sql` | after Oct 22 claim | drop `leagues.admin_token_hash`, `leagues.home_team_number`; delete `scripts/rotate-admin-token.ts` + `lib/auth/rotate.ts` |
+| `0002_accounts.sql` | SP1 | `profiles`; `players.user_id/role`; `gen_invite_code()`; `leagues.invite_code` (not null, default `gen_invite_code()`) `/visibility/created_by`; `admin_token_hash` nullable. Run **after** the v1 test leagues are deleted (§4.7) |
+| `0003_live_draft.sql` | SP4 | draft columns on `rounds`; `picks.auto`; `draft_queue`; `draft_prefs`; `draft_make_pick` + `draft_undo_pick` functions + revoke/grant |
+| `0004_team_stats.sql` | SP3 | `tba_cache.body_hash`; `event_scores`; `team_stats` |
+| `0005_formats.sql` | SP2 | `leagues.format/follows_synced_at`; `rounds.kind/season_year/pool_filter/auto_added` + constraints, `event_key` nullable, roster check 1–15; `manual_results`; `league_follows`; `league_skipped_events` |
+| `0006_cleanup.sql` | after Ramp Riot | drop `leagues.admin_token_hash`, `leagues.home_team_number` |
 
-Each migration is applied to production when its sub-project merges to `main`. Because 0002–0005 only add things, the previous code keeps working against the new schema during the deploy window.
+Each migration is applied to production when its sub-project merges to `main`. Because 0002–0005 only add things (and new `not null` columns all have defaults), the previous code keeps working against the new schema during the deploy window.
 
 ---
 
 ## 9. Testing
 
-- **TDD for pure logic:** invite codes, `next` sanitizer, name-collision suffixing, role checks, `scoreManualEvent` (+ the `2025parr` equivalence test), follow-sync event filtering, pool filters, season aggregation, `getEventScores` hit/miss/stamp logic, projection math, `chooseAutoPick`, draft phase, deadline and clock-offset math.
-- **Route tests** with the existing in-memory `Repo` (extended for new tables; it emulates `draft_make_pick`'s checks) and a `withUser(userId)` fake-session helper.
-- **Real-database smoke script** `scripts/smoke-v2.ts` (run against the dev Supabase project): applies to a throwaway league; exercises `draft_make_pick` races (two concurrent calls, one wins), RLS-on check, and cleanup.
-- **E2E (Playwright):** two browser contexts signed in via the test-only login route (§8.1, Supabase admin-created users) run a live draft: pick, timeout auto-pick, auto-draft chaining, a racing double-pick, pause/resume, commissioner undo.
-- **Regression:** all 489 v1 tests stay green; the `2025parr` replay matches v1 exactly.
+- **TDD for pure logic:** invite codes, `next` sanitizer, name-collision suffixing, role checks, `scoreManualEvent` (+ the `2025parr` equivalence test), follow-sync event filtering, pool filters, season aggregation, `getEventScores` hit/miss/stamp logic, `EventScores` serialize round-trip, projection math, `chooseAutoPick`, draft phase, `advance` (start/resume/undo/auto-draft-on onto an auto-drafter), pause/resume deadline math (including a pause after the deadline passed), deadline and clock-offset math.
+- **Route tests** with the existing in-memory `Repo` (extended for new tables; it emulates `draft_make_pick`'s and `draft_undo_pick`'s checks) and a `withUser(userId)` fake-session helper.
+- **Real-database smoke script** `scripts/smoke-v2.ts` (run against the dev Supabase project): applies to a throwaway league; exercises `draft_make_pick` races (two concurrent calls, one wins), undo racing a `tick`, the RLS-on check for every `public` table, and cleanup.
+- **E2E (Playwright):** two browser contexts signed in via the test-only login route (§8.1, Supabase admin-created users) run a live draft: pick, timeout auto-pick, auto-draft chaining (including the first pick), a racing double-pick, pause/resume, commissioner undo of an auto-pick.
+- **Regression:** all 490 v1 tests stay green (auth tests rewritten for sessions); the `2025parr` replay matches v1 exactly.
 - **Human tests:** mock draft night with the family on their phones (Oct 19–20), both themes, 360 px.
 
 ---
@@ -581,19 +583,19 @@ Each migration is applied to production when its sub-project merges to `main`. B
 
 | Dates | Work |
 |---|---|
-| Oct 1 | Spec review; implementation plans (one per sub-project); Joey does OAuth setup (§11); tag `main` as `v1.0` |
-| Oct 1–5 | SP1 Accounts & leagues + landing page → PR → merge, migration 0002 |
-| Oct 6–10 | SP2 Formats + `event_scores` → merge, migration 0003 |
-| Oct 11–13 | SP3 Team info; run `build-team-stats` for 2025 + 2026 → merge, migration 0004 |
-| Oct 14–18 | SP4 Live draft → merge, migration 0005 |
+| Oct 1 | Spec approval; implementation plans (one per sub-project); Joey does OAuth setup (§11); tag `main` as `v1.0` |
+| Oct 1–5 | SP1 Accounts & leagues + landing page → delete v1 test leagues → merge, migration 0002 → Joey creates the family league |
+| Oct 6–10 | SP4 Live draft (basic pool, auto-pick by queue → team number) → merge, migration 0003 |
+| Oct 11–14 | SP3 `event_scores` + team info; run `build-team-stats` for 2025 + 2026 → merge, migration 0004 |
+| Oct 15–18 | SP2 Formats (manual rounds, follow-a-team, full season) → merge, migration 0005. First thing cut if behind |
 | Oct 19–20 | `2025parr` replay; mock live draft with family; fix wave |
 | Oct 21 | **Feature freeze** |
-| Oct 22 | **Sign-in party:** Joey claims the league as commissioner, family joins and claims their v1 names; Ramp Riot round created (or auto-added via following 5181); wake Supabase |
+| Oct 22 | **Sign-in party:** family signs in and joins the league with the invite code; Ramp Riot round created; wake Supabase |
 | Oct 23 | Draft night — live draft |
 | Oct 24 | Ramp Riot |
 | After Oct 24 | Migration 0006 cleanup; community launch prep for 2027 Week 1 |
 
-**Built-in fallback:** a round's `draft_mode` can be switched back to `commissioner` before the draft starts, so if the live draft isn't solid by Oct 20, draft night uses the v1-style entry screen with no extra work. Rollback of a bad deploy: Vercel instant rollback (migrations are additive, so older code still runs).
+**Built-in fallback:** a round's `draft_mode` can be switched back to `commissioner` before the draft starts, so if the live draft isn't solid by Oct 20, draft night uses the v1-style entry screen with no extra work. If SP2 isn't done by the freeze, it continues after Ramp Riot (Ramp Riot is an ordinary TBA round and doesn't need it). Rollback of a bad deploy: Vercel instant rollback (migrations are additive, so older code still runs).
 
 Each sub-project follows the v1 working style: brief on disk, subagent implementation, review between phases, stop for Joey's "go".
 
@@ -604,7 +606,7 @@ Each sub-project follows the v1 working style: brief on disk, subagent implement
 1. **Google:** Google Cloud console → new project → OAuth consent screen (External; scopes `email`, `profile`, `openid`; app name "FRC Fantasy") → OAuth client (Web) with redirect URI `https://<project-ref>.supabase.co/auth/v1/callback`.
 2. **Discord:** Discord Developer Portal → New Application → OAuth2 → add the same redirect URI.
 3. **Supabase:** Authentication → Providers → enable Google and Discord with their IDs/secrets. URL configuration: Site URL `https://frc-fantasy-6yo3.vercel.app`; redirect allow-list includes `https://frc-fantasy-6yo3.vercel.app/**` and `http://localhost:3000/**`.
-4. **Vercel env:** add `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `CRON_SECRET` (random 32+ chars); remove `CREATE_LEAGUE_PASSCODE`. Same in `.env.local`.
+4. **Vercel env:** add `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `CRON_SECRET` (random 32+ chars); remove `CREATE_LEAGUE_PASSCODE`. Same in `.env.local`, plus `E2E_AUTH_SECRET` (local only, never on Vercel).
 
 ---
 
@@ -612,13 +614,13 @@ Each sub-project follows the v1 working style: brief on disk, subagent implement
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| Scope doesn't fit before Oct 21 | Medium-High | Build order puts the draft-night essentials first; SP4 falls back to commissioner mode (§10); anything unfinished continues after Ramp Riot toward 2027 Week 1 |
+| Scope doesn't fit before Oct 21 | Medium-High | Build order puts the draft-night essentials first (SP1, SP4); SP2 is last and cuttable; SP4 falls back to commissioner mode (§10); anything unfinished continues after Ramp Riot toward 2027 Week 1 |
 | Auth change breaks commissioner access on draft night | Medium | Route tests for every admin endpoint; sign-in party on Oct 22 (not the 23rd); Vercel rollback |
-| A family member can't sign in (school account, no Discord) | Medium | Two providers; commissioner can still pick for unclaimed players in either draft mode |
+| A family member can't sign in (school account, no Discord) | Medium | Two providers; the Oct 22 sign-in party surfaces it a day early (a personal Google account can be made on the spot); in either draft mode the commissioner can pick for any member who's stuck on draft night |
 | Live draft desync / timer disputes | Medium | Database clock + atomic RPC; server authoritative; polling fallback; pause/undo |
 | Realtime connection blocked (school/venue Wi-Fi) | Low-Medium | 3 s polling fallback |
 | TBA rate limits while building stats | Low | Throttled, resumable script run locally |
-| Public anon key misuse | Low | RLS-on test, no policies, RPC execute revoked |
+| Public anon key misuse | Low | RLS-on test, no policies, RPC execute revoked; doorbell spam capped client-side (§7.5) |
 | Supabase free tier pause | Low (now) | Daily cron keeps the project active; pre-event wake check stays in the checklist |
 | Vercel cron function time limit | Low | 50 s budget per run, batches continue next day |
 
@@ -627,5 +629,5 @@ Each sub-project follows the v1 working style: brief on disk, subagent implement
 ## 13. Doc updates when v2 lands
 
 - `CLAUDE.md`: source of truth now lists both specs; update locked decisions (accounts via Google/Discord; the caching rule wording from §5.6; formats), current status, and env var list.
-- `README.md`: setup (§11), cron, scripts (`build-team-stats`, `rebuild-event-scores`, `smoke-v2`), removal of the admin-link recovery section after migration 0006.
+- `README.md`: setup (§11), cron, scripts (`build-team-stats`, `rebuild-event-scores`, `smoke-v2`), removal of the admin-link recovery section (in SP1, when admin links go away).
 - v1 spec §13 backlog: mark accounts, live draft, and projections as done in v2; notifications, awards stay in the backlog; add trades (v3).
