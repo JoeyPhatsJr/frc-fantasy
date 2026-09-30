@@ -1,3 +1,4 @@
+import { BumperPlate } from '@/components/ui/BumperPlate';
 import { teamLabel } from '@/lib/teams';
 
 type BoardPick = { pickNumber: number; playerId: string; teamKey: string };
@@ -22,12 +23,12 @@ export function DraftBoard({
   const draftRounds = Array.from({ length: rosterSize }, (_, r) => r);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {draftRounds.map((r) => (
         <div key={r}>
-          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-fg-muted">Round {r + 1}</p>
+          <p className="mb-2 text-[13px] font-semibold leading-[18px] text-fg-muted">Round {r + 1}</p>
           {/* Cells wrap, so the board never scrolls sideways however many players there are. */}
-          <ol className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <ol className="grid grid-cols-3 gap-x-2 gap-y-3 sm:grid-cols-4">
             {Array.from({ length: P }, (_, slot) => {
               const n = r * P + slot;
               const pick = byNumber.get(n);
@@ -35,25 +36,31 @@ export function DraftBoard({
               const pickerId = r % 2 === 0 ? draftOrder[slot] : draftOrder[P - 1 - slot];
               const who = playerNames[pick?.playerId ?? pickerId] ?? 'Unknown';
               return (
-                <li
-                  key={n}
-                  className={[
-                    'min-w-0 rounded-lg border px-2.5 py-1.5',
-                    pick ? 'border-border bg-surface' : 'border-dashed border-fg-muted/40 bg-surface-2',
-                  ].join(' ')}
-                >
-                  <p className="truncate text-xs text-fg-muted" title={who}>
+                <li key={n} className="flex min-w-0 flex-col items-center gap-1">
+                  {/* Screen readers get the pick number and picker; sighted users see the plate and name. */}
+                  <span className="sr-only">
                     #{n + 1} · {who}
-                  </p>
-                  <p
-                    className={[
-                      'truncate font-display text-lg font-bold leading-tight tabular-nums',
-                      pick ? 'text-fg' : 'text-fg-muted',
-                    ].join(' ')}
-                    title={pick ? teamNames[pick.teamKey] : undefined}
+                    {pick ? '' : ', not picked yet'}
+                  </span>
+                  {pick ? (
+                    <span title={teamNames[pick.teamKey]} className="max-w-full">
+                      <BumperPlate number={teamLabel(pick.teamKey)} size="md" />
+                    </span>
+                  ) : (
+                    <span
+                      aria-hidden="true"
+                      className="inline-flex h-10 min-w-14 items-center justify-center rounded-plate border border-dashed border-border font-display text-[22px] text-fg-muted"
+                    >
+                      —
+                    </span>
+                  )}
+                  <span
+                    aria-hidden="true"
+                    className="w-full truncate text-center text-[13px] leading-[18px] text-fg-muted"
+                    title={who}
                   >
-                    {pick ? teamLabel(pick.teamKey) : '—'}
-                  </p>
+                    {who}
+                  </span>
                 </li>
               );
             })}
