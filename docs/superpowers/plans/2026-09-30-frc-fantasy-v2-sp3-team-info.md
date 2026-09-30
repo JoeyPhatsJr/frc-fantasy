@@ -1830,7 +1830,7 @@ describe('2025parr replay through getEventScores (spec §5.6)', () => {
 
 Also add `import { configHash } from '@/lib/scores/hash';` to the imports.
 
-If SP4 made `auto` a required field of `NewPick`, add `auto: false` to the `insertPick` call. If SP1 kept `createPlayer` instead of (or beside) `createMember`, either works here; the rows only need ids and names.
+(SP4 made `NewPick.auto` optional, defaulting to `false`, so `insertPick` needs no `auto` here. Members are made with SP1's `createMember`; SP1 keeps `createPlayer` only for v1 tests and the seed script.)
 
 - [ ] **Step 2: Run it to make sure the round-page test fails**
 
@@ -1845,7 +1845,7 @@ In `lib/views/round.ts`, replace the imports of `loadEventData`, `scoreEvent`, `
 import { getEventScores } from '@/lib/scores/eventScores';
 ```
 
-and replace the body of `buildRoundView` (keep the `status:` line exactly as SP4 left it if SP4 changed it — for example to pass `draftStartedAt`):
+and replace the body of `buildRoundView` (the `status:` line is unchanged: SP4's `roundStatus` reads `round.draftStartedAt` itself, with the same three arguments):
 
 ```ts
 export async function buildRoundView(

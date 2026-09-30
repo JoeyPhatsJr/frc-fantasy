@@ -1642,7 +1642,7 @@ describe('GET pool (§6.3)', () => {
 });
 ```
 
-(`updateLeague(id, { visibility })` is SP1's `LeaguePatch`. If SP1 named the field differently, use its name.)
+(`updateLeague(id, { visibility })` is SP1's `LeaguePatch.visibility`, SP1 Task 3.)
 
 - [ ] **Step 3: Run to verify they fail**
 

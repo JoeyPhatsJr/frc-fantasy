@@ -1388,7 +1388,7 @@ Co-Authored-By: <the session's attribution line>"
 - Test: `tests/api/rounds.test.ts` (append), `tests/rounds/pool.test.ts` (create), `tests/views/manualRound.test.ts` (create)
 
 **Interfaces:**
-- Consumes: `scoreManualEvent` (Task 3), `listManualResults` (Task 2), SP1 `requireLeagueRole`, SP3's TBA path inside `buildRoundView`.
+- Consumes: `scoreManualEvent` (Task 3), `listManualResults` (Task 2), SP1 `requireLeagueRole`, SP3's `getEventScores` (`lib/scores/eventScores.ts`, SP3 Task 6) and its `buildRoundView` body (SP3 Task 7).
 - Produces:
   - `type RoundScoreSource = { teams: Map<string, TeamScore>; qualsComplete: boolean; rpMethod: RpMethod; teamNames: Record<string, string>; hasEventData: boolean; hasRankings: boolean; fetchedAt: string | null; stale: boolean }` and `scoreSourceFor(round: RoundRow, now: Date): Promise<RoundScoreSource>` (`lib/rounds/scoreSource.ts`; Task 15 adds a `season` field)
   - `loadPool(round, now)` answers manual rounds from `round_extra_teams` only (no TBA call)
@@ -1561,7 +1561,7 @@ describe('a manual round page', () => {
 });
 ```
 
-(`insertPick` may need SP4's `auto` field — pass `auto: false` if the type requires it.)
+(SP4's `NewPick.auto` is optional and defaults to `false`.)
 
 - [ ] **Step 5: Run them to make sure they fail**
 
@@ -1595,11 +1595,13 @@ export async function loadPool(
 
 - [ ] **Step 7: Add the scoring dispatcher**
 
-Create `lib/rounds/scoreSource.ts`. The `tbaSource` body is **moved, not rewritten**: cut the TBA part of `buildRoundView` (SP3's version — from the `getEventScores`/`loadEventData` call through the `teamNames` / `hasEventData` / `hasRankings` / staleness computation and the "scoring failed → empty data, stale" fallback) into it and return the fields below. The v1 shape of that code is shown for orientation; keep SP3's cached path exactly as SP3 left it.
+Create `lib/rounds/scoreSource.ts`. `tbaSource` is SP3's `buildRoundView` scoring code (SP3 Task 7, Step 3) moved here unchanged: one `getEventScores` call, with `teamNames` / `hasEventData` / `hasRankings` read from its `info` and staleness from the result. (SP3 moved `cleanEventData` to `lib/tba/clean.ts` and `getEventScores` handles the "scoring failed → empty + stale" fallback internally, so nothing else moves.)
 
 ```ts
 import { getRepo } from '@/lib/db';
 import type { RoundRow } from '@/lib/db/types';
+import { cacheWindowFor } from '@/lib/rounds/status';
+import { getEventScores } from '@/lib/scores/eventScores';
 import { scoreManualEvent } from '@/lib/scoring/manual';
 import type { RpMethod, TeamScore } from '@/lib/scoring/types';
 
@@ -1637,17 +1639,21 @@ async function manualSource(round: RoundRow): Promise<RoundScoreSource> {
   };
 }
 
+/** Moved unchanged from SP3's buildRoundView (SP3 Task 7): scores come through the event_scores cache. */
 async function tbaSource(round: RoundRow, now: Date): Promise<RoundScoreSource> {
-  // ── moved from buildRoundView (SP3 version). In v1 it read: ──
-  // const loaded = await loadEventData(round.eventKey!, { windowMs: cacheWindowFor(round, now) });
-  // const data = cleanEventData(loaded.data);
-  // …scoreEvent with the try/catch fallback…
-  // return { teams: event.teams, qualsComplete, rpMethod, teamNames, hasEventData, hasRankings,
-  //          fetchedAt: loaded.fetchedAt, stale: loaded.stale || scoringFailed };
+  const event = await getEventScores(round.eventKey!, round.scoring, cacheWindowFor(round, now), { now });
+  return {
+    teams: event.scores.teams,
+    qualsComplete: event.scores.qualsComplete,
+    rpMethod: event.scores.rpMethod,
+    teamNames: event.info.teamNames,
+    hasEventData: event.info.hasEventData,
+    hasRankings: event.info.hasRankings,
+    fetchedAt: event.fetchedAt,
+    stale: event.stale,
+  };
 }
 ```
-
-The comment block is replaced by the moved code; the function must return a `RoundScoreSource`. `cleanEventData` stays exported from `lib/views/round.ts` (import it from there) so its tests don't move.
 
 - [ ] **Step 8: Use it in `buildRoundView`**
 
@@ -1665,7 +1671,7 @@ export async function buildRoundView(
   const players = roundPlayers(allPlayers, round.draftOrder, adjustments);
   return {
     round,
-    status: roundStatus(round, picks.length, now), // keep SP4's live-draft variant if it passes more arguments
+    status: roundStatus(round, picks.length, now), // SP4's roundStatus reads round.draftStartedAt itself
     scores: scoreRound(source.teams, picks, adjustments, players),
     picks,
     adjustments,
@@ -1680,7 +1686,7 @@ export async function buildRoundView(
 }
 ```
 
-Remove imports that are now unused (`scoreEvent`, `loadEventData`, `cacheWindowFor`), and add `import { scoreSourceFor } from '@/lib/rounds/scoreSource';`. `lib/rounds/scoreSource.ts` imports `cleanEventData` from `lib/views/round.ts` and `lib/views/round.ts` imports `scoreSourceFor` — that cycle is fine at runtime (both are used inside functions), but if you'd rather avoid it, move `cleanEventData` and `NO_EVENT_DATA` into `lib/rounds/scoreSource.ts` and re-export `cleanEventData` from `lib/views/round.ts`.
+Remove the imports that are now unused (`getEventScores`, and `cacheWindowFor` if nothing else in the file uses it), and add `import { scoreSourceFor } from '@/lib/rounds/scoreSource';`. The `cleanEventData` re-export SP3 left in this file stays. There is no import cycle: `lib/rounds/scoreSource.ts` doesn't import `lib/views/round.ts`.
 
 - [ ] **Step 9: Accept manual rounds in the create endpoint**
 
@@ -3670,7 +3676,7 @@ Co-Authored-By: <the session's attribution line>"
 
 **Files:**
 - Create: `lib/season/pool.ts`, `app/api/districts/[year]/route.ts`, `components/PoolFilterFields.tsx`
-- Modify: `lib/rounds/pool.ts`, `app/api/l/[slug]/admin/rounds/[id]/route.ts` (PATCH), `lib/rounds/detail.ts`, `lib/api/types.ts`, `components/admin/RoundSetup.tsx`, SP4's `app/api/l/[slug]/admin/rounds/[id]/draft/start/route.ts`
+- Modify: `lib/rounds/pool.ts`, `app/api/l/[slug]/admin/rounds/[id]/route.ts` (PATCH), `lib/rounds/detail.ts`, `lib/api/types.ts`, `components/admin/RoundSetup.tsx`, SP4's `app/api/l/[slug]/admin/rounds/[id]/draft/[action]/route.ts` (the start branch)
 - Test: `tests/season/pool.test.ts`, `tests/api/seasonRounds.test.ts`, `tests/ui/poolFilter.test.ts`
 
 **Interfaces:**
@@ -3893,7 +3899,7 @@ describe('GET /api/districts/{year}', () => {
 });
 ```
 
-(`insertPick` may need SP4's `auto: false`.)
+(SP4's `NewPick.auto` is optional and defaults to `false`.)
 
 - [ ] **Step 3: Run them to make sure they fail**
 
@@ -4012,10 +4018,10 @@ In the existing `P > 0` block, call `loadPool(poolRound, now)` instead of `loadP
 
 Add `poolFilter: patch.poolFilter,` to the `repo.updateRound` call. (Move `const repo = getRepo();` above the new checks.) Imports: `poolFilterSchema` from `@/lib/season/poolFilter`, `MAX_SEASON_ROSTER` from `@/lib/season/calendar`.
 
-**SP4's draft start** (`app/api/l/[slug]/admin/rounds/[id]/draft/start/route.ts`): where it checks `P × R > T`, add before that check (load the pool with `loadPool(round, now)` if SP4's code only has `buildPoolEntries` there):
+**SP4's draft start** lives in `app/api/l/[slug]/admin/rounds/[id]/draft/[action]/route.ts` (SP4 Task 10; one route for start/pause/resume). Inside its `if (action === 'start') { … }` block it already has `const pool = await loadPool(round, now);`, then the `pool.stale && pool.tbaCount === 0` 503 check, then `const T = pool.teams.length;`. Insert between the 503 check and `const T`:
 
 ```ts
-    if (pool.teams.length === 0 && pool.emptyMessage) throw new HttpError(409, pool.emptyMessage);
+      if (pool.teams.length === 0 && pool.emptyMessage) throw new HttpError(409, pool.emptyMessage);
 ```
 
 - [ ] **Step 7: Districts route**
@@ -4409,7 +4415,7 @@ Co-Authored-By: <the session's attribution line>"
 - Test: `tests/season/score.test.ts`
 
 **Interfaces:**
-- Consumes: SP3 `getEventScores(eventKey, config, windowMs) → { scores: EventScores; stale; fetchedAt }` (`lib/scores/eventScores.ts`); `isOfficialEvent`, `SEASON_TIMEZONE` (Task 11); `createFetchBudget`, `SEASON_BUDGET`, `FetchBudget` (Task 13); v1 `cacheWindowFor`, `localDate`, `addDays`, `DEFAULT_WINDOW_MS`, `getTba`.
+- Consumes: SP3 `getEventScores(eventKey, config, windowMs, opts?) → { scores: EventScores; info; stale; fetchedAt }` (`lib/scores/eventScores.ts`); `isOfficialEvent`, `SEASON_TIMEZONE` (Task 11); `createFetchBudget`, `SEASON_BUDGET`, `FetchBudget` (Task 13); v1 `cacheWindowFor`, `localDate`, `addDays`, `DEFAULT_WINDOW_MS`, `getTba`.
 - Produces (`lib/season/score.ts`):
   - `type SeasonEventScore = { eventKey: string; name: string; startDate: string; endDate: string; total: number; lines: Line[]; stale: boolean }`
   - `type SeasonTeamDetail = { teamKey: string; total: number; events: SeasonEventScore[]; next: { eventKey: string; name: string; startDate: string } | null }`
@@ -4782,7 +4788,7 @@ describe('a season round page', () => {
 });
 ```
 
-(`insertPick` may need SP4's `auto: false`.)
+(SP4's `NewPick.auto` is optional and defaults to `false`.)
 
 - [ ] **Step 2: Write the failing component test**
 
@@ -5585,7 +5591,8 @@ Co-Authored-By: <the session's attribution line>"
 
 **Files:**
 - Create: `lib/season/current.ts`
-- Modify: SP1's Me-tab loader (the code that builds the "Live now / Up next" card — find it with `grep -rln "Up next" lib app`)
+- Modify: `lib/views/me.ts` (SP1 Task 17: `loadMePage`, which builds the "Live now / Up next" card)
+- Test (append): `tests/views/me.test.ts` (SP1 Task 17)
 - Test: `tests/season/current.test.ts`
 
 **Interfaces:**
@@ -5701,18 +5708,75 @@ export async function pickEventForMe(
 }
 ```
 
-- [ ] **Step 4: Use it in SP1's Me-tab loader**
+- [ ] **Step 4: Use it in SP1's `loadMePage` (`lib/views/me.ts`)**
 
-In SP1's loader for the "Live now / Up next" card, where each pick is turned into a row using its round's event key, call `pickEventForMe(round, pick.teamKey, now)` instead of reading `round.eventKey` directly:
-- `{ kind: 'event', eventKey }` → build the row exactly as SP1 does for a TBA round ("Q14 · up next" / "in 2 matches" / "Eliminated" / "Done") using that event key;
-- `{ kind: 'next', name, startDate }` → a row reading `Next: {name} · {formatDateRange(startDate, startDate)}`;
-- `null` → no row for this pick.
+SP1's loop over `page.rounds` reads `view.round.eventKey` directly (which is `null` for season and manual rounds after Task 1). Replace everything from `const myTeams = …` to the end of that inner `for (const teamKey of myTeams)` loop with:
 
-Also include **season** rounds when SP1 filters rounds to "Live or Upcoming within 7 days" (a season round is Live for months, so the filter already includes it once its dates are set). Add a test to SP1's Me-tab loader test file: a season pick whose team is at an event today produces the same row shape as a TBA pick at that event, and one with nothing in the next 7 days produces no row.
+```ts
+      const myTeams = view.picks.filter((p) => p.playerId === player.id).map((p) => p.teamKey);
+      if (myTeams.length === 0) continue;
+      for (const teamKey of myTeams) {
+        const at = await pickEventForMe(view.round, teamKey, now); // tba → its event; season → today's event; manual → null
+        if (!at) continue;
+        if (at.kind === 'next') {
+          teams.push({
+            teamKey,
+            leagueName: league.name,
+            eventName: at.name,
+            label: `Next: ${at.name} · ${formatDateRange(at.startDate, at.startDate)}`,
+            status: 'upcoming',
+          });
+          continue;
+        }
+        const windowMs = at.eventKey === view.round.eventKey ? cacheWindowFor(view.round, now) : 60_000; // a season team's event is happening now
+        const matches = await getTba<MatchSimple[]>(`/event/${at.eventKey}/matches/simple`, { windowMs });
+        teams.push({
+          teamKey,
+          leagueName: league.name,
+          eventName: view.round.eventName,
+          label: nextMatchLabel(teamKey, Array.isArray(matches.data) ? matches.data : null),
+          status: view.status === 'live' ? 'live' : 'upcoming',
+        });
+      }
+```
+
+Imports to add in `lib/views/me.ts`: `pickEventForMe` from `@/lib/season/current`, `formatDateRange` from `@/lib/format`. The "Live or Upcoming within 7 days" filter above stays as SP1 wrote it; a season round is Live for months once its dates are set, so it passes through, and `pickEventForMe` does the per-team 7-day check.
+
+Append to `describe('loadMePage', …)` in `tests/views/me.test.ts`:
+
+```ts
+  it("season picks: the team's event today becomes a row; a team with nothing in the next 7 days has none (SP2)", async () => {
+    await repo.createProfile({ id: 'u1', displayName: 'Joey', avatarUrl: null });
+    const league = await repo.createLeague({ slug: 'season-abc234', name: 'Season', defaultScoring: defaultScoring(), format: 'season' });
+    const me = await repo.createMember({ leagueId: league.id, userId: 'u1', name: 'Joey', role: 'commissioner' });
+    const round = await repo.createRound({
+      leagueId: league.id, eventKey: null, kind: 'season', seasonYear: 2027, eventName: '2027 Season',
+      startDate: '2027-02-26', endDate: '2027-04-18', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    await repo.updateRound(round.id, { draftOrder: [me.id], rosterSize: 2 });
+    await repo.insertPick({ roundId: round.id, pickNumber: 0, playerId: me.id, teamKey: 'frc341' });
+    await repo.insertPick({ roundId: round.id, pickNumber: 1, playerId: me.id, teamKey: 'frc5181' });
+    const byPath: Record<string, unknown> = {
+      '/team/frc341/events/2027/simple': [
+        { key: '2027paca', name: 'Greater Pittsburgh', event_type: 0, start_date: '2027-03-05', end_date: '2027-03-07' },
+      ],
+      '/team/frc5181/events/2027/simple': [
+        { key: '2027mrcmp', name: 'FMA Championship', event_type: 2, start_date: '2027-04-08', end_date: '2027-04-10' },
+      ],
+      '/event/2027paca/matches/simple': [match({ num: 14, red: ['frc341'], blue: ['frc1'] })],
+    };
+    h.getTba.mockImplementation(async (path: string) => ({ data: byPath[path] ?? null, fetchedAt: null, stale: false }));
+
+    const page = await loadMePage('u1', new Date('2027-03-06T15:00:00Z'));
+    expect(page.teams).toEqual([
+      { teamKey: 'frc341', leagueName: 'Season', eventName: '2027 Season', label: 'Q14 · up next', status: 'live' },
+    ]);
+  });
+```
 
 - [ ] **Step 5: Run the tests**
 
-Run: `npx vitest run tests/season/current.test.ts` and SP1's Me-tab test file.
+Run: `npx vitest run tests/season/current.test.ts tests/views/me.test.ts`
 Expected: PASS
 
 - [ ] **Step 6: Run the gates**
@@ -5723,7 +5787,7 @@ Expected: clean, all pass.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add lib/season/current.ts lib app tests
+git add lib/season/current.ts lib/views/me.ts tests/season/current.test.ts tests/views/me.test.ts
 git commit -m "feat(sp2): Me tab shows a season pick's current or next official event
 
 Co-Authored-By: <the session's attribution line>"
