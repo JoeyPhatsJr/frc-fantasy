@@ -15,5 +15,8 @@ export function safeNext(raw: string | null | undefined): string {
     return '/';
   }
   if (url.origin !== BASE) return '/';
-  return `${url.pathname}${url.search}${url.hash}`;
+  const out = `${url.pathname}${url.search}${url.hash}`;
+  // Re-check after normalization: dot-segment collapsing can produce protocol-relative paths
+  if (out.startsWith('//') || out.startsWith('/\\')) return '/';
+  return out;
 }

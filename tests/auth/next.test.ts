@@ -24,6 +24,12 @@ describe('safeNext (spec §4.1 open-redirect rule)', () => {
       '/ok\nSet-Cookie: x=1',
       '/has\\backslash',
       `/${'a'.repeat(2001)}`,
+      // Regression: dot-segment collapsing (spec §4.1 requires post-normalization check)
+      '/.//evil.com',
+      '/a/..//evil.com',
+      '/..//evil.com',
+      '/%2e//evil.com',
+      '/\t/evil.com',
     ];
     for (const raw of bad) expect(safeNext(raw), String(raw)).toBe('/');
   });
