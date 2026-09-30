@@ -73,7 +73,7 @@ function defined(obj: Raw): Raw {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
 }
 
-type Result = { data: unknown; error: { code?: string; message: string } | null };
+type Result = { data: unknown; error: { code?: string; message: string } | null; status?: number };
 
 async function run(query: PromiseLike<Result>): Promise<Raw[]> {
   let res: Result;
@@ -87,8 +87,18 @@ async function run(query: PromiseLike<Result>): Promise<Raw[]> {
       const m = /unique constraint "([^"]+)"/.exec(res.error.message);
       throw new UniqueViolation(m?.[1] ?? 'unknown');
     }
-    // No Postgres/PostgREST code means the request never reached the database.
-    if (!res.error.code) throw new DbUnavailableError(res.error.message);
+    // The database could not be reached: no code at all, PostgREST's "cannot connect" codes
+    // (PGRST000-003), a Node network error code (ECONNREFUSED, ETIMEDOUT, ...), or a gateway 5xx
+    // (what a paused project can answer with).
+    const { code } = res.error;
+    if (
+      !code ||
+      /^PGRST00[0-3]$/.test(code) ||
+      /^E[A-Z]+$/.test(code) ||
+      (res.status !== undefined && res.status >= 500)
+    ) {
+      throw new DbUnavailableError(res.error.message);
+    }
     throw new Error(`Database error ${res.error.code}: ${res.error.message}`);
   }
   if (res.data === null || res.data === undefined) return [];

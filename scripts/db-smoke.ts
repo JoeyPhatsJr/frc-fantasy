@@ -58,6 +58,39 @@ async function main() {
     check('pick number taken is rejected',
       (await constraintOf(repo.insertPick({ roundId: round.id, pickNumber: 0, playerId: mom.id, teamKey: 'frc25' }))) === 'picks_round_pick_number_key');
 
+    check('duplicate slug is rejected',
+      (await constraintOf(repo.createLeague({
+        slug, name: 'x', adminTokenHash: 'h', defaultScoring: defaultScoring(),
+      }))) === 'leagues_slug_key');
+
+    await repo.addExtraTeam(round.id, 'frc9999');
+    await repo.addExtraTeam(round.id, 'frc9999');
+    check('extra team added twice keeps one copy',
+      JSON.stringify(await repo.listExtraTeams(round.id)) === JSON.stringify(['frc9999']));
+    await repo.removeExtraTeam(round.id, 'frc9999');
+    check('extra team removes', (await repo.listExtraTeams(round.id)).length === 0);
+
+    const adj = await repo.insertAdjustment({
+      roundId: round.id, playerId: null, teamKey: 'frc341B', points: 3, reason: 'smoke',
+    });
+    const gotAdj = await repo.getAdjustment(adj.id);
+    check('adjustment round-trips',
+      gotAdj?.points === 3 && gotAdj.reason === 'smoke' && gotAdj.teamKey === 'frc341B' && gotAdj.playerId === null);
+    const adjUpdated = await repo.updateAdjustment(adj.id, { points: 7 });
+    check('adjustment patch keeps untouched fields',
+      adjUpdated.points === 7 && adjUpdated.reason === 'smoke' && adjUpdated.teamKey === 'frc341B');
+    check('adjustments list', (await repo.listAdjustments(round.id)).length === 1);
+    check('adjustments list for rounds', (await repo.listAdjustmentsForRounds([round.id])).length === 1);
+
+    check('pick team is replaceable', (await repo.updatePickTeam(round.id, 0, 'frc25')).teamKey === 'frc25');
+    check('picks list for rounds', (await repo.listPicksForRounds([round.id])).length === 1);
+
+    const renamed = await repo.updateLeague(league.id, { name: 'Smoke Test 2' });
+    check('league patch keeps untouched fields',
+      renamed.name === 'Smoke Test 2' && renamed.defaultScoring.qualWin === 3);
+
+    check('null survives a round patch', (await repo.updateRound(round.id, { finalizedAt: null })).finalizedAt === null);
+
     const path = `/smoke/${slug}`;
     await repo.upsertCache({ path, etag: null, body: null, fetchedAt: new Date().toISOString(), lastError: null, lastErrorAt: null });
     check('cache stores a null body', (await repo.getCache(path))?.body === null);
