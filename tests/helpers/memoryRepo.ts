@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { generateInviteCode } from '@/lib/leagues/inviteCode';
 import { UniqueViolation, type Repo } from '@/lib/db/repo';
 import type {
   AdjustmentRow,
@@ -8,13 +9,6 @@ import type {
   PlayerRow,
   RoundRow,
 } from '@/lib/db/types';
-
-const INVITE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
-function newInviteCode(): string {
-  let code = '';
-  for (let i = 0; i < 6; i++) code += INVITE_ALPHABET[Math.floor(Math.random() * INVITE_ALPHABET.length)];
-  return code;
-}
 
 /** A Repo that lives in memory and enforces the same unique constraints as the real schema. */
 export function createMemoryRepo(): Repo {
@@ -56,7 +50,7 @@ export function createMemoryRepo(): Repo {
         defaultScoring: copy(input.defaultScoring),
         adminTokenHash: input.adminTokenHash ?? null,
         homeTeamNumber: 5181,
-        inviteCode: newInviteCode(),
+        inviteCode: generateInviteCode(),
         visibility: input.visibility ?? 'link',
         createdBy: input.createdBy ?? null,
         createdAt: stamp(),
