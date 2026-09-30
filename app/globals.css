@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens (design-system/frc-fantasy/BRIEF.md). Tailwind 4 turns each
+ * variable into utilities: bg-primary, text-fg-muted, font-display,
+ * rounded-card, shadow-card, ... Components use these, never raw hex.
+ */
+@theme {
+  --color-primary: #2563eb;        /* FRC blue */
+  --color-primary-strong: #1d4ed8;
+  --color-on-primary: #ffffff;
+  --color-secondary: #7c3aed;      /* violet: secondary accents, badges */
+  --color-accent: #f59e0b;         /* gold: leaders, points, CTAs */
+  --color-accent-strong: #d97706;
+  --color-red-alliance: #dc2626;   /* FRC red, used sparingly (danger, red alliance) */
+  --color-bg: #eff6ff;             /* page background */
+  --color-surface: #ffffff;        /* cards */
+  --color-surface-2: #f1f5fd;      /* muted panels, table stripes */
+  --color-fg: #0f172a;             /* text */
+  --color-fg-muted: #475569;       /* secondary text (4.5:1 on white) */
+  --color-border: #e4ecfc;
+  --color-ring: #2563eb;
+  --color-success: #15803d;
+  --color-warning: #b45309;
+
+  --font-display: var(--font-barlow-condensed), "Barlow Condensed", system-ui, sans-serif;
+  --font-body: var(--font-barlow), "Barlow", system-ui, sans-serif;
+
+  --radius-card: 1rem;
+  --radius-pill: 9999px;
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.06), 0 8px 24px -12px rgb(37 99 235 / 0.25);
+}
+
+@layer base {
+  body {
+    @apply bg-bg text-fg font-body antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-display;
+  }
+
+  /* Fallback focus indicator for anything that doesn't draw its own ring. */
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}
