@@ -381,6 +381,21 @@ describe('team pool endpoints', () => {
     expect(await repo.listExtraTeams(round.id)).toEqual(['frc9999']);
   });
 
+  it('answers 409 when removing a manual team would leave fewer teams than picks', async () => {
+    const round = await seedRound();
+    const [mom, dad] = await seedPlayers('Mom', 'Dad');
+    await repo.addExtraTeam(round.id, 'frc9998');
+    await repo.addExtraTeam(round.id, 'frc9999');
+    await repo.updateRound(round.id, { draftOrder: [mom.id, dad.id], rosterSize: 4 }); // 8 picks, pool 8
+    const res = await removeTeam(
+      request('DELETE', '/x', { token }),
+      params({ slug: league.slug, id: round.id, teamKey: 'frc9999' }),
+    );
+    expect(res.status).toBe(409);
+    expect((await readJson(res)).error).toMatch(/lower the roster size/i);
+    expect((await repo.listExtraTeams(round.id)).sort()).toEqual(['frc9998', 'frc9999']);
+  });
+
   it('answers 400 for a malformed team key in the URL', async () => {
     const round = await seedRound();
     const res = await removeTeam(
