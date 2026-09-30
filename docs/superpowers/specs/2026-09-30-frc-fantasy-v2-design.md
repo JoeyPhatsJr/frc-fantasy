@@ -19,7 +19,7 @@ Take FRC Fantasy from a family prototype to a usable app for the **FRC community
 3. Each signed-in user sees a personal **Me** dashboard: their teams playing now, their rank in every league, and their season stats.
 4. A full-season league can draft from all FRC teams (optionally filtered by region) and scores every official event automatically.
 5. The draft pool shows projected fantasy points, past results, and current OPR/rank so non-experts can draft sensibly.
-6. All v1 tests stay green; the `2025parr` replay produces the same scores as v1.
+6. All v1 behavior tests stay green (tests of the removed admin-token auth are rewritten for sessions); the `2025parr` replay produces the same scores as v1.
 
 ### 1.2 Scope: four sub-projects, built in this order
 
@@ -99,7 +99,7 @@ Same stack as v1 (v1 §9): Next.js App Router + TypeScript, Tailwind, Supabase P
 - **Providers:** Google and Discord via Supabase Auth OAuth (PKCE). Configured in the Supabase dashboard; client IDs/secrets live in Supabase, not in our env.
 - **Flow:** "Continue with Google/Discord" button → `supabase.auth.signInWithOAuth({ provider, options: { redirectTo: <origin>/auth/callback?next=<path> } })` from the browser client → provider → `GET /auth/callback` exchanges the code for a session (cookie set via `@supabase/ssr`) → first sign-in creates the profile (§4.2) → redirect to `next`.
 - `next` must be a same-origin relative path starting with `/` and not `//`; anything else becomes `/`.
-- **Session refresh:** Next.js middleware calls the `@supabase/ssr` refresh helper on every request except static assets.
+- **Session refresh:** Next.js middleware (named `proxy.ts` if the installed Next version uses that convention) calls the `@supabase/ssr` refresh helper on every request except static assets.
 - **Sign out:** `POST /auth/signout` → clears the session → redirect `/`.
 - **Env vars:** add `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (public by design; the anon key can do nothing to our tables because RLS has no policies). `SUPABASE_SERVICE_ROLE_KEY` stays server-only. Remove `CREATE_LEAGUE_PASSCODE`.
 - **Auth failure** (user cancels, provider error): callback redirects to `/?auth_error=1`, and the landing page shows "Sign-in didn't finish — try again."
@@ -164,7 +164,8 @@ alter table leagues
 | Commissioner | Everything a player can, plus all v1 admin actions, member management (promote/demote/remove), invite reset, visibility, league deletion, commissioner picks during live drafts |
 
 - All admin endpoints keep their v1 paths (`/api/l/{slug}/admin/*`) and bodies, but authenticate with the **session cookie** + `requireLeagueRole(slug, 'commissioner')` instead of `x-commissioner-key`: 401 signed out, 403 not a commissioner, 404 unknown league. The v1 "`{id}` must belong to `{slug}`" check stays.
-- Player endpoints (`/api/l/{slug}/me/*`, `/api/l/{slug}/rounds/{id}/draft/*`) use `requireLeagueRole(slug, 'player')` (commissioners pass too).
+- **Mutating** player endpoints (`/api/l/{slug}/me/*`, and the `POST`/`PUT` routes under `/api/l/{slug}/rounds/{id}/draft/*`) use `requireLeagueRole(slug, 'player')` (commissioners pass too).
+- **Read** endpoints (`…/pool`, `…/draft/state`) follow league visibility: open to anyone for `link` leagues, members only for `members` leagues (403 otherwise).
 - **Members-only leagues:** league and round pages render a "Private league — ask the commissioner for an invite code" card for non-members (no data), instead of 404, so a shared link explains itself.
 - The admin UI keeps its client-rendered shells (v1 §4) to limit churn; `AdminGate` now calls `GET /api/l/{slug}/admin/verify` with cookies and shows "You're not a commissioner of this league" on 403. The fragment/`localStorage` token code is deleted (except the one-time claim flow, §4.7).
 
@@ -187,14 +188,14 @@ If TBA is unreachable, the Coming-up block is omitted (never an error page).
 
 **`/` signed in: Me tab**
 
-- **Live now / Up next** card: for each of the user's picks in rounds that are Live (or Upcoming within 7 days), show the team's bumper plate and its next unplayed match from cached TBA matches: "Q14 · up next" / "Q14 · in 2 matches" (N = unplayed matches ordered before it) / "Eliminated" / "Done". Hidden if nothing is live or upcoming.
+- **Live now / Up next** card: for each of the user's picks in rounds that are Live (or Upcoming within 7 days), show the team's bumper plate and its next unplayed match from cached TBA matches: "Q14 · up next" / "Q14 · in 2 matches" (N = unplayed matches ordered before it) / "Eliminated" / "Done". For season rounds (Live for months), the "current event" is the team's official event whose dates contain today (±1 day); if none, show "Next: {event} · {date}", and teams with no event in the next 7 days are omitted. Hidden if nothing is live or upcoming.
 - **My leagues:** each league with format badge, my rank and total in the current season standings, a live dot if any round is Live. Tap → `/l/{slug}`.
 - **My season** (calendar year): total points across all leagues, best pick (the single team-in-a-round with the most points for me, e.g. "341 at Ramp Riot · +62"), average finish (mean of my rank across finalized rounds; "—" if none).
 - Empty state (no leagues): "Create a league" and "Join with a code" buttons.
 
 **`/leagues`: Leagues tab** — list of my leagues (same rows as Me), **Create league** button, and a join-code input.
 
-**`/leagues/new`: create league** — name, format (event-by-event / full season), visibility; format-specific options (§5.3, §5.5). Prefills when opened with `?event={key}` (event-by-event, with that event as the first round).
+**`/leagues/new`: create league** — name, format (event-by-event / full season), visibility; format-specific options (follow teams §5.4; season year + pool filter §5.5). Prefills when opened with `?event={key}` (event-by-event, with that event as the first round).
 
 **`/join/{code}`** — signed out: league name + sign-in buttons (`next` returns here). Signed in: league name, commissioner, member count, and **Join**. If the league has claimable players (§4.7): "Are you one of these?" list + "No, I'm new here". Already a member → redirect to `/l/{slug}`. Full → "League is full". Unknown code → "That invite code doesn't work — check with your commissioner."
 
@@ -458,7 +459,7 @@ supabase-js can't run multi-statement transactions, so every live-draft pick goe
 draft_make_pick(p_round_id, p_pick_number, p_player_id, p_team_key, p_require_due boolean) returns boolean
 ```
 
-In one transaction it: locks the round row (`for update`); checks the phase is `live`; checks `count(picks) = p_pick_number`; if `p_require_due`, checks `now() >= pick_deadline` (database clock); inserts the pick (the v1 unique constraints on `(round_id, pick_number)` and `(round_id, team_key)` still guard); sets `pick_deadline = now() + pick_seconds` (or null when the timer is off or the draft is now done). It returns `false` (no-op) instead of raising when a check fails, so racing callers get a clean "someone beat you" answer. The server still validates the picker (`pickerFor`) and pool membership before calling it.
+In one transaction it: locks the round row (`for update`); checks the phase is `live` (`draft_mode = 'live'`, `draft_started_at is not null`, `draft_paused_at is null`, `count(picks) < roster_size × cardinality(draft_order)`); checks `count(picks) = p_pick_number`; if `p_require_due`, checks `now() >= pick_deadline` (database clock); inserts the pick (the v1 unique constraints on `(round_id, pick_number)` and `(round_id, team_key)` still guard); sets `pick_deadline = now() + pick_seconds` (or null when the timer is off or the draft is now done). It returns `false` (no-op) instead of raising when a check fails, so racing callers get a clean "someone beat you" answer. The server still validates the picker (`pickerFor`) and pool membership before calling it.
 
 ### 7.3 Endpoints
 
