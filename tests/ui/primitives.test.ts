@@ -4,7 +4,9 @@ import { describe, expect, it } from 'vitest';
 import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { BumperPlate } from '@/components/ui/BumperPlate';
 import { Card } from '@/components/ui/Card';
+import { DateBlock } from '@/components/DateBlock';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Trophy, ChevronLeft } from '@/components/ui/icons';
@@ -48,6 +50,13 @@ describe('Button', () => {
     expect(html).toContain('aria-busy="true"');
     expect(html).toContain('data-spinner');
     expect(html).toContain('Saving');
+  });
+
+  it('accent is a gold fill with on-accent text, never plain fg (which is light in dark mode)', () => {
+    const html = render(h(Button, { variant: 'accent' }, 'Add this round'));
+    expect(html).toContain('bg-accent');
+    expect(html).toContain('text-on-accent');
+    expect(html).not.toContain('text-fg ');
   });
 
   it('forwards button props and merges className', () => {
@@ -167,5 +176,58 @@ describe('icons', () => {
       expect(html).toContain('stroke-width="2"');
       expect(html).toContain('size-5');
     }
+  });
+});
+
+describe('BumperPlate', () => {
+  it('renders the number with an accessible label', () => {
+    const html = render(h(BumperPlate, { number: '341' }));
+    expect(html).toContain('>341<');
+    expect(html).toContain('aria-label="Team 341"');
+    expect(html).toContain('role="img"');
+  });
+
+  it('is a blue, medium plate by default with white display numerals', () => {
+    const html = render(h(BumperPlate, { number: '5181' }));
+    expect(html).toContain('bg-primary-fill');
+    expect(html).toContain('text-on-primary');
+    expect(html).toContain('font-display');
+    expect(html).toContain('font-bold');
+    expect(html).toContain('rounded-plate');
+    expect(html).toContain('tabular-nums');
+    expect(html).toContain('h-10');
+  });
+
+  it('uses the red-alliance fill for side="red"', () => {
+    const html = render(h(BumperPlate, { number: '2607', side: 'red' }));
+    expect(html).toContain('bg-red-alliance');
+    expect(html).not.toContain('bg-primary-fill');
+  });
+
+  it('has 28, 40 and 56 px heights for sm, md and lg', () => {
+    expect(render(h(BumperPlate, { number: '1', size: 'sm' }))).toContain('h-7');
+    expect(render(h(BumperPlate, { number: '1', size: 'md' }))).toContain('h-10');
+    expect(render(h(BumperPlate, { number: '1', size: 'lg' }))).toContain('h-14');
+  });
+
+  it('merges className', () => {
+    expect(render(h(BumperPlate, { number: '103', className: 'w-full' }))).toContain('w-full');
+  });
+});
+
+describe('DateBlock', () => {
+  it('shows the month abbreviation over the day number', () => {
+    const html = render(h(DateBlock, { date: '2026-10-24' }));
+    expect(html).toContain('>Oct<');
+    expect(html).toContain('>24<');
+    expect(html.indexOf('Oct')).toBeLessThan(html.indexOf('>24<'));
+    expect(html).toContain('dateTime="2026-10-24"');
+    expect(html).toContain('font-display');
+  });
+
+  it('drops the leading zero and does not shift the day across timezones', () => {
+    const html = render(h(DateBlock, { date: '2026-03-01' }));
+    expect(html).toContain('>Mar<');
+    expect(html).toContain('>1<');
   });
 });
