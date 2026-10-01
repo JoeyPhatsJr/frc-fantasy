@@ -26,9 +26,16 @@ export function HeaderAccountView({ user, pathname }: { user: HeaderUser; pathna
     >
       {user.avatarUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- provider avatars; no Next image config needed
-        <img src={user.avatarUrl} alt="" referrerPolicy="no-referrer" className="size-8 rounded-full" />
+        <img
+          src={user.avatarUrl}
+          alt=""
+          width={32}
+          height={32}
+          referrerPolicy="no-referrer"
+          className="size-8 rounded-full motion-safe:transition-opacity hover:opacity-80"
+        />
       ) : (
-        <span className="flex size-8 items-center justify-center rounded-full bg-primary-fill font-display text-lg font-bold text-on-primary">
+        <span className="flex size-8 items-center justify-center rounded-full bg-primary-fill font-display text-lg font-bold text-on-primary motion-safe:transition-colors hover:bg-primary-strong">
           {user.displayName.slice(0, 1).toUpperCase()}
         </span>
       )}

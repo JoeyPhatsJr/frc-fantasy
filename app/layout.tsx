@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Barlow, Barlow_Condensed } from 'next/font/google';
 import Link from 'next/link';
+import { SkipLink } from '@/components/SkipLink';
 import { AppTabBar } from '@/components/AppTabBar';
 import { HeaderAccount, type HeaderUser } from '@/components/HeaderAccount';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -29,7 +30,16 @@ export const metadata: Metadata = {
 };
 
 // viewport-fit=cover turns on env(safe-area-inset-*) so the bottom tab bar clears the iPhone home indicator.
-export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' };
+// themeColor tints the mobile browser chrome; the values are the header surface (--color-surface) per theme.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#16243a' },
+  ],
+};
 
 /** Hex-nut mark: gold hexagon with a blue bore. Decorative. */
 function Mark() {
@@ -68,6 +78,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>
       <body className="flex min-h-dvh flex-col bg-bg font-body text-fg">
+        <SkipLink />
         <header className="sticky top-0 z-30 border-b border-border bg-surface">
           <div className="mx-auto flex h-14 w-full max-w-2xl items-center justify-between gap-3 px-4 md:max-w-3xl">
             <Link
@@ -104,7 +115,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               href="https://www.thebluealliance.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="cursor-pointer rounded-sm py-3 underline decoration-fg-muted/40 underline-offset-4 hover:text-fg hover:decoration-current focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-block cursor-pointer rounded-sm py-3 underline decoration-fg-muted/40 underline-offset-4 hover:text-fg hover:decoration-current focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               Data from The Blue Alliance<span className="sr-only"> (opens in a new tab)</span>
             </a>

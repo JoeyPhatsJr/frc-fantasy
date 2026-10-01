@@ -24,4 +24,23 @@ describe('SignInForm', () => {
     expect(html).toMatch(/<form[^>]*method="post"/);
     expect(html).not.toMatch(/<form[^>]*method="get"/i);
   });
+  it('server-rendered submit button is disabled until hydration (no native POST of the password)', () => {
+    const html = renderToStaticMarkup(createElement(SignInForm, {}));
+    expect(html).toMatch(/<button[^>]*type="submit"[^>]*disabled/);
+  });
+  it('sign-up shows the password rule as a hint', () => {
+    expect(renderToStaticMarkup(createElement(SignInForm, { initialMode: 'signup' }))).toContain('At least 8 characters.');
+    expect(renderToStaticMarkup(createElement(SignInForm, {}))).not.toContain('At least 8 characters.');
+  });
+  it('mobile keyboard attributes on email and name', () => {
+    const html = renderToStaticMarkup(createElement(SignInForm, { initialMode: 'signup' }));
+    expect(html).toContain('autoCapitalize="none"');
+    expect(html).toContain('autoCorrect="off"');
+    expect(html).toContain('spellCheck="false"');
+  });
+  it('mode toggle has a focus ring and hover state', () => {
+    const html = renderToStaticMarkup(createElement(SignInForm, {}));
+    expect(html).toMatch(/<button[^>]*type="button"[^>]*focus-visible:ring-2/);
+    expect(html).toMatch(/<button[^>]*type="button"[^>]*hover:text-fg/);
+  });
 });

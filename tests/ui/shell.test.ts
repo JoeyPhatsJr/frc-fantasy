@@ -1,6 +1,7 @@
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { SkipLink } from '@/components/SkipLink';
 import { LeagueBar } from '@/components/LeagueBar';
 import { ScoreboardSkeleton, Skeleton } from '@/components/Skeleton';
 import { activeTab } from '@/lib/nav';
@@ -180,6 +181,24 @@ describe('HeaderAccountView', () => {
     expect(html).toContain('href="/me/settings"');
     expect(html).toContain('aria-label="Account settings for Joey"');
     expect(html).toContain('>J<');
+  });
+});
+
+describe('SkipLink', () => {
+  it('is a hidden-until-focused link to #main', () => {
+    const html = render(h(SkipLink));
+    expect(html).toContain('href="#main"');
+    expect(html).toContain('Skip to content');
+    expect(html).toContain('sr-only');
+    expect(html).toContain('focus-visible:not-sr-only');
+  });
+});
+
+describe('header avatar image', () => {
+  it('has explicit dimensions matching its rendered size', () => {
+    const html = render(h(HeaderAccountView, { user: { displayName: 'Joey', avatarUrl: 'https://x/a.png' }, pathname: '/' }));
+    expect(html).toContain('width="32"');
+    expect(html).toContain('height="32"');
   });
 });
 

@@ -86,4 +86,12 @@ describe('InviteCodeBox and SettingsForm', () => {
     expect(out).toContain('Delete account');
     expect(out).toContain('To change your name in one league, open that league and use “You in this league”.');
   });
+  it('InviteCodeBox input has keyboard attributes for codes', () => {
+    const html = render(h(InviteCodeBox, {}));
+    expect(html).toContain('name="code"');
+    expect(html).toContain('spellCheck="false"');
+    expect(html).toContain('autoCorrect="off"');
+    expect(html).toContain('autoCapitalize="characters"');
+    expect(html).not.toContain('items-end');
+  });
 });

@@ -59,9 +59,9 @@ export function Landing({ upcoming, authError, next }: { upcoming: TbaEvent[]; a
     <main id="main" className="space-y-12 pb-4">
       <section className="space-y-8 pt-2">
         <div className="space-y-4">
-          <h1 className="font-display text-[44px] font-bold leading-[44px] tracking-[-0.01em] text-fg md:text-[64px] md:leading-[64px]">
-            <span className="block">Draft FRC teams. </span>
-            <span className="block">Watch every match. </span>
+          <h1 className="text-balance font-display text-[44px] font-bold leading-[44px] tracking-[-0.01em] text-fg md:text-[64px] md:leading-[64px]">
+            <span className="block">Draft FRC teams.</span>
+            <span className="block">Watch every match.</span>
             <span className="block">Roast your friends.</span>
           </h1>
           <p className="max-w-md text-pretty text-[17px] leading-6 text-fg-muted">

@@ -51,4 +51,11 @@ describe('/signin page', () => {
     await expect(page({ next: '//evil.com' })).rejects.toThrow(/^REDIRECT:\/$/);
     await expect(page({})).rejects.toThrow(/^REDIRECT:\/$/);
   });
+
+  it('the document title follows the mode', async () => {
+    const { generateMetadata } = await import('@/app/signin/page');
+    const meta = (sp: Record<string, string>) => generateMetadata({ searchParams: Promise.resolve(sp) });
+    expect(await meta({})).toEqual({ title: 'Sign in — FRC Fantasy' });
+    expect(await meta({ mode: 'signup' })).toEqual({ title: 'Create an account — FRC Fantasy' });
+  });
 });

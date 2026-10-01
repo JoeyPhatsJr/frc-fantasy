@@ -6,9 +6,12 @@ import { getUser } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = { title: 'Sign in — FRC Fantasy' };
-
 type Props = { searchParams: Promise<{ next?: string; mode?: string }> };
+
+export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
+  const sp = await searchParams;
+  return { title: sp.mode === 'signup' ? 'Create an account — FRC Fantasy' : 'Sign in — FRC Fantasy' };
+}
 
 /**
  * /signin (landing redesign 2026-09-30): the header's "Sign in" and the landing page's

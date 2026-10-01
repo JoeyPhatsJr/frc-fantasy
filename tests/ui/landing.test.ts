@@ -41,6 +41,12 @@ describe('Landing (spec §4.6, landing redesign 2026-09-30)', () => {
     expect(h1).not.toContain('uppercase');
   });
 
+  it('balances the headline and leaves no trailing spaces inside its lines', () => {
+    const h1 = out.match(/<h1[^>]*>/)?.[0] ?? '';
+    expect(h1).toContain('text-balance');
+    expect(out).not.toMatch(/\. <\/span>/);
+  });
+
   it('shows the match lineup: three blue plates, vs, three red plates, hidden from screen readers', () => {
     expect(out).toContain('data-match-lineup');
     const lineup = render(h(MatchLineup));

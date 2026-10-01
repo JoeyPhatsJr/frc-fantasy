@@ -143,6 +143,11 @@
     }
   }
 
+  /* The sticky header is 56px (h-14); anchored targets (#main) must not hide under it. */
+  html {
+    scroll-padding-top: 4.5rem;
+  }
+
   h1,
   h2,
   h3 {

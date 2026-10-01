@@ -23,7 +23,7 @@ export type ButtonProps = ButtonAsButton | ButtonAsLink;
 
 const BASE =
   'relative inline-flex items-center justify-center gap-2 rounded-pill font-semibold whitespace-nowrap ' +
-  'cursor-pointer select-none motion-safe:transition-colors duration-200 ' +
+  'cursor-pointer touch-manipulation select-none motion-safe:transition-colors duration-200 ' +
   'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ' +
   'focus-visible:ring-offset-surface ' +
   'disabled:cursor-not-allowed disabled:opacity-50';
