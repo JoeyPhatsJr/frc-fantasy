@@ -10,7 +10,7 @@ vi.mock('@/lib/tba/client', () => ({ getTba: (...args: unknown[]) => h.getTba(..
 import type { Repo } from '@/lib/db/repo';
 import { loadPool } from '@/lib/rounds/pool';
 import { defaultScoring } from '@/lib/scoring/config';
-import { loadSeasonTbaTeams, seasonEmptyMessage } from '@/lib/season/pool';
+import { loadSeasonTbaTeams, seasonTeamsCachePath, seasonEmptyMessage } from '@/lib/season/pool';
 import type { TeamSimple } from '@/lib/tba/types';
 import { seedLeague } from '../helpers/api';
 import { createMemoryRepo } from '../helpers/memoryRepo';
@@ -88,6 +88,99 @@ describe('"all" fetches pages in parallel batches of 4 (final review I6)', () =>
       return { data: n < 2 ? page(n) : [], fetchedAt: new Date().toISOString(), stale: n === 1 };
     });
     expect((await loadSeasonTbaTeams(2027, { type: 'all' })).stale).toBe(true);
+  });
+});
+
+describe('"all" keeps a slim copy of the year\'s teams in tba_cache (final review I6)', () => {
+  const repo = () => h.repo as Repo;
+  const HOUR = 60 * 60_000;
+  const full = (n: number): TeamSimple =>
+    ({ ...t(n, 'Pennsylvania', 'USA'), city: 'Hatboro', name: 'A very long sponsor list'.repeat(5) }) as TeamSimple;
+
+  it('after one walk, later loads read one row and call TBA zero times', async () => {
+    tba([[full(1), full(2)], [full(501)]]);
+    const first = await loadSeasonTbaTeams(2027, { type: 'all' });
+    (h.getTba as ReturnType<typeof vi.fn>).mockClear();
+    const again = await loadSeasonTbaTeams(2027, { type: 'all' });
+    expect(h.getTba).not.toHaveBeenCalled();
+    expect(again).toEqual({ ...first, teams: again.teams });
+    expect(again.teams.map((x) => x.key)).toEqual(['frc1', 'frc2', 'frc501']);
+    expect(again.stale).toBe(false);
+    expect(again.published).toBe(true);
+  });
+
+  it('stores only what the pool and its filters use (no city or sponsor names)', async () => {
+    tba([[full(1)]]);
+    await loadSeasonTbaTeams(2027, { type: 'all' });
+    const row = await repo().getCache(seasonTeamsCachePath(2027));
+    expect(row?.body).toEqual([
+      { key: 'frc1', team_number: 1, nickname: 'Team 1', state_prov: 'Pennsylvania', country: 'USA' },
+    ]);
+  });
+
+  it('state and country filters work from the slim copy too', async () => {
+    tba([PAGE0, PAGE1]);
+    await loadSeasonTbaTeams(2027, { type: 'all' });
+    (h.getTba as ReturnType<typeof vi.fn>).mockClear();
+    const pa = await loadSeasonTbaTeams(2027, { type: 'state', country: 'usa', state: 'pennsylvania' });
+    expect(pa.teams.map((x) => x.key)).toEqual(['frc1', 'frc3']);
+    expect(h.getTba).not.toHaveBeenCalled();
+  });
+
+  it('dates the copy by its oldest page, so it never outlives the 24 h page window', async () => {
+    const now = Date.now();
+    const at = [now - 20 * HOUR, now - 2 * HOUR, now - HOUR];
+    h.getTba = vi.fn(async (path: unknown) => {
+      const n = Number(/\/teams\/2027\/(\d+)\//.exec(String(path))![1]);
+      return { data: n < 2 ? [t(n * 500 + 1, 'Texas', 'USA')] : [], fetchedAt: new Date(at[Math.min(n, 2)]).toISOString(), stale: false };
+    });
+    await loadSeasonTbaTeams(2027, { type: 'all' });
+    const row = await repo().getCache(seasonTeamsCachePath(2027));
+    expect(row?.fetchedAt).toBe(new Date(at[0]).toISOString());
+  });
+
+  it('walks the pages again once the copy is a day old', async () => {
+    await repo().upsertCache({
+      path: seasonTeamsCachePath(2027),
+      etag: null,
+      body: [{ key: 'frc9', team_number: 9, nickname: 'Old', state_prov: null, country: null }],
+      fetchedAt: new Date(Date.now() - 25 * HOUR).toISOString(),
+      lastError: null,
+      lastErrorAt: null,
+    });
+    tba([[t(1, 'Texas', 'USA')]]);
+    const out = await loadSeasonTbaTeams(2027, { type: 'all' });
+    expect(h.getTba).toHaveBeenCalled();
+    expect(out.teams.map((x) => x.key)).toEqual(['frc1']);
+    expect((await repo().getCache(seasonTeamsCachePath(2027)))?.body).toEqual([
+      { key: 'frc1', team_number: 1, nickname: 'Team 1', state_prov: 'Texas', country: 'USA' },
+    ]);
+  });
+
+  it('does not save a copy built from stale pages, or an empty year', async () => {
+    tba([PAGE0], { stale: true });
+    await loadSeasonTbaTeams(2027, { type: 'all' });
+    expect(await repo().getCache(seasonTeamsCachePath(2027))).toBeNull();
+    tba([]);
+    await loadSeasonTbaTeams(2027, { type: 'all' });
+    expect(await repo().getCache(seasonTeamsCachePath(2027))).toBeNull();
+  });
+
+  it('a failed save still returns the teams', async () => {
+    tba([PAGE0]);
+    const upsertCache = vi.spyOn(repo(), 'upsertCache').mockRejectedValue(new Error('db down'));
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const out = await loadSeasonTbaTeams(2027, { type: 'all' });
+    expect(upsertCache).toHaveBeenCalled();
+    expect(logged).toHaveBeenCalledWith('Could not cache the 2027 team list', expect.any(Error));
+    expect(out.teams).toHaveLength(3);
+    logged.mockRestore();
+  });
+
+  it('districts do not use it', async () => {
+    tba([PAGE0]);
+    await loadSeasonTbaTeams(2027, { type: 'district', key: '2027fma' });
+    expect(await repo().getCache(seasonTeamsCachePath(2027))).toBeNull();
   });
 });
 
