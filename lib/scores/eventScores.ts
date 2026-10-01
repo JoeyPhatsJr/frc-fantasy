@@ -28,6 +28,11 @@ export type EventScoresOptions = {
   repo?: Repo;
   /** Passed through to getTba (fetch, clock, API key) — for scripts (throttling) and tests. */
   tba?: Partial<TbaDeps>;
+  /**
+   * Never fetch from TBA: score whatever tba_cache holds, whatever its age, and mark the result stale.
+   * For the season scorer once its fetch budget is spent (final review I1).
+   */
+  cacheOnly?: boolean;
 };
 
 function toMap(meta: CacheMeta[]): Map<string, CacheMeta> {
@@ -81,14 +86,20 @@ export async function getEventScores(
   const [meta, stored] = await Promise.all([repo.getCacheMeta(paths), repo.getEventScoresRow(eventKey, cfgHash)]);
   const stamp = sourceStamp(paths, toMap(meta));
   const allFresh = meta.length === paths.length && meta.every((m) => now.getTime() - Date.parse(m.fetchedAt) < windowMs);
-  if (stamp !== null && allFresh && stored?.sourceStamp === stamp) {
+  const cacheOnly = opts.cacheOnly === true;
+  if (stamp !== null && (allFresh || cacheOnly) && stored?.sourceStamp === stamp) {
     const cached = fromRow(stored);
-    if (cached) return { ...cached, stale: false, fetchedAt: oldest(meta) };
+    if (cached) return { ...cached, stale: cacheOnly, fetchedAt: oldest(meta) };
   }
 
   // Step 4: refresh through getTba exactly as v1 does (304s keep body_hash, so the stamp stays put).
   // One clock for the hit check and getTba's window, unless the caller overrides tba.now.
-  const loaded = await loadEventData(eventKey, { windowMs }, { store: repo, now: () => now, ...opts.tba });
+  // cacheOnly: getTba reads tba_cache only (a never-cached path has no data), and every result is stale.
+  const loaded = await loadEventData(
+    eventKey,
+    cacheOnly ? { windowMs, cacheOnly } : { windowMs },
+    { store: repo, now: () => now, ...opts.tba },
+  );
   const newStamp = stampOfLoaded(eventKey, loaded);
   const data = cleanEventData(loaded.data);
   const info = eventInfo(data);

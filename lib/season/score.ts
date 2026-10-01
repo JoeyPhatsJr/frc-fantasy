@@ -30,7 +30,6 @@ export type SeasonScores = {
 };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const CACHE_ONLY = Number.POSITIVE_INFINITY; // getTba/getEventScores treat any cached row as fresh
 const EMPTY: EventScores = { teams: new Map(), qualsComplete: false, rpMethod: 'none' };
 
 type Scored = { scores: EventScores; stale: boolean; fetchedAt: string | null };
@@ -60,7 +59,8 @@ export async function scoreSeasonRound(
       const path = `/team/${key}/events/${year}/simple`;
       return budget.run(
         () => getTba<EventSimple[]>(path, { windowMs: DEFAULT_WINDOW_MS }),
-        async () => ({ ...(await getTba<EventSimple[]>(path, { windowMs: CACHE_ONLY })), stale: true }),
+        // Budget spent: tba_cache only, never the network (final review I1). Always stale.
+        async () => ({ ...(await getTba<EventSimple[]>(path, { windowMs: DEFAULT_WINDOW_MS, cacheOnly: true })), stale: true }),
       );
     }),
   );
@@ -86,11 +86,12 @@ export async function scoreSeasonRound(
         timezone: SEASON_TIMEZONE, // Event_Simple has no timezone (spec §5.5)
         finalizedAt: round.finalizedAt,
       };
+      const windowMs = cacheWindowFor(timing, now);
       let result: Scored;
       try {
         result = await budget.run(
-          () => getEventScores(e.key, round.scoring, cacheWindowFor(timing, now), { now }),
-          async () => ({ ...(await getEventScores(e.key, round.scoring, CACHE_ONLY, { now })), stale: true }),
+          () => getEventScores(e.key, round.scoring, windowMs, { now }),
+          async () => ({ ...(await getEventScores(e.key, round.scoring, windowMs, { now, cacheOnly: true })), stale: true }),
         );
       } catch (err) {
         console.error(`Season scoring: ${e.key} failed`, err);

@@ -92,14 +92,16 @@ describe('scoreSeasonRound', () => {
     expect(out.detail.frc9999).toEqual({ teamKey: 'frc9999', total: 0, events: [], next: null });
   });
 
-  it('once the budget is spent, reads caches only (infinite window) and marks the page stale (Review Focus 4)', async () => {
+  // The no-network behavior itself is proven with the real getTba in scoreCacheOnly.test.ts (final review I1).
+  it('once the budget is spent, reads caches only (cacheOnly) and marks the page stale (Review Focus 4)', async () => {
     let t = 0;
     const spent = createFetchBudget({ maxInFlight: 4, budgetMs: 0, clock: () => t++ });
     const out = await scoreSeasonRound(round, ['frc5181'], NOW, spent);
     expect(out.stale).toBe(true);
     expect(out.teams.get('frc5181')!.total).toBe(53); // cached data still scores
-    for (const c of vi.mocked(h.getEventScores).mock.calls) expect(c[2]).toBe(Number.POSITIVE_INFINITY);
-    for (const c of vi.mocked(h.getTba).mock.calls) expect(c[1]).toEqual({ windowMs: Number.POSITIVE_INFINITY });
+    expect(vi.mocked(h.getEventScores).mock.calls.length).toBeGreaterThan(0);
+    for (const c of vi.mocked(h.getEventScores).mock.calls) expect(c[3]).toMatchObject({ cacheOnly: true });
+    for (const c of vi.mocked(h.getTba).mock.calls) expect(c[1]).toMatchObject({ cacheOnly: true });
   });
 
   it('survives getEventScores throwing: that event counts 0 and the page is stale', async () => {
