@@ -30,6 +30,7 @@ const CONSTRAINT_MESSAGES: Record<string, string> = {
   players_league_name_ci: "There's already a player with that name",
   players_league_user: "You're already in this league",
   rounds_league_event_key: 'That event is already in this league',
+  rounds_league_season_year: 'That season has already been started — refresh',
 };
 
 export function json(data: unknown, status = 200): Response {

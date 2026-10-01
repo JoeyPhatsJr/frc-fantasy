@@ -36,6 +36,7 @@ export async function POST(_req: Request, ctx: Ctx): Promise<Response> {
       if (pool.stale && pool.tbaCount === 0) {
         throw new HttpError(503, "Couldn't reach The Blue Alliance for the team list. Try again in a minute.");
       }
+      if (pool.teams.length === 0 && pool.emptyMessage) throw new HttpError(409, pool.emptyMessage);
       const T = pool.teams.length;
       if (P * round.rosterSize > T) {
         throw new HttpError(409, `With ${P} players and ${T} teams, roster size can be at most ${Math.floor(T / P)}`);

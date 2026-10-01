@@ -1,4 +1,4 @@
-import { getTba, type TbaDeps } from '@/lib/tba/client';
+import { getTba, type TbaDeps, type TbaOptions } from '@/lib/tba/client';
 import type { EventData } from '@/lib/tba/types';
 
 export function eventPaths(eventKey: string): Record<keyof EventData, string> {
@@ -24,7 +24,7 @@ export type LoadedEvent = {
 /** Fetches everything the scoring engine needs for one event, in parallel. `deps` is for scripts and tests. */
 export async function loadEventData(
   eventKey: string,
-  opts: { windowMs: number; force?: boolean },
+  opts: TbaOptions,
   deps?: Partial<TbaDeps>,
 ): Promise<LoadedEvent> {
   const paths = eventPaths(eventKey);

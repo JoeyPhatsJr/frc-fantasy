@@ -1,9 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AddManualRoundForm, type ManualRoundInput } from '@/components/admin/AddManualRoundForm';
 import { AddRoundForm, EventRow, RenameLeague } from '@/components/admin/DashboardParts';
 import { AdminGate } from '@/components/admin/AdminGate';
 import { DangerZone } from '@/components/admin/DangerZone';
+import { FollowTeamsForm } from '@/components/admin/FollowTeamsForm';
 import { MembersCard } from '@/components/admin/MembersCard';
 import { ScoringForm } from '@/components/admin/ScoringForm';
 import { usePolling } from '@/components/admin/usePolling';
@@ -15,7 +17,9 @@ import { Card } from '@/components/ui/Card';
 import { ChevronDown, Trash2 } from '@/components/ui/icons';
 import type { AdminApi } from '@/lib/admin/client';
 import type { AdminState, EventLookup } from '@/lib/api/types';
-import { formatDateRange } from '@/lib/format';
+import { autoAddedNote } from '@/lib/follow/input';
+import { formatDateRange, roundKeyLine } from '@/lib/format';
+import { nextSeasonYear } from '@/lib/season/next';
 
 /** Members-only leagues have no public page, so the shortcuts don't call it one. */
 export function leagueLinkLabels(visibility: 'link' | 'members'): { view: string; copy: string } {
@@ -41,6 +45,7 @@ function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminAp
   /** Which action is running (it shows the spinner); every other control is disabled meanwhile. */
   const [pending, setPending] = useState<string | null>(null);
   const busy = pending !== null;
+  const [addKind, setAddKind] = useState<'tba' | 'manual'>('tba');
 
   /** Counts reloads, so a slow background poll can't overwrite the fresher state a change just loaded. */
   const latestReload = useRef(0);
@@ -170,8 +175,9 @@ function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminAp
                   title={round.eventName}
                   lines={[
                     formatDateRange(round.startDate, round.endDate),
-                    round.eventKey,
+                    roundKeyLine(round),
                     round.totalPicks === 0 ? 'Draft not set up' : `${round.pickCount} of ${round.totalPicks} picks`,
+                    ...(round.autoAdded ? [autoAddedNote(state.league.follows)] : []),
                   ]}
                   trailing={<StatusBadge status={round.status} />}
                 />
@@ -187,7 +193,8 @@ function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminAp
                     disabled={busy}
                     onClick={() => {
                       const sure = window.confirm(
-                        `Delete ${round.eventName}? This also deletes its picks and adjustments. It can't be undone.`,
+                        `Delete ${round.eventName}? This also deletes its picks and adjustments. It can't be undone.` +
+                          (round.autoAdded ? ' Follow-a-team won’t add it again.' : ''),
                       );
                       if (sure) {
                         run(`delete:${round.id}`, () => api(`/rounds/${round.id}`, { method: 'DELETE' }), 'Round deleted.');
@@ -201,26 +208,98 @@ function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminAp
               </li>
             ))}
           </ul>
-          <AddRoundForm
-            busy={busy}
-            checking={pending === 'check-round'}
-            saving={pending === 'add-round'}
-            onCheck={lookUpEvent}
-            onAdd={(eventKey) =>
-              run('add-round', async () => {
-                const out = await api<{ round: { eventName: string; startDate: string; endDate: string } }>(
-                  '/rounds',
-                  { method: 'POST', body: { eventKey } },
-                );
-                setNotice(
-                  `Added ${out.round.eventName} (${formatDateRange(out.round.startDate, out.round.endDate)}). Wrong event? Delete it above.`,
-                );
-              })
-            }
-          />
-          <p className="text-[13px] leading-[18px] text-fg-muted">
-            The event key is the last part of the event&apos;s address on thebluealliance.com, such as 2026parr.
-          </p>
+          {state.league.format === 'season' ? (
+            (() => {
+              const next = nextSeasonYear(state.rounds);
+              return next === null ? (
+                <p className="text-[13px] leading-[18px] text-fg-muted">
+                  Full-season leagues have one round per season. Mark this season final to start the next one.
+                </p>
+              ) : (
+                <Button
+                  type="button"
+                  variant="accent"
+                  busy={pending === 'next-season'}
+                  disabled={busy}
+                  onClick={() => run('next-season', () => api('/seasons', { method: 'POST' }), `Started the ${next} season.`)}
+                >
+                  Start {next} season
+                </Button>
+              );
+            })()
+          ) : null}
+          {state.league.format === 'event' ? (
+            <div className="space-y-3">
+              <FollowTeamsForm
+                key={state.league.follows.join(',')}
+                follows={state.league.follows}
+                busy={busy}
+                saving={pending === 'follows'}
+                onSave={(teams) =>
+                  run('follows', async () => {
+                    const out = await api<{ added: number; synced: boolean }>('/follows', { method: 'PUT', body: { teams } });
+                    setNotice(
+                      !out.synced
+                        ? "Saved. Couldn't reach The Blue Alliance — new events will be added on the next check."
+                        : out.added > 0
+                          ? `Saved. Added ${out.added} ${out.added === 1 ? 'round' : 'rounds'}.`
+                          : 'Saved.',
+                    );
+                  })
+                }
+              />
+              <div role="group" aria-label="Kind of round to add" className="flex gap-2">
+                {(['tba', 'manual'] as const).map((kind) => (
+                  <Button
+                    key={kind}
+                    type="button"
+                    size="sm"
+                    variant={addKind === kind ? 'primary' : 'secondary'}
+                    aria-pressed={addKind === kind}
+                    onClick={() => setAddKind(kind)}
+                  >
+                    {kind === 'tba' ? 'TBA event' : 'Manual event'}
+                  </Button>
+                ))}
+              </div>
+              {addKind === 'tba' ? (
+                <>
+                  <AddRoundForm
+                    busy={busy}
+                    checking={pending === 'check-round'}
+                    saving={pending === 'add-round'}
+                    onCheck={lookUpEvent}
+                    onAdd={(eventKey) =>
+                      run('add-round', async () => {
+                        const out = await api<{ round: { eventName: string; startDate: string; endDate: string } }>(
+                          '/rounds',
+                          { method: 'POST', body: { eventKey } },
+                        );
+                        setNotice(
+                          `Added ${out.round.eventName} (${formatDateRange(out.round.startDate, out.round.endDate)}). Wrong event? Delete it above.`,
+                        );
+                      })
+                    }
+                  />
+                  <p className="text-[13px] leading-[18px] text-fg-muted">
+                    The event key is the last part of the event&apos;s address on thebluealliance.com, such as 2026parr.
+                  </p>
+                </>
+              ) : (
+                <AddManualRoundForm
+                  busy={busy}
+                  saving={pending === 'add-manual'}
+                  onAdd={(input: ManualRoundInput) =>
+                    run(
+                      'add-manual',
+                      () => api('/rounds', { method: 'POST', body: { kind: 'manual', ...input } }),
+                      `Added ${input.name}. Add its teams under Manage → Setup.`,
+                    )
+                  }
+                />
+              )}
+            </div>
+          ) : null}
         </Card>
       </section>
 

@@ -1,7 +1,9 @@
-import type { DraftMode, LeagueRole, PickSeconds, Visibility } from '@/lib/db/types';
+import type { DraftMode, LeagueFormat, LeagueRole, PickSeconds, RoundKind, Visibility } from '@/lib/db/types';
 import type { DraftPhase } from '@/lib/draft/live';
 import type { RoundStatus } from '@/lib/rounds/status';
 import type { ScoringConfig } from '@/lib/scoring/config';
+import type { ManualResult } from '@/lib/scoring/types';
+import type { PoolFilter } from '@/lib/season/poolFilter';
 import type { PoolTeam } from '@/lib/teams';
 
 // Shapes the admin API returns. The admin pages import these, so server and client agree.
@@ -9,10 +11,12 @@ import type { PoolTeam } from '@/lib/teams';
 export type AdminLeague = {
   slug: string;
   name: string;
-  homeTeamNumber: number;
   defaultScoring: ScoringConfig;
   inviteCode: string;
   visibility: Visibility;
+  format: LeagueFormat;
+  /** Followed team numbers, ascending; their events become rounds automatically (spec §5.4). */
+  follows: number[];
 };
 
 export type AdminPlayer = {
@@ -27,7 +31,11 @@ export type AdminPlayer = {
 
 export type AdminRoundSummary = {
   id: string;
-  eventKey: string;
+  /** null for manual and season rounds. */
+  eventKey: string | null;
+  kind: RoundKind;
+  autoAdded: boolean;
+  seasonYear: number | null;
   eventName: string;
   startDate: string;
   endDate: string;
@@ -47,7 +55,11 @@ export type AdminState = {
 export type AdminRoundDetail = {
   round: {
     id: string;
-    eventKey: string;
+    /** null for manual and season rounds. */
+    eventKey: string | null;
+    kind: RoundKind;
+    seasonYear: number | null;
+    poolFilter: PoolFilter | null;
     eventName: string;
     startDate: string;
     endDate: string;
@@ -71,6 +83,8 @@ export type AdminRoundDetail = {
   pool: PoolTeam[];
   /** True when TBA couldn't be reached and the pool may be out of date. */
   poolStale: boolean;
+  /** Season rounds: why the pool is empty when TBA hasn't published the year's teams (spec §5.5); else null. */
+  poolEmptyMessage: string | null;
   picks: { pickNumber: number; playerId: string; teamKey: string }[];
   adjustments: {
     id: string;
@@ -79,8 +93,10 @@ export type AdminRoundDetail = {
     points: number;
     reason: string;
   }[];
-  /** Largest roster size the pool allows for the current draft order, capped at 10. null with no drafters. */
+  /** Largest roster size the pool allows for the current draft order, capped at 10 (15 for season rounds). null with no drafters. */
   maxRosterSize: number | null;
+  /** Typed-in results (spec §5.3). null unless the round is a manual event. */
+  manualResults: ManualResult[] | null;
 };
 
 /** GET /admin/events/{eventKey}: a look-up only, so the commissioner can check the event before adding it. */

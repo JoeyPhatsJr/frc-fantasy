@@ -1,5 +1,7 @@
 // Runs in the browser. Do not import anything from node:* or lib/db here.
 
+import type { PoolFilter } from '@/lib/season/poolFilter';
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -52,7 +54,14 @@ async function send<T>(
 }
 
 export function createLeague(
-  input: { name: string; visibility?: 'link' | 'members' },
+  input: {
+    name: string;
+    visibility?: 'link' | 'members';
+    format?: 'event' | 'season';
+    followTeams?: number[];
+    seasonYear?: number;
+    poolFilter?: PoolFilter;
+  },
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ slug: string; inviteCode: string }> {
   return send('/api/leagues', { method: 'POST', body: input }, fetchImpl);

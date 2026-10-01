@@ -13,7 +13,7 @@ export type Line = { category: CategoryId; label: string; quantity?: number; poi
 
 export type TeamScore = { teamKey: string; total: number; lines: Line[] };
 
-export type RpMethod = 'extra_stats' | 'sort_order_avg' | 'none';
+export type RpMethod = 'extra_stats' | 'sort_order_avg' | 'none' | 'manual';
 
 export type EventScores = {
   teams: Map<string, TeamScore>;
@@ -51,4 +51,21 @@ export type SeasonRow = {
   rank: number;
   /** One entry per round, in the order rounds were passed in. 0 if the player was not in that round. */
   perRound: number[];
+};
+
+export type AllianceRole = 'captain' | 'pick1' | 'pick2' | 'pick3' | 'backup';
+
+/** One team's typed-in results for a manual round (spec §5.3). null = unknown. */
+export type ManualResult = {
+  teamKey: string;
+  qualWins: number;
+  qualLosses: number;
+  qualTies: number;
+  rankingPoints: number | null;
+  qualRank: number | null;
+  allianceRole: AllianceRole | null;
+  playoffWins: number;
+  eventResult: 'winner' | 'finalist' | null;
+  /** TBA award type ids. */
+  awardTypes: number[];
 };

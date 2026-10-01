@@ -19,6 +19,7 @@ const RP_METHODS: Record<RpMethod, true> = {
   extra_stats: true,
   sort_order_avg: true,
   none: true,
+  manual: true,
 };
 
 const lineSchema = z.object({

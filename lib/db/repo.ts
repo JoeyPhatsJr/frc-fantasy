@@ -4,17 +4,21 @@ import type {
   CacheRow,
   DraftMode,
   EventScoresRow,
+  LeagueFormat,
   LeagueRole,
+  ManualResultRow,
   LeagueRow,
   PickRow,
   PickSeconds,
   PlayerRow,
   ProfileRow,
+  RoundKind,
   RoundRow,
   TeamStatsRow,
   Visibility,
 } from '@/lib/db/types';
 import type { ScoringConfig } from '@/lib/scoring/config';
+import type { PoolFilter } from '@/lib/season/poolFilter';
 
 /** Thrown when an insert or update breaks a unique constraint. `constraint` is the Postgres name. */
 export class UniqueViolation extends Error {
@@ -40,6 +44,7 @@ export type NewLeague = {
   visibility?: Visibility;
   /** v1 only. v2 leagues leave it out. */
   adminTokenHash?: string | null;
+  format?: LeagueFormat; // default 'event'
 };
 export type LeaguePatch = {
   name?: string;
@@ -47,15 +52,23 @@ export type LeaguePatch = {
   defaultScoring?: ScoringConfig;
   adminTokenHash?: string | null;
   visibility?: Visibility;
+  followsSyncedAt?: string;
 };
 export type NewRound = {
   leagueId: string;
-  eventKey: string;
+  /** null for manual and season rounds. */
+  eventKey: string | null;
   eventName: string;
   startDate: string;
   endDate: string;
   timezone: string;
   scoring: ScoringConfig;
+  kind?: RoundKind; // default 'tba'
+  seasonYear?: number | null;
+  poolFilter?: PoolFilter | null;
+  autoAdded?: boolean;
+  rosterSize?: number; // default 4
+  draftOrder?: string[]; // default []
 };
 export type RoundPatch = {
   rosterSize?: number;
@@ -65,6 +78,9 @@ export type RoundPatch = {
   draftMode?: DraftMode;
   pickSeconds?: PickSeconds | null;
   pausedRemainingMs?: number | null;
+  startDate?: string;
+  endDate?: string;
+  poolFilter?: PoolFilter | null;
 };
 export type NewPick = { roundId: string; pickNumber: number; playerId: string; teamKey: string; auto?: boolean };
 export type NewAdjustment = {
@@ -130,6 +146,20 @@ export interface Repo {
   createRound(input: NewRound): Promise<RoundRow>;
   updateRound(id: string, patch: RoundPatch): Promise<RoundRow>;
   deleteRound(id: string): Promise<void>;
+  /** Idempotent insert for follow-a-team (spec §5.4): null when the league already has that event. */
+  createRoundIfAbsent(input: NewRound): Promise<RoundRow | null>;
+  /** kind = 'season' and not finalized, across every league (daily cron). */
+  listOpenSeasonRounds(): Promise<RoundRow[]>;
+
+  listManualResults(roundId: string): Promise<ManualResultRow[]>; // by team key
+  upsertManualResult(row: ManualResultRow): Promise<ManualResultRow>;
+  deleteManualResult(roundId: string, teamKey: string): Promise<void>;
+
+  listFollows(leagueId: string): Promise<number[]>; // ascending
+  setFollows(leagueId: string, teamNumbers: number[]): Promise<void>; // replaces the whole list
+  listLeaguesWithFollows(): Promise<LeagueRow[]>;
+  listSkippedEvents(leagueId: string): Promise<string[]>;
+  addSkippedEvent(leagueId: string, eventKey: string): Promise<void>; // adding twice is fine
 
   listExtraTeams(roundId: string): Promise<string[]>;
   addExtraTeam(roundId: string, teamKey: string): Promise<void>; // adding twice is fine

@@ -78,6 +78,10 @@ describe('handle', () => {
       409,
       'That event is already in this league',
     ]);
+    expect(await status(new UniqueViolation('rounds_league_season_year'))).toEqual([
+      409,
+      'That season has already been started — refresh',
+    ]);
     expect(await status(new UniqueViolation('something_else'))).toEqual([409, 'That already exists']);
   });
 

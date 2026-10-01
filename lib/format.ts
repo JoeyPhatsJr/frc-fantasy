@@ -1,3 +1,4 @@
+import type { RoundKind } from '@/lib/db/types';
 import { teamLabel } from '@/lib/teams';
 
 export function agoLabel(fetchedAt: string | null, now: Date): string {
@@ -54,4 +55,9 @@ export function teamName(teamKey: string, names: Record<string, string>): string
 
 export function tbaEventUrl(eventKey: string): string {
   return `https://www.thebluealliance.com/event/${eventKey}`;
+}
+
+/** The line under a round's dates: its TBA event key, or what kind of round it is when it has none. */
+export function roundKeyLine(round: { eventKey: string | null; kind: RoundKind; seasonYear: number | null }): string {
+  return round.eventKey ?? (round.kind === 'manual' ? 'Manual event' : `${round.seasonYear} season`);
 }

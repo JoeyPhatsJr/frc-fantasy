@@ -8,7 +8,7 @@ import { DraftBoard } from '@/components/DraftBoard';
 import { Freshness } from '@/components/Freshness';
 import { Leaderboard } from '@/components/Leaderboard';
 import { PrivateLeague } from '@/components/PrivateLeague';
-import { RosterList } from '@/components/RosterList';
+import { RosterList, rostersHint } from '@/components/RosterList';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
@@ -50,9 +50,11 @@ export default async function RoundPage({ params }: Props) {
   const { round } = view;
   const drafts = await memberLiveDrafts(slug, [view]);
   const draftInProgress = view.status === 'setup' || view.status === 'drafting';
+  const manual = round.kind === 'manual';
+  const season = round.kind === 'season';
   const notStarted = !view.hasEventData;
-  const oprPending = view.hasEventData && !view.qualsComplete;
-  const rpMissing = view.hasRankings && view.rpMethod === 'none';
+  const oprPending = view.hasEventData && !view.qualsComplete && !season;
+  const rpMissing = view.hasRankings && view.rpMethod === 'none' && !season;
 
   return (
     <main id="main" className="space-y-6">
@@ -72,22 +74,26 @@ export default async function RoundPage({ params }: Props) {
           <StatusBadge status={view.status} />
           <p className="text-[15px] font-medium text-fg-muted">{formatDateRange(round.startDate, round.endDate)}</p>
         </div>
-        <Button
-          href={tbaEventUrl(round.eventKey)}
-          variant="secondary"
-          size="sm"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          View on The Blue Alliance
-          <ExternalLink className="size-4 shrink-0" />
-        </Button>
-        <Freshness fetchedAt={view.fetchedAt} stale={view.stale} now={now} />
+        {round.eventKey ? (
+          <Button
+            href={tbaEventUrl(round.eventKey)}
+            variant="secondary"
+            size="sm"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View on The Blue Alliance
+            <ExternalLink className="size-4 shrink-0" />
+          </Button>
+        ) : null}
+        {manual ? null : <Freshness fetchedAt={view.fetchedAt} stale={view.stale} now={now} />}
       </header>
 
       {notStarted || oprPending || rpMissing ? (
         <div className="space-y-2">
-          {notStarted ? <Alert tone="info">Event hasn&apos;t started</Alert> : null}
+          {notStarted ? (
+            <Alert tone="info">{manual ? 'No results entered yet' : season ? 'No events yet this season' : 'Event hasn’t started'}</Alert>
+          ) : null}
           {oprPending ? <Note>OPR bonus: after quals</Note> : null}
           {rpMissing ? <Note>RP data unavailable for this event</Note> : null}
         </div>
@@ -104,8 +110,15 @@ export default async function RoundPage({ params }: Props) {
 
       <section>
         <Card title="Rosters">
-          <p className="-mt-1 mb-3 text-[15px] text-fg-muted">Tap a player to see where their points came from.</p>
-          <RosterList scores={view.scores} teamNames={view.teamNames} draftInProgress={draftInProgress} />
+          <p className="-mt-1 mb-3 text-[15px] text-fg-muted">
+            {rostersHint(season)}
+          </p>
+          <RosterList
+            scores={view.scores}
+            teamNames={view.teamNames}
+            draftInProgress={draftInProgress}
+            season={view.season}
+          />
         </Card>
       </section>
 

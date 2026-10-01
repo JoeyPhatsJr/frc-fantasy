@@ -1,4 +1,9 @@
 import type { ScoringConfig } from '@/lib/scoring/config';
+import type { PoolFilter } from '@/lib/season/poolFilter';
+import type { ManualResult } from '@/lib/scoring/types';
+
+export type LeagueFormat = 'event' | 'season';
+export type RoundKind = 'tba' | 'manual' | 'season';
 
 export type Visibility = 'link' | 'members';
 export type LeagueRole = 'commissioner' | 'player';
@@ -14,6 +19,9 @@ export type LeagueRow = {
   inviteCode: string;
   visibility: Visibility;
   createdBy: string | null;
+  format: LeagueFormat;
+  /** Last successful follow-a-team sync (spec §5.4). null = never. */
+  followsSyncedAt: string | null;
   createdAt: string;
 };
 
@@ -42,7 +50,8 @@ export type DraftMode = 'commissioner' | 'live';
 export type RoundRow = {
   id: string;
   leagueId: string;
-  eventKey: string;
+  /** null for manual and season rounds. */
+  eventKey: string | null;
   eventName: string;
   startDate: string; // YYYY-MM-DD
   endDate: string;
@@ -61,6 +70,13 @@ export type RoundRow = {
   pausedRemainingMs: number | null;
   /** The current pick's deadline (database clock); null if no timer, paused, not started, or done. */
   pickDeadline: string | null;
+  kind: RoundKind;
+  /** Season rounds only. */
+  seasonYear: number | null;
+  /** Season rounds only; null means "all teams". */
+  poolFilter: PoolFilter | null;
+  /** Created by follow-a-team (spec §5.4). */
+  autoAdded: boolean;
   createdAt: string;
 };
 
@@ -144,3 +160,5 @@ export type TeamStatsRow = {
   latestRank: number | null;
   updatedAt: string;
 };
+
+export type ManualResultRow = ManualResult & { roundId: string };

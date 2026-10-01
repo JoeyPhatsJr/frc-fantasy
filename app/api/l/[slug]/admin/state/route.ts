@@ -2,10 +2,12 @@ import { handle, json } from '@/lib/api/http';
 import { requireLeagueRole } from '@/lib/auth/roles';
 import type { AdminState } from '@/lib/api/types';
 import { getRepo } from '@/lib/db';
+import { scheduleFollowSync } from '@/lib/follow/sync';
 import { roundStatus } from '@/lib/rounds/status';
 import { playersInUse } from '@/lib/rounds/usage';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
 type Ctx = { params: Promise<{ slug: string }> };
 
@@ -15,11 +17,14 @@ export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
     const { league, player } = await requireLeagueRole(slug, 'commissioner');
     const repo = getRepo();
     const now = new Date();
+    // Spec §5.4: the dashboard loads through here, so visiting it also syncs followed teams (after the response).
+    scheduleFollowSync(league, now);
 
-    const [players, rounds, used] = await Promise.all([
+    const [players, rounds, used, follows] = await Promise.all([
       repo.listPlayers(league.id),
       repo.listRounds(league.id),
       playersInUse(repo, league.id),
+      repo.listFollows(league.id),
     ]);
     const picks = await repo.listPicksForRounds(rounds.map((r) => r.id));
 
@@ -28,10 +33,11 @@ export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
       league: {
         slug: league.slug,
         name: league.name,
-        homeTeamNumber: league.homeTeamNumber,
         defaultScoring: league.defaultScoring,
         inviteCode: league.inviteCode,
         visibility: league.visibility,
+        format: league.format,
+        follows,
       },
       players: players.map((p) => ({
         id: p.id, name: p.name, inUse: used.has(p.id), role: p.role, linked: p.userId !== null,
@@ -41,6 +47,9 @@ export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
         return {
           id: r.id,
           eventKey: r.eventKey,
+          kind: r.kind,
+          autoAdded: r.autoAdded,
+          seasonYear: r.seasonYear,
           eventName: r.eventName,
           startDate: r.startDate,
           endDate: r.endDate,

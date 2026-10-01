@@ -4,6 +4,7 @@ import {
   formatDateRange,
   freshnessText,
   lineText,
+  roundKeyLine,
   signed,
   tbaEventUrl,
   teamName,
@@ -77,5 +78,15 @@ describe('teamName', () => {
 describe('tbaEventUrl', () => {
   it('links to the event on TBA', () => {
     expect(tbaEventUrl('2025parr')).toBe('https://www.thebluealliance.com/event/2025parr');
+  });
+});
+
+describe('roundKeyLine (SP2 final review, Minor 5)', () => {
+  it('shows the event key for TBA rounds', () => {
+    expect(roundKeyLine({ eventKey: '2026parr', kind: 'tba', seasonYear: null })).toBe('2026parr');
+  });
+  it('never leaves the line blank for manual and season rounds', () => {
+    expect(roundKeyLine({ eventKey: null, kind: 'manual', seasonYear: null })).toBe('Manual event');
+    expect(roundKeyLine({ eventKey: null, kind: 'season', seasonYear: 2027 })).toBe('2027 season');
   });
 });

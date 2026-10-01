@@ -173,6 +173,38 @@ describe('GET /admin/rounds/{id}', () => {
     expect(body.picks).toEqual([{ pickNumber: 0, playerId: mom.id, teamKey: 'frc1' }]);
     expect(body.adjustments).toHaveLength(1);
     expect(body.maxRosterSize).toBe(3); // 7 teams / 2 players
+    expect(body.manualResults).toBeNull(); // only manual rounds have typed-in results
+  });
+
+  it('a manual round reports its kind and builds its pool from added teams only, without asking TBA', async () => {
+    const round = await repo.createRound({
+      leagueId: league.id, eventKey: null, kind: 'manual', eventName: 'Garage Games',
+      startDate: '2026-11-07', endDate: '2026-11-07', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    await repo.addExtraTeam(round.id, 'frc9999');
+    const res = await getRound(request('GET', '/x', {}), at(round));
+    expect(res.status).toBe(200);
+    const body = await readJson(res);
+    expect(body.round).toMatchObject({ kind: 'manual', eventKey: null, seasonYear: null, poolFilter: null });
+    expect(body.pool.map((t: { teamKey: string }) => t.teamKey)).toEqual(['frc9999']);
+    expect(body.poolStale).toBe(false);
+    expect(body.manualResults).toEqual([]);
+    expect(h.getTba).not.toHaveBeenCalled();
+  });
+
+  it("a manual round's detail includes its typed-in results, without the round id", async () => {
+    const round = await repo.createRound({
+      leagueId: league.id, eventKey: null, kind: 'manual', eventName: 'Garage Games',
+      startDate: '2026-11-07', endDate: '2026-11-07', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    await repo.addExtraTeam(round.id, 'frc9999');
+    const result = {
+      teamKey: 'frc9999', qualWins: 3, qualLosses: 1, qualTies: 0, rankingPoints: null, qualRank: 2,
+      allianceRole: 'pick1' as const, playoffWins: 1, eventResult: null, awardTypes: [9],
+    };
+    await repo.upsertManualResult({ roundId: round.id, ...result });
+    const body = await readJson(await getRound(request('GET', '/x', {}), at(round)));
+    expect(body.manualResults).toEqual([result]);
   });
 
   it("answers 404 when league A's commissioner asks for league B's round", async () => {
@@ -358,6 +390,24 @@ describe('DELETE /admin/rounds/{id}', () => {
     expect(res.status).toBe(403);
     expect(await repo.getRound(round.id)).not.toBeNull();
   });
+
+  it('remembers a deleted auto-added round so follow-a-team never re-adds it (Review Focus 1)', async () => {
+    const auto = await repo.createRound({
+      leagueId: league.id, eventKey: '2026paca', eventName: 'Chesapeake', startDate: '2026-10-20',
+      endDate: '2026-10-20', timezone: 'America/New_York', scoring: defaultScoring(), autoAdded: true,
+    });
+    expect((await deleteRound(request('DELETE', '/x'), at(auto))).status).toBe(204);
+    expect(await repo.listSkippedEvents(league.id)).toEqual(['2026paca']);
+  });
+
+  it('does not skip an event whose round was added by hand', async () => {
+    const byHand = await repo.createRound({
+      leagueId: league.id, eventKey: '2026paca', eventName: 'Chesapeake', startDate: '2026-10-20',
+      endDate: '2026-10-20', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    await deleteRound(request('DELETE', '/x'), at(byHand));
+    expect(await repo.listSkippedEvents(league.id)).toEqual([]);
+  });
 });
 
 describe('team pool endpoints', () => {
@@ -426,5 +476,57 @@ describe('team pool endpoints', () => {
       params({ slug: league.slug, id: round.id, teamKey: 'nope' }),
     );
     expect(res.status).toBe(400);
+  });
+});
+
+describe('POST rounds: manual events (spec §5.3)', () => {
+  const manual = (body: unknown) => addRound(request('POST', '/x', { body }), params({ slug: league.slug }));
+
+  it('creates a manual round without asking TBA', async () => {
+    const res = await manual({ kind: 'manual', name: '  Garage Games ', startDate: '2026-11-07', endDate: '2026-11-08' });
+    expect(res.status).toBe(201);
+    const [round] = await repo.listRounds(league.id);
+    expect(round).toMatchObject({
+      kind: 'manual', eventKey: null, eventName: 'Garage Games',
+      startDate: '2026-11-07', endDate: '2026-11-08', timezone: 'America/New_York',
+    });
+    expect(round.scoring).toEqual(league.defaultScoring);
+    expect(h.getTba).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ kind: 'manual', name: '', startDate: '2026-11-07', endDate: '2026-11-07' }, 'Event name is required'],
+    [{ kind: 'manual', name: 'x'.repeat(81), startDate: '2026-11-07', endDate: '2026-11-07' }, 'Event name must be 80 characters or fewer'],
+    [{ kind: 'manual', name: 'G', startDate: '11/07/2026', endDate: '2026-11-07' }, 'Dates look like 2026-11-07'],
+    [{ kind: 'manual', name: 'G', startDate: '2026-02-30', endDate: '2026-03-01' }, 'Dates look like 2026-11-07'],
+    [{ kind: 'manual', name: 'G', startDate: '2026-11-08', endDate: '2026-11-07' }, 'The end date must be on or after the start date'],
+  ])('rejects %j', async (body, message) => {
+    const res = await manual(body);
+    expect(res.status).toBe(400);
+    expect((await readJson(res)).error).toBe(message);
+  });
+
+  it('rejects a kind it does not create, and adds no round', async () => {
+    const res = await manual({ kind: 'season', name: 'G', startDate: '2026-11-07', endDate: '2026-11-07' });
+    expect(res.status).toBe(400);
+    expect(await repo.listRounds(league.id)).toEqual([]);
+  });
+
+  it('still takes a v1 body with only an event key', async () => {
+    tbaAnswers({ '/event/2025parr': EVENT });
+    const res = await manual({ eventKey: '2025parr' });
+    expect(res.status).toBe(201);
+    expect((await repo.listRounds(league.id))[0]).toMatchObject({ kind: 'tba', eventKey: '2025parr' });
+  });
+
+  it('answers 409 in a season league (its rounds are created for it)', async () => {
+    const season = await seedLeague(repo, { slug: 'season-fam-abc234', format: 'season' });
+    setUser(season.user);
+    const res = await addRound(
+      request('POST', '/x', { body: { kind: 'manual', name: 'G', startDate: '2026-11-07', endDate: '2026-11-07' } }),
+      params({ slug: season.league.slug }),
+    );
+    expect(res.status).toBe(409);
+    expect((await readJson(res)).error).toBe('Season leagues add their season rounds automatically');
   });
 });

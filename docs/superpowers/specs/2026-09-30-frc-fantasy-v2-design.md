@@ -380,6 +380,7 @@ create table event_scores (
 - `EventScores.teams` is a `Map` (`lib/scoring/types.ts`), so `lib/scores/eventScores.ts` has explicit `serializeEventScores` / `deserializeEventScores` functions (round-trip tested).
 
 **Rules:**
+- **One derived row lives in `tba_cache`:** `derived:season-teams/{year}` (SP2) holds a field subset (`key`, `team_number`, `nickname`, `state_prov`, `country`) of the year's TBA team pages, refreshed every 24 h, so season pools read one row instead of ~22 pages. Paths starting with `derived:` are never fetched from TBA (`getTba` requires a leading `/`); any future job that refreshes every `tba_cache` row must skip them.
 - The cache is **derived and rebuildable**: `scripts/rebuild-event-scores.ts` truncates it and nothing breaks. It is never edited by hand or by the app except through `getEventScores`.
 - Round pages (v1 `tba` rounds), season rounds, the Me tab, and `team_stats` (§6) all read scores through `getEventScores`.
 - The replay test asserts that `2025parr` round scores through `getEventScores` equal v1's direct `scoreEvent` output.
@@ -610,7 +611,7 @@ Each sub-project follows the v1 working style: brief on disk, subagent implement
 ## 11. One-time setup (Joey, ~5 min, guided)
 
 1. **Supabase → Authentication → Sign In / Providers → Email:** enabled; **Confirm email OFF**; minimum password length **8**. Anonymous sign-ins **off**.
-2. **Supabase → Authentication → URL Configuration:** Site URL `https://frc-fantasy-6yo3.vercel.app`.
+2. **Supabase → Authentication → URL Configuration:** Site URL `https://frc-fantasy-5181.vercel.app`.
 3. **Env vars:** `.env.local` gets `NEXT_PUBLIC_SUPABASE_URL` (= `SUPABASE_URL`), `NEXT_PUBLIC_SUPABASE_ANON_KEY` (Project Settings → API Keys → anon/publishable), `CRON_SECRET`, `E2E_AUTH_SECRET`; remove `CREATE_LEAGUE_PASSCODE`. **Vercel** (Production + Preview) gets `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `CRON_SECRET` **before** the SP1 merge (without them `proxy.ts` fails every request); never `E2E_AUTH_SECRET`.
 
 ---

@@ -1,6 +1,6 @@
 import type { SessionUser } from '@/lib/auth/session';
 import type { Repo } from '@/lib/db/repo';
-import type { LeagueRow, PlayerRow, Visibility } from '@/lib/db/types';
+import type { LeagueFormat, LeagueRow, PlayerRow, Visibility } from '@/lib/db/types';
 import { defaultScoring } from '@/lib/scoring/config';
 import { makeUser, setUser } from './auth';
 
@@ -26,7 +26,7 @@ export function params<T>(value: T): { params: Promise<T> } {
  */
 export async function seedLeague(
   repo: Repo,
-  opts: { name?: string; slug?: string; visibility?: Visibility; signIn?: boolean } = {},
+  opts: { name?: string; slug?: string; visibility?: Visibility; format?: LeagueFormat; signIn?: boolean } = {},
 ): Promise<{ league: LeagueRow; commissioner: PlayerRow; user: SessionUser }> {
   const user = await makeUser(repo, 'Commish');
   const league = await repo.createLeague({
@@ -35,6 +35,7 @@ export async function seedLeague(
     defaultScoring: defaultScoring(),
     createdBy: user.id,
     visibility: opts.visibility,
+    format: opts.format,
   });
   const commissioner = await repo.createMember({
     leagueId: league.id,

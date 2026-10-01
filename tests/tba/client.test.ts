@@ -185,6 +185,24 @@ describe('getTba (§7.3)', () => {
     expect(out).toEqual({ data: { version: 1 }, fetchedAt: cached(14_000).fetchedAt, stale: false });
   });
 
+  // Final review I1: once a season page's fetch budget is spent, reads must never reach TBA.
+  it('cacheOnly: serves an old row without fetching or writing, marked stale', async () => {
+    const fetchImpl = vi.fn();
+    const store = storeWith(cached(60 * MIN));
+    const upsert = vi.spyOn(store, 'upsertCache');
+    const out = await getTba(PATH, { windowMs: MIN, cacheOnly: true }, deps(store, fetchImpl));
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(upsert).not.toHaveBeenCalled();
+    expect(out).toEqual({ data: { version: 1 }, fetchedAt: cached(60 * MIN).fetchedAt, stale: true });
+  });
+
+  it('cacheOnly: a never-cached path returns no data, marked stale, without fetching', async () => {
+    const fetchImpl = vi.fn();
+    const out = await getTba(PATH, { windowMs: MIN, cacheOnly: true }, deps(storeWith(), fetchImpl));
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(out).toEqual({ data: null, fetchedAt: null, stale: true });
+  });
+
   it('rejects a path that does not start with a slash', async () => {
     await expect(getTba('event/x', { windowMs: MIN }, deps(storeWith(), vi.fn()))).rejects.toThrow();
   });

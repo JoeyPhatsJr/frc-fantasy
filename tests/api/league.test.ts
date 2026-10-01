@@ -129,6 +129,71 @@ describe('POST /api/leagues (spec §4.4)', () => {
   });
 });
 
+describe('POST /api/leagues with a format (spec §5)', () => {
+  let joeyId: string;
+  beforeEach(async () => {
+    const joey = await makeUser(repo, 'Joey');
+    joeyId = joey.id;
+    setUser(joey);
+    h.getTba = vi.fn(async (path: unknown) =>
+      String(path) === '/events/2027/simple'
+        ? { data: [{ key: '2027paca', name: 'x', event_type: 1, start_date: '2027-03-05', end_date: '2027-03-07' }], fetchedAt: 'x', stale: false }
+        : { data: [], fetchedAt: 'x', stale: false },
+    );
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-23T18:00:00.000Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('creates a season league with its season round (spec §5.5)', async () => {
+    const res = await createLeague(
+      request('POST', '/x', { body: { name: 'Season Fam', visibility: 'link', format: 'season', seasonYear: 2027 } }),
+    );
+    expect(res.status).toBe(201);
+    const slug = (await readJson(res)).slug; // SP1 answers { slug, inviteCode }
+    const league = (await repo.getLeagueBySlug(slug))!;
+    expect(league.format).toBe('season');
+    expect((await repo.listRounds(league.id)).map((r) => r.kind)).toEqual(['season']);
+  });
+
+  it('rejects an unknown format', async () => {
+    const res = await createLeague(request('POST', '/x', { body: { name: 'X', visibility: 'link', format: 'weekly' } }));
+    expect(res.status).toBe(400);
+  });
+
+  it('defaults to an event league and saves its follows', async () => {
+    const res = await createLeague(request('POST', '/x', { body: { name: 'Fam', followTeams: [5181, 341] } }));
+    expect(res.status).toBe(201);
+    const league = (await repo.getLeagueBySlug((await readJson(res)).slug))!;
+    expect(league.format).toBe('event');
+    expect(await repo.listFollows(league.id)).toEqual([341, 5181]);
+    expect(await repo.listRounds(league.id)).toEqual([]);
+  });
+
+  it('answers 400 for a bad season year or district and leaves no league behind', async () => {
+    const spy = vi.spyOn(repo, 'createLeague');
+    for (const extra of [{ seasonYear: 2029 }, { seasonYear: 2027, poolFilter: { type: 'district', key: '2026fma' } }]) {
+      const res = await createLeague(request('POST', '/x', { body: { name: 'Fam', format: 'season', ...extra } }));
+      expect(res.status, JSON.stringify(extra)).toBe(400);
+    }
+    expect((await readJson(await createLeague(request('POST', '/x', { body: { name: 'Fam', format: 'season', seasonYear: 2029 } })))).error).toBe(
+      'Pick the 2026 or 2027 season',
+    );
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('removes the league if its season round cannot be created', async () => {
+    vi.spyOn(repo, 'createRound').mockRejectedValueOnce(new Error('boom'));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await createLeague(request('POST', '/x', { body: { name: 'Fam', format: 'season' } }));
+    expect(res.status).toBeGreaterThanOrEqual(500);
+    expect(await repo.countLeaguesCreatedBy(joeyId)).toBe(0);
+    log.mockRestore();
+  });
+});
+
 describe('PATCH /admin/league visibility', () => {
   it('switches between link and members', async () => {
     const { league } = await seedLeague(repo);
@@ -210,8 +275,8 @@ describe('GET /admin/state', () => {
 
     const body = JSON.parse(text);
     expect(body.league).toEqual({
-      slug: league.slug, name: 'Habich Fam', homeTeamNumber: 5181, defaultScoring: DEFAULT_SCORING,
-      inviteCode: league.inviteCode, visibility: 'link',
+      slug: league.slug, name: 'Habich Fam', defaultScoring: DEFAULT_SCORING,
+      inviteCode: league.inviteCode, visibility: 'link', format: 'event', follows: [],
     });
     expect(body.me).toBe(commissioner.id);
     expect(body.players).toEqual([
@@ -221,8 +286,8 @@ describe('GET /admin/state', () => {
     ]);
     expect(body.rounds).toEqual([
       {
-        id: round.id, eventKey: '2025parr', eventName: 'Ramp Riot',
-        startDate: '2025-10-25', endDate: '2025-10-25',
+        id: round.id, eventKey: '2025parr', kind: 'tba', autoAdded: false, seasonYear: null,
+        eventName: 'Ramp Riot', startDate: '2025-10-25', endDate: '2025-10-25',
         status: 'drafting', pickCount: 1, totalPicks: 2,
       },
     ]);
@@ -249,17 +314,16 @@ describe('PATCH /admin/league', () => {
     expect((await repo.getLeagueBySlug(league.slug))!.name).toBe('Robot Fam');
   });
 
-  it('updates the default scoring and home team', async () => {
+  it('updates the default scoring', async () => {
     const { league } = await seedLeague(repo);
     const scoring = { ...defaultScoring(), qualWin: 2 };
     const res = await patchLeague(
-      request('PATCH', '/x', { body: { defaultScoring: scoring, homeTeamNumber: 341 } }),
+      request('PATCH', '/x', { body: { defaultScoring: scoring } }),
       params({ slug: league.slug }),
     );
     expect(res.status).toBe(200);
     const saved = (await repo.getLeagueBySlug(league.slug))!;
     expect(saved.defaultScoring.qualWin).toBe(2);
-    expect(saved.homeTeamNumber).toBe(341);
   });
 
   it('does not change existing rounds when the league default changes (§3.5)', async () => {
@@ -284,6 +348,8 @@ describe('PATCH /admin/league', () => {
       { adminTokenHash: 'x' },
       { name: '' },
       { homeTeamNumber: 0 },
+      { homeTeamNumber: 341 },
+      { format: 'season' },
     ];
     for (const body of bodies) {
       const res = await patchLeague(request('PATCH', '/x', { body }), params({ slug: league.slug }));

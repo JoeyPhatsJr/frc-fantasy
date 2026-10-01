@@ -1,6 +1,8 @@
 import { getRepo } from '@/lib/db';
 import { addDays, cacheWindowFor, localDate } from '@/lib/rounds/status';
+import { formatDateRange } from '@/lib/format';
 import { hasResult, winnerOf } from '@/lib/scoring/matches';
+import { pickEventForMe } from '@/lib/season/current';
 import { getTba } from '@/lib/tba/client';
 import type { MatchSimple } from '@/lib/tba/types';
 import { loadLeaguePage } from '@/lib/views/league';
@@ -103,6 +105,24 @@ export async function loadMePage(userId: string, now: Date): Promise<MePage> {
   const seasonRounds: SeasonInput[] = [];
   const today = localDate(now, 'America/New_York');
 
+  // One schedule read per event for the whole page, however many picks play there (final review I2).
+  // A failed read degrades only the rows of that event: it resolves to null and is logged once.
+  const schedules = new Map<string, Promise<MatchSimple[] | null>>();
+  const scheduleFor = (eventKey: string, windowMs: number): Promise<MatchSimple[] | null> => {
+    let pending = schedules.get(eventKey);
+    if (!pending) {
+      pending = getTba<MatchSimple[]>(`/event/${eventKey}/matches/simple`, { windowMs }).then(
+        (res) => (Array.isArray(res.data) ? res.data : null),
+        (err) => {
+          console.error(err);
+          return null;
+        },
+      );
+      schedules.set(eventKey, pending);
+    }
+    return pending;
+  };
+
   for (let i = 0; i < memberships.length; i++) {
     const { league, player } = memberships[i];
     const result = results[i];
@@ -129,25 +149,46 @@ export async function loadMePage(userId: string, now: Date): Promise<MePage> {
       if (view.status !== 'live' && !soon) continue;
       const myTeams = view.picks.filter((p) => p.playerId === player.id).map((p) => p.teamKey);
       if (myTeams.length === 0) continue;
+      // Every team's row is worked out in parallel; rows keep pick order.
       // One event's schedule failing (TBA or tba_cache) degrades only its own rows, not the Me page.
-      let schedule: MatchSimple[] | null = null;
-      try {
-        const matches = await getTba<MatchSimple[]>(`/event/${view.round.eventKey}/matches/simple`, {
-          windowMs: cacheWindowFor(view.round, now),
-        });
-        schedule = Array.isArray(matches.data) ? matches.data : null;
-      } catch (err) {
-        console.error(err);
-      }
-      for (const teamKey of myTeams) {
-        teams.push({
-          teamKey,
-          leagueName: league.name,
-          eventName: view.round.eventName,
-          label: nextMatchLabel(teamKey, schedule),
-          status: view.status === 'live' ? 'live' : 'upcoming',
-        });
-      }
+      // Manual rounds have no TBA event, so no schedule. Season rounds look up each team's own event today.
+      const rows = await Promise.all(
+        myTeams.map(async (teamKey): Promise<MeTeam | null> => {
+          let at: Awaited<ReturnType<typeof pickEventForMe>> = null;
+          try {
+            at = view.round.kind === 'manual' ? null : await pickEventForMe(view.round, teamKey, now);
+          } catch (err) {
+            console.error(err);
+          }
+          if (view.round.kind !== 'manual' && !at) return null; // season team with nothing in the next 7 days (or lookup failed)
+          if (at?.kind === 'next') {
+            return {
+              teamKey,
+              leagueName: league.name,
+              eventName: at.name,
+              label: `Next: ${at.name} · ${formatDateRange(at.startDate, at.startDate)}`,
+              status: 'upcoming',
+            };
+          }
+          let schedule: MatchSimple[] | null = null;
+          if (at) {
+            try {
+              const windowMs = at.eventKey === view.round.eventKey ? cacheWindowFor(view.round, now) : 60_000; // a season team's event is happening now
+              schedule = await scheduleFor(at.eventKey, windowMs);
+            } catch (err) {
+              console.error(err);
+            }
+          }
+          return {
+            teamKey,
+            leagueName: league.name,
+            eventName: view.round.eventName,
+            label: nextMatchLabel(teamKey, schedule),
+            status: view.status === 'live' ? 'live' : 'upcoming',
+          };
+        }),
+      );
+      for (const r of rows) if (r) teams.push(r);
     }
   }
   return { leagues, teams, season: seasonSummary(seasonRounds, today.slice(0, 4)) };

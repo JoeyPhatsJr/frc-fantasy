@@ -6,7 +6,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: () => {} }), usePa
 
 import AdminPage from '@/app/l/[slug]/admin/page';
 import { AdminDashboard, FIRST_ROUND_FAILED, leagueLinkLabels } from '@/components/admin/AdminDashboard';
-import { afterCreateUrl, CreateLeagueForm } from '@/components/CreateLeagueForm';
+import { addFirstRound, afterCreateUrl, CreateLeagueForm, formatFields } from '@/components/CreateLeagueForm';
 import { InviteCodeBox } from '@/components/InviteCodeBox';
 import { JoinView } from '@/components/JoinView';
 import { SettingsForm } from '@/components/SettingsForm';
@@ -49,6 +49,40 @@ describe('CreateLeagueForm', () => {
     const out = render(h(CreateLeagueForm, { event: { key: '2026parr', name: 'Ramp Riot 2026' } }));
     expect(out).toContain('First round: Ramp Riot 2026');
   });
+  it('offers event-by-event (picked) or full season, says it is permanent, and asks for follows', () => {
+    const out = render(h(CreateLeagueForm, {}));
+    expect(out).toContain('How do you want to play?');
+    expect(out).toContain('Event by event');
+    expect(out).toContain('Full season');
+    expect(out).toContain('You can&#x27;t change this after the league is created.');
+    expect(out).toMatch(/name="format" checked="" value="event"/);
+    expect(out).toContain('Follow teams (optional, up to 3)');
+  });
+});
+
+describe('formatFields (the format part of the create-league body)', () => {
+  it('event: parses follows, or reports the follow error', () => {
+    expect(formatFields({ format: 'event', follows: '5181, frc341', seasonYear: 2027, poolFilter: { type: 'all' } })).toEqual({
+      ok: true,
+      fields: { format: 'event', followTeams: [5181, 341] },
+    });
+    expect(formatFields({ format: 'event', follows: '1 2 3 4', seasonYear: 2027, poolFilter: { type: 'all' } })).toEqual({
+      ok: false,
+      on: 'follows',
+      error: 'Follow at most 3 teams',
+    });
+  });
+  it('season: sends the year and pool filter, and wants a district picked', () => {
+    expect(formatFields({ format: 'season', follows: 'junk', seasonYear: 2027, poolFilter: { type: 'district', key: '2027fma' } })).toEqual({
+      ok: true,
+      fields: { format: 'season', seasonYear: 2027, poolFilter: { type: 'district', key: '2027fma' } },
+    });
+    expect(formatFields({ format: 'season', follows: '', seasonYear: 2027, poolFilter: { type: 'district', key: '' } })).toEqual({
+      ok: false,
+      on: 'pool',
+      error: 'Pick a district',
+    });
+  });
 });
 
 describe('a failed prefilled first round is not silent (final review, Minor #13)', () => {
@@ -64,6 +98,34 @@ describe('a failed prefilled first round is not silent (final review, Minor #13)
     expect(failed.props).toEqual({ slug: 'fam-abc234', firstRoundFailed: true });
     expect((await page('fam-abc234', {})).props).toEqual({ slug: 'fam-abc234', firstRoundFailed: false });
     expect(FIRST_ROUND_FAILED).toBe("Your league is ready, but the first round couldn't be added. Add it under Rounds below.");
+  });
+});
+
+describe('addFirstRound: the prefilled event from /leagues/new?event= (SP2 final review, Minor 1)', () => {
+  const answer = (status: number, body: unknown) =>
+    vi.fn(async () => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }));
+
+  it('posts the event to the new league', async () => {
+    const fetchImpl = answer(201, { round: { id: 'r1' } });
+    expect(await addFirstRound('fam-abc234', '2026parr', fetchImpl as never)).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/l/fam-abc234/admin/rounds',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ eventKey: '2026parr' }) }),
+    );
+  });
+
+  it("counts 409 'already in this league' as added: the follow sync got there first", async () => {
+    const fetchImpl = answer(409, { error: 'That event is already in this league' });
+    expect(await addFirstRound('fam-abc234', '2026parr', fetchImpl as never)).toBe(true);
+  });
+
+  it('reports any other failure, so the dashboard can say the round is missing', async () => {
+    expect(await addFirstRound('fam-abc234', '2026parr', answer(503, { error: 'TBA down' }) as never)).toBe(false);
+    expect(await addFirstRound('fam-abc234', '2026parr', answer(404, { error: 'No such event' }) as never)).toBe(false);
+    const offline = vi.fn(async () => {
+      throw new TypeError('offline');
+    });
+    expect(await addFirstRound('fam-abc234', '2026parr', offline as never)).toBe(false);
   });
 });
 

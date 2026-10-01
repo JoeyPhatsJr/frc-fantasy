@@ -1,13 +1,14 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { generateInviteCode } from '@/lib/leagues/inviteCode';
 import { bodyHash } from '@/lib/scores/hash';
-import { DbUnavailableError, UniqueViolation, type Repo } from '@/lib/db/repo';
+import { DbUnavailableError, UniqueViolation, type NewRound, type Repo } from '@/lib/db/repo';
 import type {
   AdjustmentRow,
   CacheMeta,
   CacheRow,
   EventScoresRow,
   LeagueRow,
+  ManualResultRow,
   PickRow,
   PlayerRow,
   ProfileRow,
@@ -37,6 +38,8 @@ const toLeague = (r: Raw): LeagueRow => ({
   inviteCode: r.invite_code,
   visibility: r.visibility,
   createdBy: r.created_by ?? null,
+  format: r.format ?? 'event',
+  followsSyncedAt: r.follows_synced_at ?? null,
   createdAt: r.created_at,
 });
 const toPlayer = (r: Raw): PlayerRow => ({
@@ -65,8 +68,26 @@ const toRound = (r: Raw): RoundRow => ({
   draftPausedAt: r.draft_paused_at ?? null,
   pausedRemainingMs: r.paused_remaining_ms ?? null,
   pickDeadline: r.pick_deadline ?? null,
+  kind: r.kind ?? 'tba',
+  seasonYear: r.season_year ?? null,
+  poolFilter: r.pool_filter ?? null,
+  autoAdded: r.auto_added ?? false,
   createdAt: r.created_at,
 });
+const toManualResult = (r: Raw): ManualResultRow => ({
+  roundId: r.round_id,
+  teamKey: r.team_key,
+  qualWins: r.qual_wins,
+  qualLosses: r.qual_losses,
+  qualTies: r.qual_ties,
+  rankingPoints: r.ranking_points,
+  qualRank: r.qual_rank,
+  allianceRole: r.alliance_role,
+  playoffWins: r.playoff_wins,
+  eventResult: r.event_result,
+  awardTypes: r.award_types ?? [],
+});
+
 const toPick = (r: Raw): PickRow => ({
   id: r.id,
   roundId: r.round_id,
@@ -142,6 +163,24 @@ function defined(obj: Raw): Raw {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
 }
 
+function roundInsert(input: NewRound): Raw {
+  return defined({
+    league_id: input.leagueId,
+    event_key: input.eventKey,
+    event_name: input.eventName,
+    start_date: input.startDate,
+    end_date: input.endDate,
+    timezone: input.timezone,
+    scoring: input.scoring,
+    kind: input.kind,
+    season_year: input.seasonYear,
+    pool_filter: input.poolFilter,
+    auto_added: input.autoAdded,
+    roster_size: input.rosterSize,
+    draft_order: input.draftOrder,
+  });
+}
+
 type Result = { data: unknown; error: { code?: string; message: string } | null; status?: number };
 
 async function run(query: PromiseLike<Result>): Promise<Raw[]> {
@@ -210,6 +249,7 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
               admin_token_hash: input.adminTokenHash ?? null,
               visibility: input.visibility,
               created_by: input.createdBy ?? null,
+              format: input.format,
               // invite_code comes from the column default, gen_invite_code()
             }),
           )
@@ -232,6 +272,7 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
               default_scoring: patch.defaultScoring,
               admin_token_hash: patch.adminTokenHash,
               visibility: patch.visibility,
+              follows_synced_at: patch.followsSyncedAt,
             }),
           )
           .eq('id', id)
@@ -360,21 +401,83 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
       return rows[0] ? toRound(rows[0]) : null;
     },
     async createRound(input) {
+      const rows = await run(db.from('rounds').insert(roundInsert(input)).select());
+      return first(rows, toRound, 'round');
+    },
+    async createRoundIfAbsent(input) {
+      // ON CONFLICT (league_id, event_key) DO NOTHING: a conflicting row comes back as an empty result.
       const rows = await run(
         db
           .from('rounds')
-          .insert({
-            league_id: input.leagueId,
-            event_key: input.eventKey,
-            event_name: input.eventName,
-            start_date: input.startDate,
-            end_date: input.endDate,
-            timezone: input.timezone,
-            scoring: input.scoring,
-          })
+          .upsert(roundInsert(input), { onConflict: 'league_id,event_key', ignoreDuplicates: true })
           .select(),
       );
-      return first(rows, toRound, 'round');
+      return rows[0] ? toRound(rows[0]) : null;
+    },
+    async listOpenSeasonRounds() {
+      const rows = await run(db.from('rounds').select().eq('kind', 'season').is('finalized_at', null));
+      return rows.map(toRound);
+    },
+
+    async listManualResults(roundId) {
+      const rows = await run(db.from('manual_results').select().eq('round_id', roundId).order('team_key'));
+      return rows.map(toManualResult);
+    },
+    async upsertManualResult(row) {
+      const rows = await run(
+        db
+          .from('manual_results')
+          .upsert(
+            {
+              round_id: row.roundId,
+              team_key: row.teamKey,
+              qual_wins: row.qualWins,
+              qual_losses: row.qualLosses,
+              qual_ties: row.qualTies,
+              ranking_points: row.rankingPoints,
+              qual_rank: row.qualRank,
+              alliance_role: row.allianceRole,
+              playoff_wins: row.playoffWins,
+              event_result: row.eventResult,
+              award_types: row.awardTypes,
+            },
+            { onConflict: 'round_id,team_key' },
+          )
+          .select(),
+      );
+      return first(rows, toManualResult, 'manual result');
+    },
+    async deleteManualResult(roundId, teamKey) {
+      await run(db.from('manual_results').delete().eq('round_id', roundId).eq('team_key', teamKey));
+    },
+
+    async listFollows(leagueId) {
+      const rows = await run(db.from('league_follows').select('team_number').eq('league_id', leagueId).order('team_number'));
+      return rows.map((r) => r.team_number as number);
+    },
+    async setFollows(leagueId, teamNumbers) {
+      // Two statements, not a transaction: a crash in between leaves no follows, which is safe (sync adds nothing).
+      await run(db.from('league_follows').delete().eq('league_id', leagueId));
+      const unique = [...new Set(teamNumbers)];
+      if (unique.length > 0) {
+        await run(db.from('league_follows').insert(unique.map((n) => ({ league_id: leagueId, team_number: n }))));
+      }
+    },
+    async listLeaguesWithFollows() {
+      // The !inner embed keeps only leagues with at least one follow; PostgREST returns one row per league.
+      const rows = await run(db.from('leagues').select('*, league_follows!inner(team_number)'));
+      return rows.map(toLeague);
+    },
+    async listSkippedEvents(leagueId) {
+      const rows = await run(db.from('league_skipped_events').select('event_key').eq('league_id', leagueId));
+      return rows.map((r) => r.event_key as string);
+    },
+    async addSkippedEvent(leagueId, eventKey) {
+      await run(
+        db
+          .from('league_skipped_events')
+          .upsert({ league_id: leagueId, event_key: eventKey }, { onConflict: 'league_id,event_key', ignoreDuplicates: true }),
+      );
     },
     async updateRound(id, patch) {
       const rows = await run(
@@ -389,6 +492,9 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
               draft_mode: patch.draftMode,
               pick_seconds: patch.pickSeconds,
               paused_remaining_ms: patch.pausedRemainingMs,
+              start_date: patch.startDate,
+              end_date: patch.endDate,
+              pool_filter: patch.poolFilter,
             }),
           )
           .eq('id', id)

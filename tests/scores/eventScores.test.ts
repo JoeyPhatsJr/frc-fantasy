@@ -207,6 +207,33 @@ describe('getEventScores', () => {
     expect(tba.calls).toHaveLength(6);
   });
 
+  // Final review I1: the season scorer's budget-exhausted fallback.
+  it('cacheOnly on a cold cache: no TBA fetch, empty scores, stale, nothing cached', async () => {
+    const res = await getEventScores(EVENT, defaultScoring(), WINDOW, {
+      now, repo, cacheOnly: true, tba: { fetchImpl: tba.fetchImpl, apiKey: 'k', now: () => now },
+    });
+    expect(tba.calls).toHaveLength(0);
+    expect(res.scores.teams.size).toBe(0);
+    expect(res.stale).toBe(true);
+    expect(res.fetchedAt).toBeNull();
+    expect(await repo.getEventScoresRow(EVENT, configHash(defaultScoring()))).toBeNull();
+  });
+
+  it('cacheOnly past the window: serves the cached scores without fetching, marked stale', async () => {
+    const good = await run();
+    later(10 * WINDOW);
+    tba.calls.length = 0;
+    h.scoreCalls = 0;
+    const res = await getEventScores(EVENT, defaultScoring(), WINDOW, {
+      now, repo, cacheOnly: true, tba: { fetchImpl: tba.fetchImpl, apiKey: 'k', now: () => now },
+    });
+    expect(tba.calls).toHaveLength(0);
+    expect(h.scoreCalls).toBe(0);
+    expect(res.scores).toEqual(good.scores);
+    expect(res.stale).toBe(true);
+    expect(res.fetchedAt).toBe('2026-10-24T12:00:00.000Z');
+  });
+
   it('when TBA goes down after a good fetch: serves the cached scores, marked stale', async () => {
     const good = await run();
     later(2 * WINDOW);

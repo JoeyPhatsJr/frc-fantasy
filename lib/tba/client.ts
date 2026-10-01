@@ -21,6 +21,16 @@ export type TbaDeps = {
   apiKey: string | undefined;
 };
 
+export type TbaOptions = {
+  windowMs: number;
+  force?: boolean;
+  /**
+   * Read tba_cache only: never fetch and never write, whatever the row's age. The result is always
+   * stale; a never-cached path has no data. For pages whose fetch budget is spent (final review I1).
+   */
+  cacheOnly?: boolean;
+};
+
 /**
  * Reads one TBA endpoint through the tba_cache table (spec §7.3).
  * Never throws for TBA problems: it returns the last good data with stale = true.
@@ -28,7 +38,7 @@ export type TbaDeps = {
  */
 export async function getTba<T>(
   path: string,
-  opts: { windowMs: number; force?: boolean },
+  opts: TbaOptions,
   deps: Partial<TbaDeps> = {},
 ): Promise<TbaResult<T>> {
   if (!path.startsWith('/')) throw new Error(`TBA path must start with "/": ${path}`);
@@ -39,6 +49,7 @@ export async function getTba<T>(
   const apiKey = 'apiKey' in deps ? deps.apiKey : process.env.TBA_API_KEY;
 
   const row = await store.getCache(path);
+  if (opts.cacheOnly) return { data: (row?.body ?? null) as T | null, fetchedAt: row?.fetchedAt ?? null, stale: true };
   if (row) {
     const age = now.getTime() - Date.parse(row.fetchedAt);
     const fresh = opts.force ? age < FORCE_MIN_AGE_MS : age < opts.windowMs;

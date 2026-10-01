@@ -11,6 +11,7 @@ vi.mock('@/lib/auth/session', async () => (await import('../helpers/auth')).fake
 vi.mock('@/lib/tba/client', () => ({ getTba: (...args: unknown[]) => h.getTba(...args) }));
 
 import * as eventsRoute from '@/app/api/l/[slug]/admin/events/[eventKey]/route';
+import * as followsRoute from '@/app/api/l/[slug]/admin/follows/route';
 import * as inviteRoute from '@/app/api/l/[slug]/admin/invite/route';
 import * as leagueRoute from '@/app/api/l/[slug]/admin/league/route';
 import * as playerRoute from '@/app/api/l/[slug]/admin/players/[id]/route';
@@ -20,10 +21,12 @@ import * as adjustmentsRoute from '@/app/api/l/[slug]/admin/rounds/[id]/adjustme
 import * as pickRoute from '@/app/api/l/[slug]/admin/rounds/[id]/picks/[pickNumber]/route';
 import * as picksRoute from '@/app/api/l/[slug]/admin/rounds/[id]/picks/route';
 import * as refreshRoute from '@/app/api/l/[slug]/admin/rounds/[id]/refresh/route';
+import * as resultRoute from '@/app/api/l/[slug]/admin/rounds/[id]/results/[teamKey]/route';
 import * as roundRoute from '@/app/api/l/[slug]/admin/rounds/[id]/route';
 import * as teamRoute from '@/app/api/l/[slug]/admin/rounds/[id]/teams/[teamKey]/route';
 import * as teamsRoute from '@/app/api/l/[slug]/admin/rounds/[id]/teams/route';
 import * as roundsRoute from '@/app/api/l/[slug]/admin/rounds/route';
+import * as seasonsRoute from '@/app/api/l/[slug]/admin/seasons/route';
 import * as stateRoute from '@/app/api/l/[slug]/admin/state/route';
 import * as verifyRoute from '@/app/api/l/[slug]/admin/verify/route';
 import type { Repo } from '@/lib/db/repo';
@@ -52,6 +55,7 @@ type Case = {
 
 const MODULES: Record<string, RouteModule> = {
   'events/[eventKey]': eventsRoute,
+  follows: followsRoute,
   invite: inviteRoute,
   league: leagueRoute,
   'players/[id]': playerRoute,
@@ -63,8 +67,10 @@ const MODULES: Record<string, RouteModule> = {
   'rounds/[id]/picks': picksRoute,
   'rounds/[id]/picks/[pickNumber]': pickRoute,
   'rounds/[id]/refresh': refreshRoute,
+  'rounds/[id]/results/[teamKey]': resultRoute,
   'rounds/[id]/teams': teamsRoute,
   'rounds/[id]/teams/[teamKey]': teamRoute,
+  seasons: seasonsRoute,
   state: stateRoute,
   verify: verifyRoute,
 };
@@ -74,6 +80,7 @@ const roundOf = (s: Seed) => ({ slug: s.league.slug, id: s.round.id });
 
 const CASES: Case[] = [
   { route: 'events/[eventKey]', method: 'GET', params: (s) => ({ ...slugOf(s), eventKey: '2026parr' }) },
+  { route: 'follows', method: 'PUT', params: slugOf, body: () => ({ teams: [5181] }) },
   { route: 'invite', method: 'POST', params: slugOf },
   { route: 'league', method: 'PATCH', params: slugOf, body: () => ({ name: 'Hacked' }) },
   { route: 'league', method: 'DELETE', params: slugOf, body: () => ({ confirmName: 'Habich Fam' }) },
@@ -101,8 +108,14 @@ const CASES: Case[] = [
   { route: 'rounds/[id]/picks/[pickNumber]', method: 'PATCH', params: (s) => ({ ...roundOf(s), pickNumber: '0' }), body: () => ({ teamKey: 'frc254' }) },
   { route: 'rounds/[id]/picks/[pickNumber]', method: 'DELETE', params: (s) => ({ ...roundOf(s), pickNumber: '0' }) },
   { route: 'rounds/[id]/refresh', method: 'POST', params: roundOf },
+  // The seeded round is a TBA round, so a commissioner gets 409 here. That still isn't 401/403,
+  // so a handler that lost its role check would fail this matrix.
+  { route: 'rounds/[id]/results/[teamKey]', method: 'PUT', params: (s) => ({ ...roundOf(s), teamKey: 'frc341' }), body: () => ({ qualWins: 1 }) },
+  { route: 'rounds/[id]/results/[teamKey]', method: 'DELETE', params: (s) => ({ ...roundOf(s), teamKey: 'frc341' }) },
   { route: 'rounds/[id]/teams', method: 'POST', params: roundOf, body: () => ({ teamNumber: '254' }) },
   { route: 'rounds/[id]/teams/[teamKey]', method: 'DELETE', params: (s) => ({ ...roundOf(s), teamKey: 'frc9999' }) },
+  // The seeded league is an event league, so a commissioner gets 409 here; still not 401/403.
+  { route: 'seasons', method: 'POST', params: slugOf },
   { route: 'state', method: 'GET', params: slugOf },
   { route: 'verify', method: 'GET', params: slugOf },
 ];
@@ -118,7 +131,7 @@ function adminRouteFolders(): string[] {
     .sort();
 }
 
-const MUTATING = /^(create|update|delete|insert|rename|reset|add|remove|upsert)/;
+const MUTATING = /^(create|update|delete|insert|rename|reset|add|remove|upsert|set)/;
 
 let repo: Repo;
 let writes: string[];

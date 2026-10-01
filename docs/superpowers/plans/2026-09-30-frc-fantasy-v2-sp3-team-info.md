@@ -4329,7 +4329,7 @@ environment variables; Vercel sends it as `Authorization: Bearer …` automatica
   If it runs out of time it says so in the log, and the next day's run continues with the teams it missed.
 
 To run it by hand (for example right after an event): 
-`curl -H "Authorization: Bearer $CRON_SECRET" https://frc-fantasy-6yo3.vercel.app/api/cron/daily`
+`curl -H "Authorization: Bearer $CRON_SECRET" https://frc-fantasy-5181.vercel.app/api/cron/daily`
 Logs: Vercel dashboard → the project → Logs, filter by `/api/cron/daily`. The daily call also keeps the Supabase
 free-tier project from pausing.
 ```
@@ -4411,9 +4411,9 @@ Joey merges the PR on GitHub (or: `gh pr merge --squash --delete-branch` if he a
 1. Vercel → the project → **Settings → Environment Variables**: `CRON_SECRET` exists for Production (added during SP1's one-time setup, spec §11). If not, add a random 32+ character value and **Redeploy**.
 2. Vercel → **Settings → Cron Jobs** lists `/api/cron/daily` with schedule `0 10 * * *`.
 3. Run by hand:
-   `curl -s -H "Authorization: Bearer $CRON_SECRET" https://frc-fantasy-6yo3.vercel.app/api/cron/daily`
+   `curl -s -H "Authorization: Bearer $CRON_SECRET" https://frc-fantasy-5181.vercel.app/api/cron/daily`
    Expected: `{"ok":true,"results":[{"name":"team-stats","ok":true,"skipped":false,"ms":…}]}`.
-   `curl -s -o /dev/null -w "%{http_code}\n" https://frc-fantasy-6yo3.vercel.app/api/cron/daily`
+   `curl -s -o /dev/null -w "%{http_code}\n" https://frc-fantasy-5181.vercel.app/api/cron/daily`
    Expected: `401`.
 4. Open a league page and a round page on the live site twice. Expected: same scores as before the deploy; Supabase **Table Editor → event_scores** now has rows for those events.
 5. Open a live-mode round's draft room on a phone: Pool tab shows projections; tap a team → team sheet.

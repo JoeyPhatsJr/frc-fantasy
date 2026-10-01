@@ -165,4 +165,141 @@ describe('loadMePage', () => {
     expect(log).toHaveBeenCalled();
     log.mockRestore();
   });
+
+  it('a live manual round (no TBA event) asks TBA for nothing and shows no schedule', async () => {
+    await repo.createProfile({ id: 'u1', displayName: 'Joey', avatarUrl: null });
+    const lg = await repo.createLeague({ slug: 'fam-abc234', name: 'Fam', defaultScoring: defaultScoring() });
+    const me = await repo.createMember({ leagueId: lg.id, userId: 'u1', name: 'Joey', role: 'commissioner' });
+    const r = await repo.createRound({
+      leagueId: lg.id, eventKey: null, kind: 'manual', eventName: 'Garage Games', startDate: '2026-10-01',
+      endDate: '2026-10-01', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    await repo.updateRound(r.id, { draftOrder: [me.id], rosterSize: 1 });
+    await repo.insertPick({ roundId: r.id, pickNumber: 0, playerId: me.id, teamKey: 'frc1' });
+
+    const page = await loadMePage('u1', new Date('2026-10-01T16:00:00Z'));
+    expect(page.teams).toEqual([
+      { teamKey: 'frc1', leagueName: 'Fam', eventName: 'Garage Games', label: 'Schedule not posted', status: 'live' },
+    ]);
+    expect(h.getTba).not.toHaveBeenCalled();
+  });
+
+  it("season picks: the team's event today becomes a row; a team with nothing in the next 7 days has none (SP2)", async () => {
+    await repo.createProfile({ id: 'u1', displayName: 'Joey', avatarUrl: null });
+    const league = await repo.createLeague({ slug: 'season-abc234', name: 'Season', defaultScoring: defaultScoring(), format: 'season' });
+    const me = await repo.createMember({ leagueId: league.id, userId: 'u1', name: 'Joey', role: 'commissioner' });
+    const round = await repo.createRound({
+      leagueId: league.id, eventKey: null, kind: 'season', seasonYear: 2027, eventName: '2027 Season',
+      startDate: '2027-02-26', endDate: '2027-04-18', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    await repo.updateRound(round.id, { draftOrder: [me.id], rosterSize: 2 });
+    await repo.insertPick({ roundId: round.id, pickNumber: 0, playerId: me.id, teamKey: 'frc341' });
+    await repo.insertPick({ roundId: round.id, pickNumber: 1, playerId: me.id, teamKey: 'frc5181' });
+    const byPath: Record<string, unknown> = {
+      '/team/frc341/events/2027/simple': [
+        { key: '2027paca', name: 'Greater Pittsburgh', event_type: 0, start_date: '2027-03-05', end_date: '2027-03-07' },
+      ],
+      '/team/frc5181/events/2027/simple': [
+        { key: '2027mrcmp', name: 'FMA Championship', event_type: 2, start_date: '2027-04-08', end_date: '2027-04-10' },
+      ],
+      '/event/2027paca/matches/simple': [match({ num: 14, red: ['frc341'], blue: ['frc1'] })],
+    };
+    h.getTba.mockImplementation(async (path: string) => ({ data: byPath[path] ?? null, fetchedAt: null, stale: false }));
+
+    const page = await loadMePage('u1', new Date('2027-03-06T15:00:00Z'));
+    expect(page.teams).toEqual([
+      { teamKey: 'frc341', leagueName: 'Season', eventName: '2027 Season', label: 'Q14 · up next', status: 'live' },
+    ]);
+  });
+
+  // Final review I2: N picks in one live event must not mean N schedule reads.
+  it('a live TBA round with 3 of my picks reads that event schedule once for the Me rows', async () => {
+    await repo.createProfile({ id: 'u1', displayName: 'Joey', avatarUrl: null });
+    const lg = await repo.createLeague({ slug: 'fam-abc234', name: 'Fam', defaultScoring: defaultScoring() });
+    const me = await repo.createMember({ leagueId: lg.id, userId: 'u1', name: 'Joey', role: 'commissioner' });
+    const r = await repo.createRound({
+      leagueId: lg.id, eventKey: '2026aaa', eventName: 'Event 2026aaa', startDate: '2026-10-01', endDate: '2026-10-01',
+      timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    await repo.updateRound(r.id, { draftOrder: [me.id], rosterSize: 3 });
+    for (const [i, teamKey] of ['frc1', 'frc2', 'frc3'].entries()) {
+      await repo.insertPick({ roundId: r.id, pickNumber: i, playerId: me.id, teamKey });
+    }
+    const schedule = [match({ num: 1, red: ['frc1', 'frc2', 'frc4'], blue: ['frc5', 'frc6', 'frc7'] }), match({ num: 2, red: ['frc3', 'frc8', 'frc9'], blue: ['frc10', 'frc11', 'frc12'] })];
+    h.getTba.mockImplementation(async (path: string) => ({
+      data: path === '/event/2026aaa/matches/simple' ? schedule : null, fetchedAt: null, stale: false,
+    }));
+
+    const page = await loadMePage('u1', new Date('2026-10-01T16:00:00Z'));
+    expect(page.teams.map((t) => [t.teamKey, t.label])).toEqual([
+      ['frc1', 'Q1 · up next'],
+      ['frc2', 'Q1 · up next'],
+      ['frc3', 'Q2 · in 1 match'],
+    ]);
+    const scheduleReads = h.getTba.mock.calls.filter((c) => c[0] === '/event/2026aaa/matches/simple').length;
+    expect(scheduleReads).toBe(2); // one for the league page's scoring, one shared by all three Me rows
+  });
+
+  it("season picks: each team's event lookup runs in parallel, and a shared event's schedule is read once", async () => {
+    await repo.createProfile({ id: 'u1', displayName: 'Joey', avatarUrl: null });
+    const league = await repo.createLeague({ slug: 'season-abc234', name: 'Season', defaultScoring: defaultScoring(), format: 'season' });
+    const me = await repo.createMember({ leagueId: league.id, userId: 'u1', name: 'Joey', role: 'commissioner' });
+    const round = await repo.createRound({
+      leagueId: league.id, eventKey: null, kind: 'season', seasonYear: 2027, eventName: '2027 Season',
+      startDate: '2027-02-26', endDate: '2027-04-18', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    await repo.updateRound(round.id, { draftOrder: [me.id], rosterSize: 3 });
+    const picks = ['frc1', 'frc2', 'frc3'];
+    for (const [i, teamKey] of picks.entries()) {
+      await repo.insertPick({ roundId: round.id, pickNumber: i, playerId: me.id, teamKey });
+    }
+    const paca = [{ key: '2027paca', name: 'Greater Pittsburgh', event_type: 0, start_date: '2027-03-05', end_date: '2027-03-07' }];
+    // The league page reads each team's event list first; the Me loop's lookup is the second read per path.
+    const seen = new Map<string, number>();
+    let inFlight = 0;
+    let maxInFlight = 0;
+    h.getTba.mockImplementation(async (path: string) => {
+      if (/^\/team\/frc\d+\/events\/2027\/simple$/.test(path)) {
+        const n = (seen.get(path) ?? 0) + 1;
+        seen.set(path, n);
+        if (n > 1) {
+          inFlight += 1;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          await new Promise((r) => setTimeout(r, 5));
+          inFlight -= 1;
+        }
+        return { data: paca, fetchedAt: null, stale: false };
+      }
+      return { data: path === '/event/2027paca/matches/simple' ? [match({ num: 3, red: picks, blue: ['frc4', 'frc5', 'frc6'] })] : null, fetchedAt: null, stale: false };
+    });
+
+    const page = await loadMePage('u1', new Date('2027-03-06T15:00:00Z'));
+    expect(page.teams.map((t) => [t.teamKey, t.label])).toEqual(picks.map((k) => [k, 'Q3 · up next']));
+    expect(maxInFlight).toBe(3);
+    // The league page's season scoring reads 2027paca's schedule once; the Me rows share one more read.
+    expect(h.getTba.mock.calls.filter((c) => c[0] === '/event/2027paca/matches/simple')).toHaveLength(2);
+  });
+
+  it('season pick whose next event is within 7 days shows "Next: event · date"', async () => {
+    await repo.createProfile({ id: 'u1', displayName: 'Joey', avatarUrl: null });
+    const league = await repo.createLeague({ slug: 'season-abc234', name: 'Season', defaultScoring: defaultScoring(), format: 'season' });
+    const me = await repo.createMember({ leagueId: league.id, userId: 'u1', name: 'Joey', role: 'commissioner' });
+    const round = await repo.createRound({
+      leagueId: league.id, eventKey: null, kind: 'season', seasonYear: 2027, eventName: '2027 Season',
+      startDate: '2027-02-26', endDate: '2027-04-18', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    await repo.updateRound(round.id, { draftOrder: [me.id], rosterSize: 1 });
+    await repo.insertPick({ roundId: round.id, pickNumber: 0, playerId: me.id, teamKey: 'frc5181' });
+    h.getTba.mockImplementation(async (path: string) => ({
+      data: path === '/team/frc5181/events/2027/simple'
+        ? [{ key: '2027mrcmp', name: 'FMA Championship', event_type: 2, start_date: '2027-04-08', end_date: '2027-04-10' }]
+        : null,
+      fetchedAt: null, stale: false,
+    }));
+
+    const page = await loadMePage('u1', new Date('2027-04-03T15:00:00Z'));
+    expect(page.teams).toEqual([
+      { teamKey: 'frc5181', leagueName: 'Season', eventName: 'FMA Championship', label: 'Next: FMA Championship · Apr 8, 2027', status: 'upcoming' },
+    ]);
+  });
 });
