@@ -380,6 +380,7 @@ create table event_scores (
 - `EventScores.teams` is a `Map` (`lib/scoring/types.ts`), so `lib/scores/eventScores.ts` has explicit `serializeEventScores` / `deserializeEventScores` functions (round-trip tested).
 
 **Rules:**
+- **One derived row lives in `tba_cache`:** `derived:season-teams/{year}` (SP2) holds a field subset (`key`, `team_number`, `nickname`, `state_prov`, `country`) of the year's TBA team pages, refreshed every 24 h, so season pools read one row instead of ~22 pages. Paths starting with `derived:` are never fetched from TBA (`getTba` requires a leading `/`); any future job that refreshes every `tba_cache` row must skip them.
 - The cache is **derived and rebuildable**: `scripts/rebuild-event-scores.ts` truncates it and nothing breaks. It is never edited by hand or by the app except through `getEventScores`.
 - Round pages (v1 `tba` rounds), season rounds, the Me tab, and `team_stats` (§6) all read scores through `getEventScores`.
 - The replay test asserts that `2025parr` round scores through `getEventScores` equal v1's direct `scoreEvent` output.
