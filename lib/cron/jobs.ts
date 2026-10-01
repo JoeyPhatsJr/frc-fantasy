@@ -18,7 +18,7 @@ export const DAILY_JOBS: DailyJob[] = [
       const season = Number(localDate(now, 'America/New_York').slice(0, 4));
       const res = await refreshRecentTeams(season, { repo: getRepo(), now }, deadline);
       console.log(
-        `team-stats ${season}: ${res.teams} teams from ${res.events} recent events, ${res.remaining} left` +
+        `team-stats ${season}: ${res.eventsRefreshed}/${res.events} recent events loaded, ${res.teams} teams, ${res.remaining} left` +
           (res.complete ? '' : ' (time budget reached; the next run continues)'),
       );
     },

@@ -6,7 +6,7 @@ vi.mock('@/lib/db', () => ({
   },
 }));
 
-import { buildSeasonStats, NEVER_REFETCH_MS, statsWindowMs } from '@/lib/stats/build';
+import { buildSeasonStats, CRON_FINAL_WINDOW_MS, NEVER_REFETCH_MS, statsWindowMs } from '@/lib/stats/build';
 import type { EventData, TbaEvent } from '@/lib/tba/types';
 import { alliance, emptyEvent, match } from '../helpers/builders';
 import { loadFixture, loadFixtureEvent } from '../helpers/fixture';
@@ -50,6 +50,13 @@ describe('statsWindowMs', () => {
     expect(statsWindowMs({ key: '2025parr', end_date: '2025-10-18' }, NOW)).toBe(NEVER_REFETCH_MS);
     expect(statsWindowMs({ key: '2026paca', end_date: '2026-03-08' }, NOW)).toBe(24 * 60 * 60_000);
     expect(statsWindowMs({ key: '2026parr', end_date: '2026-09-28' }, NOW)).toBe(10 * 60_000);
+  });
+
+  it('lets the cron treat finished current-season events as final (a long window, DB reads only)', () => {
+    expect(CRON_FINAL_WINDOW_MS).toBeGreaterThanOrEqual(30 * 24 * 60 * 60_000);
+    expect(statsWindowMs({ key: '2026paca', end_date: '2026-03-08' }, NOW, CRON_FINAL_WINDOW_MS)).toBe(CRON_FINAL_WINDOW_MS);
+    expect(statsWindowMs({ key: '2026parr', end_date: '2026-09-28' }, NOW, CRON_FINAL_WINDOW_MS)).toBe(10 * 60_000);
+    expect(statsWindowMs({ key: '2025parr', end_date: '2025-10-18' }, NOW, CRON_FINAL_WINDOW_MS)).toBe(NEVER_REFETCH_MS);
   });
 });
 

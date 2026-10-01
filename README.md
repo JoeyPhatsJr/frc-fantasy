@@ -126,8 +126,9 @@ that fails without it.
 Vercel calls `GET /api/cron/daily` once a day (06:00 Eastern, `vercel.json`). It needs `CRON_SECRET` set in Vercel's
 environment variables; Vercel sends it as `Authorization: Bearer ...` automatically. Each run gets 50 seconds:
 
-- **team-stats** — re-scores this season's events from the last 8 days and refreshes those teams' `team_stats` rows.
-  If it runs out of time it says so in the log, and the next day's run continues with the teams it missed.
+- **team-stats** — re-scores this season's events from the last 8 days (4 at a time, stalest first) and refreshes
+  those teams' `team_stats` rows. Older finished events are read from `tba_cache`, not refetched. If it runs out of
+  time it says so in the log, and the next day's run continues with the events and teams it missed.
 
 To run it by hand (for example right after an event):
 `curl -H "Authorization: Bearer $CRON_SECRET" https://frc-fantasy-6yo3.vercel.app/api/cron/daily`

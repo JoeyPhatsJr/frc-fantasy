@@ -19,11 +19,21 @@ function statsFor(cur: TeamStatsRow | null, prev: TeamStatsRow | null): PoolStat
   };
 }
 
-/** Draft-pool stats from team_stats for season Y and Y−1 (spec §6.1, §6.3). Never computes on the fly. */
+/**
+ * Draft-pool stats from team_stats for season Y and Y−1 (spec §6.1, §6.3). Never computes on the fly.
+ * Fail-soft: the stats are decorative, so if team_stats can't be read every team shows "New" and
+ * the pool and timeout auto-picks keep working (auto-pick falls back to the lowest team number).
+ */
 export const teamStatsPoolLookup: PoolStatsLookup = async (teamKeys, season) => {
   const out = new Map<string, PoolStats>();
   if (teamKeys.length === 0) return out;
-  const rows = await getRepo().getTeamStats(teamKeys, [season, season - 1]);
+  let rows: TeamStatsRow[];
+  try {
+    rows = await getRepo().getTeamStats(teamKeys, [season, season - 1]);
+  } catch (err) {
+    console.error('Could not read team_stats; the pool shows no stats', err);
+    return out;
+  }
   const key = (teamKey: string, s: number) => `${teamKey}|${s}`;
   const byKey = new Map(rows.map((r) => [key(r.teamKey, r.season), r]));
   for (const teamKey of teamKeys) {

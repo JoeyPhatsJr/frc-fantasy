@@ -43,6 +43,16 @@ describe('teamStatsPoolLookup', () => {
     expect(stats.get('frc341')).toEqual({ proj: 38, record: [12, 4, 0], bestFinish: 'winner', opr: 55.5, rank: 1 });
   });
 
+  // Final review I4: stats are decorative; a team_stats failure must not stall the pool or auto-pick.
+  it('logs and returns no stats (every team "New") when the team_stats query throws', async () => {
+    h.repo = { ...repo, getTeamStats: async () => { throw new Error('relation "team_stats" does not exist'); } };
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const stats = await teamStatsPoolLookup(['frc341', 'frc5181'], 2026);
+    expect(stats.size).toBe(0);
+    expect(errorSpy).toHaveBeenCalledOnce();
+    errorSpy.mockRestore();
+  });
+
   // Review Focus 5.
   it('falls back to last season when the team has no row this season', async () => {
     await repo.upsertTeamStats([row('frc5181', 2025, { totalPoints: 90, eventsPlayed: 3, bestFinish: 'picked', latestOpr: 20, latestRank: 12 })]);

@@ -102,6 +102,96 @@ describe('refreshRecentTeams', () => {
     const repo = createMemoryRepo();
     const fetchImpl = (async () => { throw new Error('offline'); }) as typeof fetch;
     const res = await refreshRecentTeams(2026, { repo, now: new Date('2026-03-20T15:00:00.000Z'), tba: { fetchImpl, apiKey: 'k' } }, Date.now() + 50_000);
-    expect(res).toEqual({ events: 0, teams: 0, remaining: 0, complete: true });
+    expect(res).toEqual({ events: 0, eventsRefreshed: 0, teams: 0, remaining: 0, complete: true });
+  });
+});
+
+// Final review I3: the recent-event phase must not redo the same events every run.
+describe('refreshRecentTeams event phase', () => {
+  // "Today" is 2026-03-20 in Eastern time; ten events all running now, each with its own six teams.
+  const RECENT = Array.from({ length: 10 }, (_, i) => ev(`2026e${i}`, '2026-03-19', '2026-03-21'));
+  const teamsAt = (i: number) => [1, 2, 3, 4, 5, 6].map((n) => `frc${i * 10 + n + 100}`);
+  const RECENT_DATA: Record<string, EventData> = Object.fromEntries(
+    RECENT.map((e, i) => [e.key, played(teamsAt(i).slice(0, 3), teamsAt(i).slice(3))]),
+  );
+
+  function setupMany(costPerEvent: number, delayMs = 0) {
+    let t = 0;
+    let active = 0;
+    let maxActive = 0;
+    const repo = createMemoryRepo();
+    const calls: string[] = [];
+    const fetchImpl = (async (url: string | URL | Request) => {
+      const u = String(url).replace('https://www.thebluealliance.com/api/v3', '');
+      calls.push(u);
+      if (u === '/events/2026/simple') return Response.json(RECENT);
+      const team = /^\/team\/frc(\d+)\/events\/2026\/simple$/.exec(u);
+      if (team) return Response.json([RECENT[Math.floor((Number(team[1]) - 100) / 10)]]);
+      const m = /^\/event\/([^/]+)\/(.+)$/.exec(u);
+      if (m && m[2] === 'matches/simple') {
+        t += costPerEvent; // loading one event "takes" this much of the budget
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((r) => setTimeout(r, delayMs));
+        active -= 1;
+      }
+      return Response.json(m ? (RECENT_DATA[m[1]]?.[SUFFIX[m[2]]] ?? null) : null);
+    }) as typeof fetch;
+    const deps = (now: string) => ({ repo, now: new Date(now), clock: () => t, tba: { fetchImpl, apiKey: 'k', now: () => new Date(now) } });
+    const loadedEvents = (since: number) =>
+      [...new Set(calls.slice(since).map((c) => /^\/event\/([^/]+)\/matches/.exec(c)?.[1]).filter(Boolean))].sort();
+    return { deps, calls, loadedEvents, maxActive: () => maxActive, resetClock: () => (t = 0) };
+  }
+
+  it('loads several recent events at once, but never more than four', async () => {
+    const { deps, maxActive } = setupMany(0, 5);
+    const res = await refreshRecentTeams(2026, deps('2026-03-20T15:00:00.000Z'), 1_000_000);
+    expect(res).toMatchObject({ events: 10, eventsRefreshed: 10, teams: 60, complete: true });
+    expect(maxActive()).toBeGreaterThan(1);
+    expect(maxActive()).toBeLessThanOrEqual(4);
+  });
+
+  it('hits the deadline twice in a row and still makes progress: each run starts with the stalest events', async () => {
+    const { deps, calls, loadedEvents, resetClock } = setupMany(20_000);
+
+    const first = await refreshRecentTeams(2026, deps('2026-03-20T15:00:00.000Z'), 50_000);
+    expect(first).toMatchObject({ events: 10, teams: 0, complete: false });
+    const firstLoaded = loadedEvents(0);
+    expect(first.eventsRefreshed).toBe(firstLoaded.length);
+    expect(firstLoaded.length).toBeGreaterThan(0);
+    expect(firstLoaded.length).toBeLessThan(10);
+
+    resetClock();
+    const mark = calls.length;
+    const second = await refreshRecentTeams(2026, deps('2026-03-21T15:00:00.000Z'), 50_000);
+    expect(second.complete).toBe(false);
+    const secondLoaded = loadedEvents(mark);
+    expect(secondLoaded.length).toBeGreaterThan(0);
+    for (const key of secondLoaded) expect(firstLoaded).not.toContain(key); // new events, not the same ones again
+  });
+});
+
+// Final review I3: per-team loads must not refetch finished current-season events every day.
+describe('refreshRecentTeams per-team loads', () => {
+  it('reads current-season events that ended more than 8 days ago from tba_cache, even a day later', async () => {
+    const repo = createMemoryRepo();
+    const calls: string[] = [];
+    const fetchImpl = (async (url: string | URL | Request) => {
+      const u = String(url).replace('https://www.thebluealliance.com/api/v3', '');
+      calls.push(u);
+      if (u === '/events/2026/simple') return Response.json(EVENTS);
+      if (/^\/team\/frc\d+\/events\/2026\/simple$/.test(u)) return Response.json([EVENTS[0], EVENTS[1]]);
+      const m = /^\/event\/([^/]+)\/(.+)$/.exec(u);
+      return Response.json(m ? (DATA[m[1]]?.[SUFFIX[m[2]]] ?? null) : null);
+    }) as typeof fetch;
+    const deps = (now: string) => ({ repo, now: new Date(now), tba: { fetchImpl, apiKey: 'k', now: () => new Date(now) } });
+
+    await refreshRecentTeams(2026, deps('2026-03-20T15:00:00.000Z'), Number.POSITIVE_INFINITY);
+    expect(calls.some((c) => c.startsWith('/event/2026old/'))).toBe(true);
+
+    const mark = calls.length;
+    await refreshRecentTeams(2026, deps('2026-03-22T15:00:00.000Z'), Number.POSITIVE_INFINITY);
+    expect(calls.slice(mark).filter((c) => c.startsWith('/event/2026old/'))).toEqual([]);
+    expect(calls.slice(mark).some((c) => c.startsWith('/event/2026aaa/'))).toBe(true); // recent ones still refresh
   });
 });
