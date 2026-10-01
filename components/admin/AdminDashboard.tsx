@@ -170,7 +170,7 @@ function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminAp
                   title={round.eventName}
                   lines={[
                     formatDateRange(round.startDate, round.endDate),
-                    round.eventKey,
+                    round.eventKey ?? (round.kind === 'manual' ? 'Manual event' : `${round.seasonYear} season`),
                     round.totalPicks === 0 ? 'Draft not set up' : `${round.pickCount} of ${round.totalPicks} picks`,
                   ]}
                   trailing={<StatusBadge status={round.status} />}

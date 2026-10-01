@@ -3,9 +3,11 @@ import { getRepo } from '@/lib/db';
 import { withPublicNames } from '@/lib/leagues/names';
 import type { AdjustmentRow, PickRow, PlayerRow, RoundRow } from '@/lib/db/types';
 import { cacheWindowFor, roundStatus, type RoundStatus } from '@/lib/rounds/status';
+import { scoreEvent } from '@/lib/scoring/engine';
 import { roundPlayers, scoreRound } from '@/lib/scoring/round';
 import type { PlayerRoundScore, RpMethod } from '@/lib/scoring/types';
-import { getEventScores } from '@/lib/scores/eventScores';
+import { getEventScores, type EventScoresResult } from '@/lib/scores/eventScores';
+import { eventInfo, NO_EVENT_DATA } from '@/lib/tba/clean';
 
 // Kept so existing imports (tests/views/views.test.ts) keep working.
 export { cleanEventData } from '@/lib/tba/clean';
@@ -43,7 +45,16 @@ export async function buildRoundView(
   now: Date,
 ): Promise<RoundView> {
   // Scores come through the derived event_scores cache (spec §5.6); failures degrade to empty + stale inside it.
-  const event = await getEventScores(round.eventKey, round.scoring, cacheWindowFor(round, now), { now });
+  // Manual and season rounds have no TBA event yet: they take the "no event data" path (Task 5 adds scoreSourceFor).
+  const event: EventScoresResult =
+    round.kind === 'tba' && round.eventKey
+      ? await getEventScores(round.eventKey, round.scoring, cacheWindowFor(round, now), { now })
+      : {
+          scores: scoreEvent(NO_EVENT_DATA, round.scoring),
+          info: eventInfo(NO_EVENT_DATA),
+          stale: false,
+          fetchedAt: null,
+        };
   const players = roundPlayers(allPlayers, round.draftOrder, adjustments);
   return {
     round,

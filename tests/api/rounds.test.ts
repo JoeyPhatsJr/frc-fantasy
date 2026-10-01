@@ -175,6 +175,21 @@ describe('GET /admin/rounds/{id}', () => {
     expect(body.maxRosterSize).toBe(3); // 7 teams / 2 players
   });
 
+  it('a manual round reports its kind and builds its pool from added teams only, without asking TBA', async () => {
+    const round = await repo.createRound({
+      leagueId: league.id, eventKey: null, kind: 'manual', eventName: 'Garage Games',
+      startDate: '2026-11-07', endDate: '2026-11-07', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    await repo.addExtraTeam(round.id, 'frc9999');
+    const res = await getRound(request('GET', '/x', {}), at(round));
+    expect(res.status).toBe(200);
+    const body = await readJson(res);
+    expect(body.round).toMatchObject({ kind: 'manual', eventKey: null, seasonYear: null, poolFilter: null });
+    expect(body.pool.map((t: { teamKey: string }) => t.teamKey)).toEqual(['frc9999']);
+    expect(body.poolStale).toBe(false);
+    expect(h.getTba).not.toHaveBeenCalled();
+  });
+
   it("answers 404 when league A's commissioner asks for league B's round", async () => {
     const other = await seedLeague(repo, { slug: 'other-league-bbbbbb', signIn: false });
     const theirs = await repo.createRound({

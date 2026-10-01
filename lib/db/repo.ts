@@ -4,17 +4,20 @@ import type {
   CacheRow,
   DraftMode,
   EventScoresRow,
+  LeagueFormat,
   LeagueRole,
   LeagueRow,
   PickRow,
   PickSeconds,
   PlayerRow,
   ProfileRow,
+  RoundKind,
   RoundRow,
   TeamStatsRow,
   Visibility,
 } from '@/lib/db/types';
 import type { ScoringConfig } from '@/lib/scoring/config';
+import type { PoolFilter } from '@/lib/season/poolFilter';
 
 /** Thrown when an insert or update breaks a unique constraint. `constraint` is the Postgres name. */
 export class UniqueViolation extends Error {
@@ -40,6 +43,7 @@ export type NewLeague = {
   visibility?: Visibility;
   /** v1 only. v2 leagues leave it out. */
   adminTokenHash?: string | null;
+  format?: LeagueFormat; // default 'event'
 };
 export type LeaguePatch = {
   name?: string;
@@ -47,15 +51,23 @@ export type LeaguePatch = {
   defaultScoring?: ScoringConfig;
   adminTokenHash?: string | null;
   visibility?: Visibility;
+  followsSyncedAt?: string;
 };
 export type NewRound = {
   leagueId: string;
-  eventKey: string;
+  /** null for manual and season rounds. */
+  eventKey: string | null;
   eventName: string;
   startDate: string;
   endDate: string;
   timezone: string;
   scoring: ScoringConfig;
+  kind?: RoundKind; // default 'tba'
+  seasonYear?: number | null;
+  poolFilter?: PoolFilter | null;
+  autoAdded?: boolean;
+  rosterSize?: number; // default 4
+  draftOrder?: string[]; // default []
 };
 export type RoundPatch = {
   rosterSize?: number;
@@ -65,6 +77,9 @@ export type RoundPatch = {
   draftMode?: DraftMode;
   pickSeconds?: PickSeconds | null;
   pausedRemainingMs?: number | null;
+  startDate?: string;
+  endDate?: string;
+  poolFilter?: PoolFilter | null;
 };
 export type NewPick = { roundId: string; pickNumber: number; playerId: string; teamKey: string; auto?: boolean };
 export type NewAdjustment = {

@@ -61,6 +61,18 @@ describe('POST refresh (§5.5, §8.3)', () => {
     expect(await readJson(res)).toEqual({ fetchedAt: '2026-10-24T17:00:00.000Z', stale: true });
   });
 
+  it('answers 409 for a manual round (nothing to refresh)', async () => {
+    const { league } = await setup();
+    const manual = await repo.createRound({
+      leagueId: league.id, eventKey: null, kind: 'manual', eventName: 'Garage Games',
+      startDate: '2026-11-07', endDate: '2026-11-07', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    const res = await refresh(request('POST', '/x'), params({ slug: league.slug, id: manual.id }));
+    expect(res.status).toBe(409);
+    expect((await readJson(res)).error).toBe('Only rounds for a TBA event can be refreshed');
+    expect(h.getTba).not.toHaveBeenCalled();
+  });
+
   it('answers 401 signed out and 403 for a member who is not a commissioner, and does not call TBA', async () => {
     const { league, round } = await setup();
     const attempt = () => refresh(request('POST', '/x'), params({ slug: league.slug, id: round.id }));

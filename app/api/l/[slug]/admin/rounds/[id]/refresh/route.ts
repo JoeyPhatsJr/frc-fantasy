@@ -1,4 +1,4 @@
-import { handle, json, requireRound } from '@/lib/api/http';
+import { handle, HttpError, json, requireRound } from '@/lib/api/http';
 import { requireLeagueRole } from '@/lib/auth/roles';
 import { cacheWindowFor } from '@/lib/rounds/status';
 import { loadEventData } from '@/lib/tba/event';
@@ -13,6 +13,9 @@ export async function POST(_req: Request, ctx: Ctx): Promise<Response> {
     const { slug, id } = await ctx.params;
     const { league } = await requireLeagueRole(slug, 'commissioner');
     const round = await requireRound(league, id);
+    if (round.kind !== 'tba' || !round.eventKey) {
+      throw new HttpError(409, 'Only rounds for a TBA event can be refreshed');
+    }
     // getTba ignores force for rows under 15 s old, which is the rate limit (spec §8.3).
     const loaded = await loadEventData(round.eventKey, {
       windowMs: cacheWindowFor(round, new Date()),

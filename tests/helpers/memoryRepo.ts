@@ -77,6 +77,8 @@ export function createMemoryRepo(opts: { now?: () => Date } = {}): Repo {
         inviteCode: generateInviteCode(),
         visibility: input.visibility ?? 'link',
         createdBy: input.createdBy ?? null,
+        format: input.format ?? 'event',
+        followsSyncedAt: null,
         createdAt: stamp(),
       };
       leagues.push(row);
@@ -206,7 +208,11 @@ export function createMemoryRepo(opts: { now?: () => Date } = {}): Repo {
       return copy(rounds.find((r) => r.id === id) ?? null);
     },
     async createRound(input) {
-      if (rounds.some((r) => r.leagueId === input.leagueId && r.eventKey === input.eventKey)) {
+      // Postgres treats NULLs as distinct, so the unique rule only applies to TBA rounds.
+      if (
+        input.eventKey !== null &&
+        rounds.some((r) => r.leagueId === input.leagueId && r.eventKey === input.eventKey)
+      ) {
         throw new UniqueViolation('rounds_league_event_key');
       }
       const row: RoundRow = {
@@ -220,9 +226,13 @@ export function createMemoryRepo(opts: { now?: () => Date } = {}): Repo {
         draftPausedAt: null,
         pausedRemainingMs: null,
         pickDeadline: null,
+        kind: 'tba',
+        seasonYear: null,
+        poolFilter: null,
+        autoAdded: false,
         createdAt: stamp(),
-        ...copy(input),
-      };
+        ...defined(copy(input)),
+      } as RoundRow;
       rounds.push(row);
       return copy(row);
     },

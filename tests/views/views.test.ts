@@ -157,6 +157,20 @@ describe('loadRoundPage', () => {
     ]);
   });
 
+  it('a manual round (no TBA event) asks TBA for nothing and scores only adjustments', async () => {
+    const manual = await repo.createRound({
+      leagueId: league.id, eventKey: null, kind: 'manual', eventName: 'Garage Games',
+      startDate: '2025-11-07', endDate: '2025-11-07', timezone: 'America/New_York', scoring: defaultScoring(),
+      draftOrder: [mom.id], rosterSize: 1,
+    });
+    await repo.insertPick({ roundId: manual.id, pickNumber: 0, playerId: mom.id, teamKey: 'frc1' });
+    await repo.insertAdjustment({ roundId: manual.id, playerId: mom.id, teamKey: null, points: 3, reason: 'Spirit' });
+    const page = (await loadRoundPage(league.slug, manual.id, NOW))!;
+    expect(h.getTba).not.toHaveBeenCalled();
+    expect(page.view.scores.map((s) => [s.name, s.total])).toEqual([['Mom', 3]]);
+    expect(page.view).toMatchObject({ hasEventData: false, hasRankings: false, teamNames: {}, fetchedAt: null, stale: false });
+  });
+
   it('passes the stale flag through', async () => {
     tba({ '2025parr': eventInProgress() }, { stale: true });
     const page = (await loadRoundPage(league.slug, round.id, NOW))!;

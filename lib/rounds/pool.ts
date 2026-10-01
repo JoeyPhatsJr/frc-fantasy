@@ -10,10 +10,12 @@ export async function loadPool(
   round: RoundRow,
   now: Date,
 ): Promise<{ teams: PoolTeam[]; stale: boolean; tbaCount: number }> {
+  // Temporary guard: only TBA rounds have a team list to fetch (Task 5 replaces this function).
+  const eventKey = round.kind === 'tba' ? round.eventKey : null;
   const [tba, extras] = await Promise.all([
-    getTba<TeamSimple[]>(`/event/${round.eventKey}/teams/simple`, {
-      windowMs: cacheWindowFor(round, now),
-    }),
+    eventKey
+      ? getTba<TeamSimple[]>(`/event/${eventKey}/teams/simple`, { windowMs: cacheWindowFor(round, now) })
+      : Promise.resolve({ data: null, fetchedAt: null, stale: false }),
     getRepo().listExtraTeams(round.id),
   ]);
   const tbaTeams = Array.isArray(tba.data) ? tba.data : null;

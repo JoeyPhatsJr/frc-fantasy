@@ -72,16 +72,18 @@ export default async function RoundPage({ params }: Props) {
           <StatusBadge status={view.status} />
           <p className="text-[15px] font-medium text-fg-muted">{formatDateRange(round.startDate, round.endDate)}</p>
         </div>
-        <Button
-          href={tbaEventUrl(round.eventKey)}
-          variant="secondary"
-          size="sm"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          View on The Blue Alliance
-          <ExternalLink className="size-4 shrink-0" />
-        </Button>
+        {round.eventKey ? (
+          <Button
+            href={tbaEventUrl(round.eventKey)}
+            variant="secondary"
+            size="sm"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View on The Blue Alliance
+            <ExternalLink className="size-4 shrink-0" />
+          </Button>
+        ) : null}
         <Freshness fetchedAt={view.fetchedAt} stale={view.stale} now={now} />
       </header>
 

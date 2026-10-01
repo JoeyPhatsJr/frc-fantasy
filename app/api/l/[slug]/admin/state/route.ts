@@ -41,6 +41,9 @@ export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
         return {
           id: r.id,
           eventKey: r.eventKey,
+          kind: r.kind,
+          autoAdded: r.autoAdded,
+          seasonYear: r.seasonYear,
           eventName: r.eventName,
           startDate: r.startDate,
           endDate: r.endDate,

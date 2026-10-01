@@ -1,7 +1,8 @@
-import type { DraftMode, LeagueRole, PickSeconds, Visibility } from '@/lib/db/types';
+import type { DraftMode, LeagueRole, PickSeconds, RoundKind, Visibility } from '@/lib/db/types';
 import type { DraftPhase } from '@/lib/draft/live';
 import type { RoundStatus } from '@/lib/rounds/status';
 import type { ScoringConfig } from '@/lib/scoring/config';
+import type { PoolFilter } from '@/lib/season/poolFilter';
 import type { PoolTeam } from '@/lib/teams';
 
 // Shapes the admin API returns. The admin pages import these, so server and client agree.
@@ -27,7 +28,11 @@ export type AdminPlayer = {
 
 export type AdminRoundSummary = {
   id: string;
-  eventKey: string;
+  /** null for manual and season rounds. */
+  eventKey: string | null;
+  kind: RoundKind;
+  autoAdded: boolean;
+  seasonYear: number | null;
   eventName: string;
   startDate: string;
   endDate: string;
@@ -47,7 +52,11 @@ export type AdminState = {
 export type AdminRoundDetail = {
   round: {
     id: string;
-    eventKey: string;
+    /** null for manual and season rounds. */
+    eventKey: string | null;
+    kind: RoundKind;
+    seasonYear: number | null;
+    poolFilter: PoolFilter | null;
     eventName: string;
     startDate: string;
     endDate: string;

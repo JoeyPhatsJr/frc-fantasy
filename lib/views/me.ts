@@ -130,14 +130,18 @@ export async function loadMePage(userId: string, now: Date): Promise<MePage> {
       const myTeams = view.picks.filter((p) => p.playerId === player.id).map((p) => p.teamKey);
       if (myTeams.length === 0) continue;
       // One event's schedule failing (TBA or tba_cache) degrades only its own rows, not the Me page.
+      // Manual and season rounds have no TBA event, so no schedule.
       let schedule: MatchSimple[] | null = null;
-      try {
-        const matches = await getTba<MatchSimple[]>(`/event/${view.round.eventKey}/matches/simple`, {
-          windowMs: cacheWindowFor(view.round, now),
-        });
-        schedule = Array.isArray(matches.data) ? matches.data : null;
-      } catch (err) {
-        console.error(err);
+      const eventKey = view.round.kind === 'tba' ? view.round.eventKey : null;
+      if (eventKey) {
+        try {
+          const matches = await getTba<MatchSimple[]>(`/event/${eventKey}/matches/simple`, {
+            windowMs: cacheWindowFor(view.round, now),
+          });
+          schedule = Array.isArray(matches.data) ? matches.data : null;
+        } catch (err) {
+          console.error(err);
+        }
       }
       for (const teamKey of myTeams) {
         teams.push({

@@ -221,8 +221,8 @@ describe('GET /admin/state', () => {
     ]);
     expect(body.rounds).toEqual([
       {
-        id: round.id, eventKey: '2025parr', eventName: 'Ramp Riot',
-        startDate: '2025-10-25', endDate: '2025-10-25',
+        id: round.id, eventKey: '2025parr', kind: 'tba', autoAdded: false, seasonYear: null,
+        eventName: 'Ramp Riot', startDate: '2025-10-25', endDate: '2025-10-25',
         status: 'drafting', pickCount: 1, totalPicks: 2,
       },
     ]);

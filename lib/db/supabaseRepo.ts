@@ -37,6 +37,8 @@ const toLeague = (r: Raw): LeagueRow => ({
   inviteCode: r.invite_code,
   visibility: r.visibility,
   createdBy: r.created_by ?? null,
+  format: r.format ?? 'event',
+  followsSyncedAt: r.follows_synced_at ?? null,
   createdAt: r.created_at,
 });
 const toPlayer = (r: Raw): PlayerRow => ({
@@ -65,6 +67,10 @@ const toRound = (r: Raw): RoundRow => ({
   draftPausedAt: r.draft_paused_at ?? null,
   pausedRemainingMs: r.paused_remaining_ms ?? null,
   pickDeadline: r.pick_deadline ?? null,
+  kind: r.kind ?? 'tba',
+  seasonYear: r.season_year ?? null,
+  poolFilter: r.pool_filter ?? null,
+  autoAdded: r.auto_added ?? false,
   createdAt: r.created_at,
 });
 const toPick = (r: Raw): PickRow => ({
@@ -210,6 +216,7 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
               admin_token_hash: input.adminTokenHash ?? null,
               visibility: input.visibility,
               created_by: input.createdBy ?? null,
+              format: input.format,
               // invite_code comes from the column default, gen_invite_code()
             }),
           )
@@ -232,6 +239,7 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
               default_scoring: patch.defaultScoring,
               admin_token_hash: patch.adminTokenHash,
               visibility: patch.visibility,
+              follows_synced_at: patch.followsSyncedAt,
             }),
           )
           .eq('id', id)
@@ -363,15 +371,23 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
       const rows = await run(
         db
           .from('rounds')
-          .insert({
-            league_id: input.leagueId,
-            event_key: input.eventKey,
-            event_name: input.eventName,
-            start_date: input.startDate,
-            end_date: input.endDate,
-            timezone: input.timezone,
-            scoring: input.scoring,
-          })
+          .insert(
+            defined({
+              league_id: input.leagueId,
+              event_key: input.eventKey,
+              event_name: input.eventName,
+              start_date: input.startDate,
+              end_date: input.endDate,
+              timezone: input.timezone,
+              scoring: input.scoring,
+              kind: input.kind,
+              season_year: input.seasonYear,
+              pool_filter: input.poolFilter,
+              auto_added: input.autoAdded,
+              roster_size: input.rosterSize,
+              draft_order: input.draftOrder,
+            }),
+          )
           .select(),
       );
       return first(rows, toRound, 'round');
@@ -389,6 +405,9 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
               draft_mode: patch.draftMode,
               pick_seconds: patch.pickSeconds,
               paused_remaining_ms: patch.pausedRemainingMs,
+              start_date: patch.startDate,
+              end_date: patch.endDate,
+              pool_filter: patch.poolFilter,
             }),
           )
           .eq('id', id)

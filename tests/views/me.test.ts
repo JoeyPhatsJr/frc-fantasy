@@ -165,4 +165,22 @@ describe('loadMePage', () => {
     expect(log).toHaveBeenCalled();
     log.mockRestore();
   });
+
+  it('a live manual round (no TBA event) asks TBA for nothing and shows no schedule', async () => {
+    await repo.createProfile({ id: 'u1', displayName: 'Joey', avatarUrl: null });
+    const lg = await repo.createLeague({ slug: 'fam-abc234', name: 'Fam', defaultScoring: defaultScoring() });
+    const me = await repo.createMember({ leagueId: lg.id, userId: 'u1', name: 'Joey', role: 'commissioner' });
+    const r = await repo.createRound({
+      leagueId: lg.id, eventKey: null, kind: 'manual', eventName: 'Garage Games', startDate: '2026-10-01',
+      endDate: '2026-10-01', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    await repo.updateRound(r.id, { draftOrder: [me.id], rosterSize: 1 });
+    await repo.insertPick({ roundId: r.id, pickNumber: 0, playerId: me.id, teamKey: 'frc1' });
+
+    const page = await loadMePage('u1', new Date('2026-10-01T16:00:00Z'));
+    expect(page.teams).toEqual([
+      { teamKey: 'frc1', leagueName: 'Fam', eventName: 'Garage Games', label: 'Schedule not posted', status: 'live' },
+    ]);
+    expect(h.getTba).not.toHaveBeenCalled();
+  });
 });

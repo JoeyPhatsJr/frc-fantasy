@@ -19,6 +19,9 @@ export async function roundDetail(round: RoundRow, now: Date): Promise<AdminRoun
     round: {
       id: round.id,
       eventKey: round.eventKey,
+      kind: round.kind,
+      seasonYear: round.seasonYear,
+      poolFilter: round.poolFilter,
       eventName: round.eventName,
       startDate: round.startDate,
       endDate: round.endDate,
