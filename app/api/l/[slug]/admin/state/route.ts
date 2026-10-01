@@ -2,6 +2,7 @@ import { handle, json } from '@/lib/api/http';
 import { requireLeagueRole } from '@/lib/auth/roles';
 import type { AdminState } from '@/lib/api/types';
 import { getRepo } from '@/lib/db';
+import { scheduleFollowSync } from '@/lib/follow/sync';
 import { roundStatus } from '@/lib/rounds/status';
 import { playersInUse } from '@/lib/rounds/usage';
 
@@ -15,6 +16,8 @@ export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
     const { league, player } = await requireLeagueRole(slug, 'commissioner');
     const repo = getRepo();
     const now = new Date();
+    // Spec §5.4: the dashboard loads through here, so visiting it also syncs followed teams (after the response).
+    scheduleFollowSync(league, now);
 
     const [players, rounds, used, follows] = await Promise.all([
       repo.listPlayers(league.id),

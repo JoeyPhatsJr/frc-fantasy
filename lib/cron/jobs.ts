@@ -1,4 +1,5 @@
 import { getRepo } from '@/lib/db';
+import { followSyncJob } from '@/lib/follow/sync';
 import { localDate } from '@/lib/rounds/status';
 import { refreshRecentTeams } from '@/lib/stats/build';
 
@@ -23,6 +24,7 @@ export const DAILY_JOBS: DailyJob[] = [
       );
     },
   },
+  followSyncJob,
 ];
 
 export async function runDailyJobs(

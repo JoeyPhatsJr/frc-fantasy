@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { leagueAccess } from '@/lib/auth/roles';
 import { memberLiveDrafts } from '@/lib/draft/liveBanner';
+import { scheduleFollowSync } from '@/lib/follow/sync';
 import { formatDateRange } from '@/lib/format';
 import { loadLeaguePage } from '@/lib/views/league';
 
@@ -29,6 +30,8 @@ export default async function LeaguePage({ params }: Props) {
   const now = new Date();
   const page = await loadLeaguePage(slug, now);
   if (!page) notFound();
+  // Spec §5.4: add followed teams' new events after this response is sent (never delays the page).
+  scheduleFollowSync(access.league, now);
 
   // Only { slug, name } of the league reaches this page; the admin token hash never does.
   const { league, standings, rounds } = page;

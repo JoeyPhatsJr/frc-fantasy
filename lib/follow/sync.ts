@@ -1,3 +1,4 @@
+import { after } from 'next/server';
 import { getRepo } from '@/lib/db';
 import type { LeagueRow, RoundRow } from '@/lib/db/types';
 import { pickFollowEvents } from '@/lib/follow/filter';
@@ -72,3 +73,44 @@ export async function syncFollowedEvents(league: LeagueRow, now: Date): Promise<
   await repo.updateLeague(league.id, { followsSyncedAt: now.toISOString() });
   return { ok: true, added };
 }
+
+export const FOLLOW_SYNC_EVERY_MS = 10 * 60_000;
+
+/** Spec §5.4 "on visit": only event leagues, and only when the last sync is missing or 10+ minutes old. */
+export function shouldSyncOnVisit(league: LeagueRow, now: Date): boolean {
+  if (league.format !== 'event') return false;
+  if (!league.followsSyncedAt) return true;
+  return now.getTime() - Date.parse(league.followsSyncedAt) >= FOLLOW_SYNC_EVERY_MS;
+}
+
+/** Runs the sync after the response is sent (Next.js after()), so a page view never waits on TBA. */
+export function scheduleFollowSync(league: LeagueRow, now: Date = new Date()): void {
+  if (!shouldSyncOnVisit(league, now)) return;
+  try {
+    after(async () => {
+      try {
+        await syncFollowedEvents(league, now);
+      } catch (err) {
+        console.error(`Follow sync for ${league.slug} failed`, err);
+      }
+    });
+  } catch (err) {
+    // after() throws outside a request scope; a page view must never fail because of the sync.
+    console.error(`Follow sync for ${league.slug} not scheduled`, err);
+  }
+}
+
+/** Daily cron job (spec §5.4): every league that follows a team, until the time budget runs out. */
+export const followSyncJob = {
+  name: 'follow-sync',
+  async run(now: Date, deadline: number): Promise<void> {
+    for (const league of await getRepo().listLeaguesWithFollows()) {
+      if (Date.now() >= deadline) break;
+      try {
+        await syncFollowedEvents(league, now);
+      } catch (err) {
+        console.error(`Follow sync for ${league.slug} failed`, err);
+      }
+    }
+  },
+};
