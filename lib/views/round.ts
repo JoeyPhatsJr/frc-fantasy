@@ -3,11 +3,9 @@ import { getRepo } from '@/lib/db';
 import { withPublicNames } from '@/lib/leagues/names';
 import type { AdjustmentRow, PickRow, PlayerRow, RoundRow } from '@/lib/db/types';
 import { cacheWindowFor, roundStatus, type RoundStatus } from '@/lib/rounds/status';
-import { scoreEvent } from '@/lib/scoring/engine';
 import { roundPlayers, scoreRound } from '@/lib/scoring/round';
 import type { PlayerRoundScore, RpMethod } from '@/lib/scoring/types';
-import { loadEventData } from '@/lib/tba/event';
-import { cleanEventData, NO_EVENT_DATA } from '@/lib/tba/clean';
+import { getEventScores } from '@/lib/scores/eventScores';
 
 // Kept so existing imports (tests/views/views.test.ts) keep working.
 export { cleanEventData } from '@/lib/tba/clean';
@@ -44,37 +42,22 @@ export async function buildRoundView(
   adjustments: AdjustmentRow[],
   now: Date,
 ): Promise<RoundView> {
-  const loaded = await loadEventData(round.eventKey, { windowMs: cacheWindowFor(round, now) });
-  const data = cleanEventData(loaded.data);
-  let event: ReturnType<typeof scoreEvent>;
-  let scoringFailed = false;
-  try {
-    event = scoreEvent(data, round.scoring);
-  } catch (err) {
-    // One malformed payload must not take the whole page (or the league page) down.
-    console.error(`Scoring failed for ${round.eventKey}; falling back to empty data`, err);
-    scoringFailed = true;
-    event = scoreEvent(NO_EVENT_DATA, round.scoring);
-  }
+  // Scores come through the derived event_scores cache (spec §5.6); failures degrade to empty + stale inside it.
+  const event = await getEventScores(round.eventKey, round.scoring, cacheWindowFor(round, now), { now });
   const players = roundPlayers(allPlayers, round.draftOrder, adjustments);
-
-  const teamNames: Record<string, string> = {};
-  for (const t of data.teams ?? []) if (t.nickname) teamNames[t.key] = t.nickname;
-
-  const rankingCount = Array.isArray(data.rankings?.rankings) ? data.rankings.rankings.length : 0;
   return {
     round,
     status: roundStatus(round, picks.length, now),
-    scores: scoreRound(event.teams, picks, adjustments, players),
+    scores: scoreRound(event.scores.teams, picks, adjustments, players),
     picks,
     adjustments,
-    teamNames,
-    qualsComplete: event.qualsComplete,
-    rpMethod: event.rpMethod,
-    hasEventData: (data.matches?.length ?? 0) > 0 || rankingCount > 0,
-    hasRankings: rankingCount > 0,
-    fetchedAt: loaded.fetchedAt,
-    stale: loaded.stale || scoringFailed,
+    teamNames: event.info.teamNames,
+    qualsComplete: event.scores.qualsComplete,
+    rpMethod: event.scores.rpMethod,
+    hasEventData: event.info.hasEventData,
+    hasRankings: event.info.hasRankings,
+    fetchedAt: event.fetchedAt,
+    stale: event.stale,
   };
 }
 

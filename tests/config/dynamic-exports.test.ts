@@ -24,7 +24,7 @@ const routes = all.filter((f) => f.endsWith('/route.ts'));
 const pages = all.filter((f) => f.startsWith('app/l/') && f.endsWith('/page.tsx'));
 
 // Anything that reaches TBA, directly or through the loaders and views that call it.
-const TBA_USERS = /\b(getTba|loadPool|loadEventData|loadRoundPage|loadLeaguePage|roundDetail|buildRoundView)\b/;
+const TBA_USERS = /\b(getTba|loadPool|loadEventData|getEventScores|loadRoundPage|loadLeaguePage|roundDetail|buildRoundView)\b/;
 
 const modules = [...routes, ...pages];
 
