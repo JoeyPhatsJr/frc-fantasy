@@ -227,6 +227,8 @@ export function DraftRoom({ slug, roundId, eventName }: { slug: string; roundId:
       <div role="tabpanel">
         {tab === 'pool' ? (
           <PoolList
+            slug={slug}
+            roundId={roundId}
             entries={pool}
             taken={taken}
             queued={new Set(me?.queue ?? [])}

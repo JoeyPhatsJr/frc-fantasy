@@ -1,14 +1,18 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { generateInviteCode } from '@/lib/leagues/inviteCode';
+import { bodyHash } from '@/lib/scores/hash';
 import { DbUnavailableError, UniqueViolation, type Repo } from '@/lib/db/repo';
 import type {
   AdjustmentRow,
+  CacheMeta,
   CacheRow,
+  EventScoresRow,
   LeagueRow,
   PickRow,
   PlayerRow,
   ProfileRow,
   RoundRow,
+  TeamStatsRow,
 } from '@/lib/db/types';
 
 // Database rows arrive in snake_case. These mappers are the only place that knows that.
@@ -89,6 +93,49 @@ const toCache = (r: Raw): CacheRow => ({
   lastError: r.last_error,
   lastErrorAt: r.last_error_at,
 });
+const toCacheMeta = (r: Raw): CacheMeta => ({
+  path: r.path,
+  fetchedAt: r.fetched_at,
+  bodyHash: r.body_hash,
+  lastErrorAt: r.last_error_at,
+});
+
+/** Splits a list so `.in(...)` filters stay well under PostgREST's URL length limit. */
+const toEventScores = (r: Raw): EventScoresRow => ({
+  eventKey: r.event_key,
+  configHash: r.config_hash,
+  sourceStamp: r.source_stamp,
+  scores: r.scores,
+  info: r.info,
+  computedAt: r.computed_at,
+});
+
+const SUMMARY_COLUMNS =
+  'team_key, season, events_played, total_points, qual_wins, qual_losses, qual_ties, best_finish, latest_event_key, latest_opr, latest_rank, updated_at';
+
+const toTeamStats = (r: Raw): TeamStatsRow => ({
+  teamKey: r.team_key,
+  season: r.season,
+  eventsPlayed: r.events_played,
+  totalPoints: r.total_points,
+  qualWins: r.qual_wins,
+  qualLosses: r.qual_losses,
+  qualTies: r.qual_ties,
+  bestFinish: r.best_finish,
+  awards: Array.isArray(r.awards) ? r.awards : [],
+  events: Array.isArray(r.events) ? r.events : [],
+  latestEventKey: r.latest_event_key,
+  // numeric(6,1) arrives as a string or a number depending on the driver path.
+  latestOpr: r.latest_opr === null || r.latest_opr === undefined ? null : Number(r.latest_opr),
+  latestRank: r.latest_rank,
+  updatedAt: r.updated_at,
+});
+
+function chunks<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
 
 /** Drops keys whose value is undefined, so a patch only touches the columns it names. */
 function defined(obj: Raw): Raw {
@@ -469,6 +516,7 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
             path: row.path,
             etag: row.etag,
             body: row.body, // JS null is stored as SQL NULL
+            body_hash: bodyHash(row.body), // computed here only (spec §5.6), so 304s keep the same hash
             fetched_at: row.fetchedAt,
             last_error: row.lastError,
             last_error_at: row.lastErrorAt,
@@ -476,6 +524,15 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
           { onConflict: 'path' },
         ),
       );
+    },
+    async getCacheMeta(paths) {
+      if (paths.length === 0) return [];
+      const batches = await Promise.all(
+        chunks(paths, 100).map((batch) =>
+          run(db.from('tba_cache').select('path, fetched_at, body_hash, last_error_at').in('path', batch)),
+        ),
+      );
+      return batches.flat().map(toCacheMeta);
     },
 
     async makePickAtomic(input) {
@@ -530,6 +587,67 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
         db.from('draft_prefs').select('player_id').eq('round_id', roundId).eq('autodraft', true),
       );
       return rows.map((r) => r.player_id as string);
+    },
+    async getEventScoresRow(eventKey, configHash) {
+      const rows = await run(
+        db.from('event_scores').select().eq('event_key', eventKey).eq('config_hash', configHash).limit(1),
+      );
+      return rows[0] ? toEventScores(rows[0]) : null;
+    },
+    async upsertEventScoresRow(row) {
+      await run(
+        db.from('event_scores').upsert(
+          {
+            event_key: row.eventKey,
+            config_hash: row.configHash,
+            source_stamp: row.sourceStamp,
+            scores: row.scores,
+            info: row.info,
+            computed_at: row.computedAt,
+          },
+          { onConflict: 'event_key,config_hash' },
+        ),
+      );
+    },
+    async clearEventScores() {
+      // PostgREST refuses an unfiltered delete; "every row has an event key" matches them all.
+      const rows = await run(db.from('event_scores').delete().neq('event_key', '').select('event_key'));
+      return rows.length;
+    },
+    async getTeamStats(teamKeys, seasons, opts = {}) {
+      if (teamKeys.length === 0 || seasons.length === 0) return [];
+      const columns = opts.withHistory ? '*' : SUMMARY_COLUMNS;
+      const batches = await Promise.all(
+        chunks(teamKeys, 150).map((batch) =>
+          run(db.from('team_stats').select(columns).in('team_key', batch).in('season', seasons)),
+        ),
+      );
+      return batches.flat().map(toTeamStats);
+    },
+    async upsertTeamStats(rows) {
+      for (const batch of chunks(rows, 200)) {
+        await run(
+          db.from('team_stats').upsert(
+            batch.map((r) => ({
+              team_key: r.teamKey,
+              season: r.season,
+              events_played: r.eventsPlayed,
+              total_points: r.totalPoints,
+              qual_wins: r.qualWins,
+              qual_losses: r.qualLosses,
+              qual_ties: r.qualTies,
+              best_finish: r.bestFinish,
+              awards: r.awards,
+              events: r.events,
+              latest_event_key: r.latestEventKey,
+              latest_opr: r.latestOpr,
+              latest_rank: r.latestRank,
+              updated_at: r.updatedAt,
+            })),
+            { onConflict: 'team_key,season' },
+          ),
+        );
+      }
     },
     async rlsDisabledTables() {
       const rows = await run(db.rpc('public_tables_without_rls'));

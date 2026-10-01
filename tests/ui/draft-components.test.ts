@@ -56,6 +56,7 @@ describe('bannerLines (§7.6)', () => {
 describe('PoolList (§6.3)', () => {
   const entries = [entry('frc341', null, 'Miss Daisy'), entry('frc25', 12.5, 'Raider Robotix')];
   const props = {
+    slug: 'habich-fam-abc234', roundId: '00000000-0000-4000-8000-000000000001',
     entries, taken: new Set<string>(), queued: new Set(['frc25']), canDraft: false, draftLabel: 'Draft',
     readOnly: false, queueDisabled: false, onDraft: () => {}, onToggleQueue: () => {},
   };

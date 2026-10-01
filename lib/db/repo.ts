@@ -1,7 +1,9 @@
 import type {
   AdjustmentRow,
+  CacheMeta,
   CacheRow,
   DraftMode,
+  EventScoresRow,
   LeagueRole,
   LeagueRow,
   PickRow,
@@ -9,6 +11,7 @@ import type {
   PlayerRow,
   ProfileRow,
   RoundRow,
+  TeamStatsRow,
   Visibility,
 } from '@/lib/db/types';
 import type { ScoringConfig } from '@/lib/scoring/config';
@@ -147,6 +150,17 @@ export interface Repo {
 
   getCache(path: string): Promise<CacheRow | null>;
   upsertCache(row: CacheRow): Promise<void>;
+  /** Metadata for the given tba_cache paths (no bodies), for the rows that exist. One round trip per 100 paths. */
+  getCacheMeta(paths: string[]): Promise<CacheMeta[]>;
+
+  // Derived caches (spec §5.6, §6.1). Written only by lib/scores/eventScores.ts and lib/stats/build.ts.
+  getEventScoresRow(eventKey: string, configHash: string): Promise<EventScoresRow | null>;
+  upsertEventScoresRow(row: EventScoresRow): Promise<void>;
+  /** Deletes every event_scores row; returns how many. Only scripts/rebuild-event-scores.ts calls this. */
+  clearEventScores(): Promise<number>;
+  /** Without withHistory, awards and events come back empty (the draft pool only needs the summary). */
+  getTeamStats(teamKeys: string[], seasons: number[], opts?: { withHistory?: boolean }): Promise<TeamStatsRow[]>;
+  upsertTeamStats(rows: TeamStatsRow[]): Promise<void>;
 
   // Live draft (v2 §7). Each returns false instead of throwing when the draft state doesn't allow it.
   makePickAtomic(input: AtomicPick): Promise<boolean>;

@@ -94,3 +94,53 @@ export type CacheRow = {
   lastError: string | null;
   lastErrorAt: string | null;
 };
+
+/** tba_cache without the body: what getEventScores needs to decide if its cached scores are current. */
+export type CacheMeta = {
+  path: string;
+  fetchedAt: string;
+  /** sha256 of the canonical JSON body; null when TBA had no data. */
+  bodyHash: string | null;
+  lastErrorAt: string | null;
+};
+
+/** One row of the derived event_scores cache (spec §5.6). `scores` and `info` are validated on read. */
+export type EventScoresRow = {
+  eventKey: string;
+  configHash: string;
+  sourceStamp: string;
+  scores: unknown;
+  info: unknown;
+  computedAt: string;
+};
+
+export type BestFinish = 'winner' | 'finalist' | 'captain' | 'picked';
+
+export type TeamStatsAward = { type: number; name: string; eventKey: string };
+
+export type TeamStatsEvent = {
+  eventKey: string;
+  name: string;
+  endDate: string; // YYYY-MM-DD
+  rank: number | null;
+  finish: BestFinish | null;
+  points: number;
+};
+
+/** One row of the derived team_stats table (spec §6.1): one team, one season, default scoring. */
+export type TeamStatsRow = {
+  teamKey: string;
+  season: number;
+  eventsPlayed: number;
+  totalPoints: number;
+  qualWins: number;
+  qualLosses: number;
+  qualTies: number;
+  bestFinish: BestFinish | null;
+  awards: TeamStatsAward[];
+  events: TeamStatsEvent[];
+  latestEventKey: string | null;
+  latestOpr: number | null;
+  latestRank: number | null;
+  updatedAt: string;
+};

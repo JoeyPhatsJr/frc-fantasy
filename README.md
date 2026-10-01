@@ -37,8 +37,10 @@ Then create an account with an email and password (one-time setup below).
 | `E2E_AUTH_SECRET` | Another random string. Local only, never on Vercel: lets Playwright sign in through `/api/test/login`. |
 
 Database setup, once: paste the files in `supabase/migrations/` (`0001_init.sql`, `0002_accounts.sql`,
-`0003_live_draft.sql`) into the Supabase SQL Editor and run each one in order. Migration `0003` must be
-applied before deploying SP4 (the live draft room), or the draft pages will fail.
+`0003_live_draft.sql`, `0004_team_stats.sql`) into the Supabase SQL Editor and run each one in order. Migration `0003` must be
+applied before deploying SP4 (the live draft room), or the draft pages will fail. **Migration `0004` must be applied before
+the SP3 code runs anywhere against the real database** (merging, a Vercel Preview, or `npm run dev`), or every round and
+league page errors. `0004` is safe to re-run.
 
 ## Live drafts (v2)
 
@@ -97,12 +99,55 @@ npx tsx --env-file=.env.local scripts/db-smoke.ts   # talks to the real database
 | `scripts/seed-demo.ts <owner-user-id> [site-url]` | Creates a demo league that replays Ramp Riot 2025, owned by that user (find your id in Supabase → Authentication → Users; sign in once first). Note: creates a NEW league each run |
 | `scripts/db-smoke.ts` | Checks the real database matches the code |
 | `scripts/reset-password.ts <email> <new-password>` | Resets a forgotten password (no emails are sent), then you give the player the new one |
+| `scripts/build-team-stats.ts <season>` | Builds the draft-pool stats (`team_stats`) for one season from TBA, ~5 requests/s. Safe to stop and rerun. Run for the last two seasons before a draft |
+| `scripts/show-team-stats.ts <team> <season>` | Prints one team's stats rows and the projection a draft in that season shows |
+| `scripts/rebuild-event-scores.ts` | Empties the `event_scores` cache. Rarely needed: after any change to `lib/scoring/*`, `lib/tba/clean.ts` or `lib/scores/serialize.ts`, **bump `SCORES_VERSION` in `lib/scores/hash.ts`** instead, and old rows are simply never read again. This script just reclaims their space |
+| `scripts/backfill-body-hash.ts` | One-time, after migration 0004: fills `tba_cache.body_hash` for old rows |
 
 Run them with `npx tsx --env-file=.env.local scripts/<name>.ts ...`. For example, the demo league:
 `npx tsx --env-file=.env.local scripts/seed-demo.ts <your-user-id>`.
 
 The one-time v1 cleanup (deleting the old pre-accounts leagues) was run on 2026-09-30; its script has
 been removed.
+
+### SP3 morning sequence (team info)
+
+Migration `0004_team_stats.sql` is not applied yet.
+
+> **Apply 0004 FIRST, before this branch's code runs anywhere against the real database**: before merging, before
+> opening a Vercel Preview of the PR (Preview uses the same Supabase project), and before `npm run dev` on this branch.
+> Without it every round page, league page, and the draft pool errors, even with a warm cache. (The other order is
+> safe: old code keeps working with 0004 applied.)
+
+In this order:
+
+1. Paste `supabase/migrations/0004_team_stats.sql` into the Supabase SQL Editor and run it. It is safe to run again
+   if a paste was cut off.
+2. `npx tsx --env-file=.env.local scripts/db-smoke.ts` must print no `FAIL` (it checks `body_hash`, `event_scores`,
+   `team_stats`, and RLS on both new tables).
+3. `npx tsx --env-file=.env.local scripts/backfill-body-hash.ts`
+4. `npx tsx --env-file=.env.local scripts/build-team-stats.ts 2025`
+5. `npx tsx --env-file=.env.local scripts/build-team-stats.ts 2026`
+6. `npx tsx --env-file=.env.local scripts/show-team-stats.ts 5181 2026` (sanity check: 5181's rows and projection)
+7. Only now merge or deploy. Optional, after the production deploy: run `backfill-body-hash.ts` once more to hash rows
+   the old code wrote in between (they also fix themselves within a day).
+
+Also set `CRON_SECRET` in Vercel (Production and Preview) **before merging SP3**: `vercel.json` adds a daily cron
+that fails without it.
+
+## Daily cron
+
+Vercel calls `GET /api/cron/daily` once a day (06:00 Eastern, `vercel.json`). It needs `CRON_SECRET` set in Vercel's
+environment variables; Vercel sends it as `Authorization: Bearer ...` automatically. Each run gets 50 seconds:
+
+- **team-stats** — re-scores this season's events from the last 8 days (4 at a time, stalest first) and refreshes
+  those teams' `team_stats` rows. Older finished events are read from `tba_cache`, not refetched. If it runs out of
+  time it says so in the log, and the next day's run continues with the events and teams it missed.
+
+To run it by hand (for example right after an event):
+`curl -H "Authorization: Bearer $CRON_SECRET" https://frc-fantasy-6yo3.vercel.app/api/cron/daily`
+Logs: Vercel dashboard -> the project -> Logs, filter by `/api/cron/daily`. The daily call also keeps the Supabase
+free-tier project from pausing.
 
 ## Live site
 

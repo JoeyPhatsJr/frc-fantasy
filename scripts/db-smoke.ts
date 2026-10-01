@@ -3,6 +3,7 @@
 import { UniqueViolation } from '@/lib/db/repo';
 import { createSupabaseClient, createSupabaseRepo } from '@/lib/db/supabaseRepo';
 import { defaultScoring } from '@/lib/scoring/config';
+import { bodyHash } from '@/lib/scores/hash';
 
 function check(label: string, ok: boolean) {
   console.log(`${ok ? 'ok  ' : 'FAIL'}  ${label}`);
@@ -96,6 +97,15 @@ async function main() {
     const path = `/smoke/${slug}`;
     await repo.upsertCache({ path, etag: null, body: null, fetchedAt: new Date().toISOString(), lastError: null, lastErrorAt: null });
     check('cache stores a null body', (await repo.getCache(path))?.body === null);
+
+    // v2 SP3 (migration 0004). Without it every round page errors, so fail loudly here first.
+    const sp3 = createSupabaseClient();
+    check('tba_cache.body_hash exists (0004 applied)', (await sp3.from('tba_cache').select('body_hash').limit(1)).error === null);
+    check('event_scores table exists (0004 applied)', (await sp3.from('event_scores').select('event_key').limit(1)).error === null);
+    check('team_stats table exists (0004 applied)', (await sp3.from('team_stats').select('team_key').limit(1)).error === null);
+    const hashed = { smoke: [1, 2, 3] };
+    await repo.upsertCache({ path, etag: null, body: hashed, fetchedAt: new Date().toISOString(), lastError: null, lastErrorAt: null });
+    check('upsertCache writes body_hash', (await repo.getCacheMeta([path]))[0]?.bodyHash === bodyHash(hashed));
   } finally {
     await repo.deleteLeague(league.id);
   }
@@ -142,7 +152,7 @@ async function main() {
   // RLS on, no policies (spec §8.1): the public anon key sees nothing and can't call our functions.
   const { createClient } = await import('@supabase/supabase-js');
   const anon = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, anonKey);
-  for (const table of ['leagues', 'players', 'profiles', 'rounds', 'picks', 'adjustments', 'tba_cache']) {
+  for (const table of ['leagues', 'players', 'profiles', 'rounds', 'picks', 'adjustments', 'tba_cache', 'event_scores', 'team_stats']) {
     const leaked = await anon.from(table).select('*').limit(1);
     check(`anon key reads no ${table}`, (leaked.data ?? []).length === 0);
   }

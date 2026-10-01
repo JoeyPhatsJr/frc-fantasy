@@ -1,8 +1,9 @@
 import { getRepo } from '@/lib/db';
 import type { RoundRow } from '@/lib/db/types';
 import { loadPool } from '@/lib/rounds/pool';
+import { teamStatsPoolLookup } from '@/lib/stats/pool';
 
-/** One row of the draft pool (spec §6.3). Stats are null until SP3 fills them ("New" in the UI). */
+/** One row of the draft pool (spec §6.3). Stats come from team_stats (SP3); null stats show as "New" in the UI. */
 export type PoolEntry = {
   teamKey: string;
   nickname: string | null;
@@ -20,8 +21,8 @@ const NO_STATS: PoolStats = { proj: null, record: null, bestFinish: null, opr: n
 
 export const noPoolStats: PoolStatsLookup = async () => new Map();
 
-/** The stats source every caller uses. SP3 changes this one line to its team_stats lookup. */
-export const activePoolStats: PoolStatsLookup = noPoolStats;
+/** The stats source every caller uses. SP4 shipped noPoolStats here; SP3 swaps in team_stats. */
+export const activePoolStats: PoolStatsLookup = teamStatsPoolLookup;
 
 export async function buildPoolEntries(
   round: RoundRow,
