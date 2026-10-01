@@ -52,3 +52,20 @@ export type SeasonRow = {
   /** One entry per round, in the order rounds were passed in. 0 if the player was not in that round. */
   perRound: number[];
 };
+
+export type AllianceRole = 'captain' | 'pick1' | 'pick2' | 'pick3' | 'backup';
+
+/** One team's typed-in results for a manual round (spec §5.3). null = unknown. */
+export type ManualResult = {
+  teamKey: string;
+  qualWins: number;
+  qualLosses: number;
+  qualTies: number;
+  rankingPoints: number | null;
+  qualRank: number | null;
+  allianceRole: AllianceRole | null;
+  playoffWins: number;
+  eventResult: 'winner' | 'finalist' | null;
+  /** TBA award type ids. */
+  awardTypes: number[];
+};

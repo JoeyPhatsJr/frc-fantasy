@@ -6,6 +6,7 @@ import type {
   EventScoresRow,
   LeagueFormat,
   LeagueRole,
+  ManualResultRow,
   LeagueRow,
   PickRow,
   PickSeconds,
@@ -145,6 +146,20 @@ export interface Repo {
   createRound(input: NewRound): Promise<RoundRow>;
   updateRound(id: string, patch: RoundPatch): Promise<RoundRow>;
   deleteRound(id: string): Promise<void>;
+  /** Idempotent insert for follow-a-team (spec §5.4): null when the league already has that event. */
+  createRoundIfAbsent(input: NewRound): Promise<RoundRow | null>;
+  /** kind = 'season' and not finalized, across every league (daily cron). */
+  listOpenSeasonRounds(): Promise<RoundRow[]>;
+
+  listManualResults(roundId: string): Promise<ManualResultRow[]>; // by team key
+  upsertManualResult(row: ManualResultRow): Promise<ManualResultRow>;
+  deleteManualResult(roundId: string, teamKey: string): Promise<void>;
+
+  listFollows(leagueId: string): Promise<number[]>; // ascending
+  setFollows(leagueId: string, teamNumbers: number[]): Promise<void>; // replaces the whole list
+  listLeaguesWithFollows(): Promise<LeagueRow[]>;
+  listSkippedEvents(leagueId: string): Promise<string[]>;
+  addSkippedEvent(leagueId: string, eventKey: string): Promise<void>; // adding twice is fine
 
   listExtraTeams(roundId: string): Promise<string[]>;
   addExtraTeam(roundId: string, teamKey: string): Promise<void>; // adding twice is fine

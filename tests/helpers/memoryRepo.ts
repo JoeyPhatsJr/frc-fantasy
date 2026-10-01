@@ -9,6 +9,7 @@ import type {
   CacheRow,
   EventScoresRow,
   LeagueRow,
+  ManualResultRow,
   PickRow,
   PlayerRow,
   ProfileRow,
@@ -26,6 +27,9 @@ export function createMemoryRepo(opts: { now?: () => Date } = {}): Repo {
   let rounds: RoundRow[] = [];
   let extraTeams: { roundId: string; teamKey: string }[] = [];
   let picks: PickRow[] = [];
+  let manualResults: ManualResultRow[] = [];
+  let follows: { leagueId: string; teamNumber: number }[] = [];
+  let skipped: { leagueId: string; eventKey: string }[] = [];
   let adjustments: AdjustmentRow[] = [];
   const cache = new Map<string, CacheRow & { bodyHash: string | null }>();
   const eventScores = new Map<string, EventScoresRow>();
@@ -61,6 +65,7 @@ export function createMemoryRepo(opts: { now?: () => Date } = {}): Repo {
     picks = picks.filter((p) => !ids.includes(p.roundId));
     adjustments = adjustments.filter((a) => !ids.includes(a.roundId));
     extraTeams = extraTeams.filter((t) => !ids.includes(t.roundId));
+    manualResults = manualResults.filter((m) => !ids.includes(m.roundId));
     dropDraftPrefs((roundId) => ids.includes(roundId));
   }
 
@@ -95,6 +100,8 @@ export function createMemoryRepo(opts: { now?: () => Date } = {}): Repo {
     async deleteLeague(id) {
       dropRounds(rounds.filter((r) => r.leagueId === id).map((r) => r.id));
       players = players.filter((p) => p.leagueId !== id);
+      follows = follows.filter((f) => f.leagueId !== id);
+      skipped = skipped.filter((s) => s.leagueId !== id);
       leagues = leagues.filter((l) => l.id !== id);
     },
     async getLeagueByInviteCode(code) {
@@ -208,6 +215,14 @@ export function createMemoryRepo(opts: { now?: () => Date } = {}): Repo {
       return copy(rounds.find((r) => r.id === id) ?? null);
     },
     async createRound(input) {
+      // The 0005 check constraints, thrown the way Postgres reports them (SQLSTATE 23514).
+      const kind = input.kind ?? 'tba';
+      if ((kind === 'tba') !== (input.eventKey !== null)) {
+        throw new Error('check constraint "rounds_kind_event_key" violated: kind = tba iff event_key is set');
+      }
+      if ((kind === 'season') !== (input.seasonYear != null)) {
+        throw new Error('check constraint "rounds_kind_season" violated: kind = season iff season_year is set');
+      }
       // Postgres treats NULLs as distinct, so the unique rule only applies to TBA rounds.
       if (
         input.eventKey !== null &&
@@ -243,6 +258,50 @@ export function createMemoryRepo(opts: { now?: () => Date } = {}): Repo {
     },
     async deleteRound(id) {
       dropRounds([id]);
+    },
+
+    async createRoundIfAbsent(input) {
+      // ON CONFLICT (league_id, event_key) DO NOTHING. No await between the check and the insert,
+      // so two calls can never interleave, just like the real unique index.
+      if (rounds.some((r) => r.leagueId === input.leagueId && r.eventKey !== null && r.eventKey === input.eventKey)) {
+        return null;
+      }
+      return this.createRound(input);
+    },
+    async listOpenSeasonRounds() {
+      return copy(rounds.filter((r) => r.kind === 'season' && r.finalizedAt === null));
+    },
+
+    async listManualResults(roundId) {
+      return copy(
+        manualResults.filter((m) => m.roundId === roundId).sort((a, b) => a.teamKey.localeCompare(b.teamKey)),
+      );
+    },
+    async upsertManualResult(row) {
+      manualResults = manualResults.filter((m) => !(m.roundId === row.roundId && m.teamKey === row.teamKey));
+      manualResults.push(copy(row));
+      return copy(row);
+    },
+    async deleteManualResult(roundId, teamKey) {
+      manualResults = manualResults.filter((m) => !(m.roundId === roundId && m.teamKey === teamKey));
+    },
+
+    async listFollows(leagueId) {
+      return follows.filter((f) => f.leagueId === leagueId).map((f) => f.teamNumber).sort((a, b) => a - b);
+    },
+    async setFollows(leagueId, teamNumbers) {
+      follows = follows.filter((f) => f.leagueId !== leagueId);
+      for (const teamNumber of new Set(teamNumbers)) follows.push({ leagueId, teamNumber });
+    },
+    async listLeaguesWithFollows() {
+      const ids = new Set(follows.map((f) => f.leagueId));
+      return copy(leagues.filter((l) => ids.has(l.id)));
+    },
+    async listSkippedEvents(leagueId) {
+      return skipped.filter((s) => s.leagueId === leagueId).map((s) => s.eventKey);
+    },
+    async addSkippedEvent(leagueId, eventKey) {
+      if (!skipped.some((s) => s.leagueId === leagueId && s.eventKey === eventKey)) skipped.push({ leagueId, eventKey });
     },
 
     async listExtraTeams(roundId) {

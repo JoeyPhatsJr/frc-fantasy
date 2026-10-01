@@ -1,5 +1,6 @@
 import type { ScoringConfig } from '@/lib/scoring/config';
 import type { PoolFilter } from '@/lib/season/poolFilter';
+import type { ManualResult } from '@/lib/scoring/types';
 
 export type LeagueFormat = 'event' | 'season';
 export type RoundKind = 'tba' | 'manual' | 'season';
@@ -159,3 +160,5 @@ export type TeamStatsRow = {
   latestRank: number | null;
   updatedAt: string;
 };
+
+export type ManualResultRow = ManualResult & { roundId: string };

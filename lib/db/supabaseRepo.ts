@@ -1,13 +1,14 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { generateInviteCode } from '@/lib/leagues/inviteCode';
 import { bodyHash } from '@/lib/scores/hash';
-import { DbUnavailableError, UniqueViolation, type Repo } from '@/lib/db/repo';
+import { DbUnavailableError, UniqueViolation, type NewRound, type Repo } from '@/lib/db/repo';
 import type {
   AdjustmentRow,
   CacheMeta,
   CacheRow,
   EventScoresRow,
   LeagueRow,
+  ManualResultRow,
   PickRow,
   PlayerRow,
   ProfileRow,
@@ -73,6 +74,20 @@ const toRound = (r: Raw): RoundRow => ({
   autoAdded: r.auto_added ?? false,
   createdAt: r.created_at,
 });
+const toManualResult = (r: Raw): ManualResultRow => ({
+  roundId: r.round_id,
+  teamKey: r.team_key,
+  qualWins: r.qual_wins,
+  qualLosses: r.qual_losses,
+  qualTies: r.qual_ties,
+  rankingPoints: r.ranking_points,
+  qualRank: r.qual_rank,
+  allianceRole: r.alliance_role,
+  playoffWins: r.playoff_wins,
+  eventResult: r.event_result,
+  awardTypes: r.award_types ?? [],
+});
+
 const toPick = (r: Raw): PickRow => ({
   id: r.id,
   roundId: r.round_id,
@@ -146,6 +161,24 @@ function chunks<T>(items: T[], size: number): T[][] {
 /** Drops keys whose value is undefined, so a patch only touches the columns it names. */
 function defined(obj: Raw): Raw {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
+}
+
+function roundInsert(input: NewRound): Raw {
+  return defined({
+    league_id: input.leagueId,
+    event_key: input.eventKey,
+    event_name: input.eventName,
+    start_date: input.startDate,
+    end_date: input.endDate,
+    timezone: input.timezone,
+    scoring: input.scoring,
+    kind: input.kind,
+    season_year: input.seasonYear,
+    pool_filter: input.poolFilter,
+    auto_added: input.autoAdded,
+    roster_size: input.rosterSize,
+    draft_order: input.draftOrder,
+  });
 }
 
 type Result = { data: unknown; error: { code?: string; message: string } | null; status?: number };
@@ -368,29 +401,83 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
       return rows[0] ? toRound(rows[0]) : null;
     },
     async createRound(input) {
+      const rows = await run(db.from('rounds').insert(roundInsert(input)).select());
+      return first(rows, toRound, 'round');
+    },
+    async createRoundIfAbsent(input) {
+      // ON CONFLICT (league_id, event_key) DO NOTHING: a conflicting row comes back as an empty result.
       const rows = await run(
         db
           .from('rounds')
-          .insert(
-            defined({
-              league_id: input.leagueId,
-              event_key: input.eventKey,
-              event_name: input.eventName,
-              start_date: input.startDate,
-              end_date: input.endDate,
-              timezone: input.timezone,
-              scoring: input.scoring,
-              kind: input.kind,
-              season_year: input.seasonYear,
-              pool_filter: input.poolFilter,
-              auto_added: input.autoAdded,
-              roster_size: input.rosterSize,
-              draft_order: input.draftOrder,
-            }),
+          .upsert(roundInsert(input), { onConflict: 'league_id,event_key', ignoreDuplicates: true })
+          .select(),
+      );
+      return rows[0] ? toRound(rows[0]) : null;
+    },
+    async listOpenSeasonRounds() {
+      const rows = await run(db.from('rounds').select().eq('kind', 'season').is('finalized_at', null));
+      return rows.map(toRound);
+    },
+
+    async listManualResults(roundId) {
+      const rows = await run(db.from('manual_results').select().eq('round_id', roundId).order('team_key'));
+      return rows.map(toManualResult);
+    },
+    async upsertManualResult(row) {
+      const rows = await run(
+        db
+          .from('manual_results')
+          .upsert(
+            {
+              round_id: row.roundId,
+              team_key: row.teamKey,
+              qual_wins: row.qualWins,
+              qual_losses: row.qualLosses,
+              qual_ties: row.qualTies,
+              ranking_points: row.rankingPoints,
+              qual_rank: row.qualRank,
+              alliance_role: row.allianceRole,
+              playoff_wins: row.playoffWins,
+              event_result: row.eventResult,
+              award_types: row.awardTypes,
+            },
+            { onConflict: 'round_id,team_key' },
           )
           .select(),
       );
-      return first(rows, toRound, 'round');
+      return first(rows, toManualResult, 'manual result');
+    },
+    async deleteManualResult(roundId, teamKey) {
+      await run(db.from('manual_results').delete().eq('round_id', roundId).eq('team_key', teamKey));
+    },
+
+    async listFollows(leagueId) {
+      const rows = await run(db.from('league_follows').select('team_number').eq('league_id', leagueId).order('team_number'));
+      return rows.map((r) => r.team_number as number);
+    },
+    async setFollows(leagueId, teamNumbers) {
+      // Two statements, not a transaction: a crash in between leaves no follows, which is safe (sync adds nothing).
+      await run(db.from('league_follows').delete().eq('league_id', leagueId));
+      const unique = [...new Set(teamNumbers)];
+      if (unique.length > 0) {
+        await run(db.from('league_follows').insert(unique.map((n) => ({ league_id: leagueId, team_number: n }))));
+      }
+    },
+    async listLeaguesWithFollows() {
+      // The !inner embed keeps only leagues with at least one follow; PostgREST returns one row per league.
+      const rows = await run(db.from('leagues').select('*, league_follows!inner(team_number)'));
+      return rows.map(toLeague);
+    },
+    async listSkippedEvents(leagueId) {
+      const rows = await run(db.from('league_skipped_events').select('event_key').eq('league_id', leagueId));
+      return rows.map((r) => r.event_key as string);
+    },
+    async addSkippedEvent(leagueId, eventKey) {
+      await run(
+        db
+          .from('league_skipped_events')
+          .upsert({ league_id: leagueId, event_key: eventKey }, { onConflict: 'league_id,event_key', ignoreDuplicates: true }),
+      );
     },
     async updateRound(id, patch) {
       const rows = await run(
