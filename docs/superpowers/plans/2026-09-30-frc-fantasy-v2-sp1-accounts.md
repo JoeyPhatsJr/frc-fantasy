@@ -5734,7 +5734,7 @@ discord.com/developers/applications → **New Application** "FRC Fantasy" → OA
 - [ ] **Step 3 (Joey): Supabase**
 
 1. Authentication → Providers → **Google** → enable, paste Client ID + secret → Save. **Discord** → the same.
-2. Authentication → URL Configuration → **Site URL** `https://frc-fantasy-6yo3.vercel.app`; **Redirect URLs**: add `https://frc-fantasy-6yo3.vercel.app/**` and `http://localhost:3000/**`.
+2. Authentication → URL Configuration → **Site URL** `https://frc-fantasy-5181.vercel.app`; **Redirect URLs**: add `https://frc-fantasy-5181.vercel.app/**` and `http://localhost:3000/**`.
 3. Project Settings → API: copy the **Project URL** and the **anon / publishable** key.
 
 - [ ] **Step 4 (Joey): env vars**
@@ -5797,7 +5797,7 @@ Publish the branch and open a PR titled "v2 SP1: accounts & leagues". Body: what
 1. Vercel builds `main` automatically; wait for "Ready".
 2. If production uses a different Supabase project than `.env.local` (checked in Task 2 Step 8): run `scripts/delete-v1-leagues.ts` (Joey confirms the list) and migration `0002` against production now.
 3. Vercel → Environment Variables → delete `CREATE_LEAGUE_PASSCODE` → Redeploy.
-4. On Joey's phone: https://frc-fantasy-6yo3.vercel.app → landing page → Continue with Google → Me tab. Both themes.
+4. On Joey's phone: https://frc-fantasy-5181.vercel.app → landing page → Continue with Google → Me tab. Both themes.
 
 - [ ] **Step 5: Joey creates the family league**
 

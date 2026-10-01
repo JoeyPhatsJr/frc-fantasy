@@ -5291,7 +5291,7 @@ Push the branch and open a PR titled `v2 SP4: live draft room` whose body lists:
 
 - [ ] **Step 4: Production check**
 
-On `https://frc-fantasy-6yo3.vercel.app`, in a throwaway league: switch a round to **Live draft**, 30 s timer, start it, and draft from two real phones (one iPhone, one Android if possible), both themes. Confirm: the countdowns agree, a pick shows on the other phone within ~1 s, a timeout auto-picks, "Reconnecting…" appears in airplane mode and clears after. Delete the throwaway league afterwards.
+On `https://frc-fantasy-5181.vercel.app`, in a throwaway league: switch a round to **Live draft**, 30 s timer, start it, and draft from two real phones (one iPhone, one Android if possible), both themes. Confirm: the countdowns agree, a pick shows on the other phone within ~1 s, a timeout auto-picks, "Reconnecting…" appears in airplane mode and clears after. Delete the throwaway league afterwards.
 
 - [ ] **Step 5: Hand off**
 

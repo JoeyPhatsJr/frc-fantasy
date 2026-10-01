@@ -610,7 +610,7 @@ Each sub-project follows the v1 working style: brief on disk, subagent implement
 ## 11. One-time setup (Joey, ~5 min, guided)
 
 1. **Supabase → Authentication → Sign In / Providers → Email:** enabled; **Confirm email OFF**; minimum password length **8**. Anonymous sign-ins **off**.
-2. **Supabase → Authentication → URL Configuration:** Site URL `https://frc-fantasy-6yo3.vercel.app`.
+2. **Supabase → Authentication → URL Configuration:** Site URL `https://frc-fantasy-5181.vercel.app`.
 3. **Env vars:** `.env.local` gets `NEXT_PUBLIC_SUPABASE_URL` (= `SUPABASE_URL`), `NEXT_PUBLIC_SUPABASE_ANON_KEY` (Project Settings → API Keys → anon/publishable), `CRON_SECRET`, `E2E_AUTH_SECRET`; remove `CREATE_LEAGUE_PASSCODE`. **Vercel** (Production + Preview) gets `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `CRON_SECRET` **before** the SP1 merge (without them `proxy.ts` fails every request); never `E2E_AUTH_SECRET`.
 
 ---

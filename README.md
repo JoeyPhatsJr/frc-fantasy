@@ -16,6 +16,28 @@ Design specs: v1 `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md`, v2 (
 - Scores are never stored. They are recomputed from The Blue Alliance data every time a page loads, using
   the round's scoring table, the picks, and any manual adjustments.
 
+## League formats
+
+Chosen when the league is created (`/leagues/new`) and fixed afterwards.
+
+- **Event by event**: one round per event. Add a round from a TBA event key, or a **Manual event** (for events not
+  on TBA: add teams by number, then type results into the round's **Results** card; no OPR bonus).
+- **Follow teams**: up to 3 team numbers in the admin Rounds card; their events this year are added as rounds
+  automatically (daily at 10:00 UTC and whenever the league page is opened, at most every 10 minutes). Deleting an
+  auto-added round keeps it deleted.
+- **Full season**: draft once; teams score at every official event (regionals, districts, district champs, Champs)
+  that year. Pool: all teams, one district, one state/province, or one country. Rosters up to 15 (default 8).
+  "Start {next year} season" appears once the season is marked final.
+
+### SP2 deploy order (league formats)
+
+Migration `0005_formats.sql` is not applied yet.
+
+> **Apply 0005 FIRST, before this branch's code runs anywhere against the real database**: before merging, before
+> opening a Vercel Preview of the PR (Preview uses the same Supabase project), and before `npm run dev` on this
+> branch. Paste `supabase/migrations/0005_formats.sql` into the Supabase SQL Editor and run it, then check with
+> `npx tsx --env-file=.env.local scripts/db-smoke.ts` (no `FAIL`). Only then merge or deploy.
+
 ## Running it locally
 
 ```bash
@@ -71,7 +93,7 @@ no emails are ever sent. (Google/Discord sign-in code exists but is switched off
 
 1. **Email provider.** Authentication → Sign In / Providers → Email: enabled, **Confirm email OFF**,
    minimum password length **8**. Leave **anonymous sign-ins off**.
-2. **Site URL.** Authentication → URL Configuration: Site URL `https://frc-fantasy-6yo3.vercel.app`.
+2. **Site URL.** Authentication → URL Configuration: Site URL `https://frc-fantasy-5181.vercel.app`.
 3. **Env vars.** Project Settings → API gives the Project URL and the anon / publishable key. Put them
    in `.env.local` as `NEXT_PUBLIC_SUPABASE_URL` (equal to `SUPABASE_URL`) and
    `NEXT_PUBLIC_SUPABASE_ANON_KEY`, plus `CRON_SECRET` and `E2E_AUTH_SECRET` (each from
@@ -137,21 +159,24 @@ that fails without it.
 
 ## Daily cron
 
-Vercel calls `GET /api/cron/daily` once a day (06:00 Eastern, `vercel.json`). It needs `CRON_SECRET` set in Vercel's
-environment variables; Vercel sends it as `Authorization: Bearer ...` automatically. Each run gets 50 seconds:
+Vercel calls `GET /api/cron/daily` once a day (10:00 UTC, `vercel.json`). It needs `CRON_SECRET` set in Vercel's
+environment variables; Vercel sends it as `Authorization: Bearer ...` automatically. Each run gets 50 seconds and runs three jobs:
 
 - **team-stats** — re-scores this season's events from the last 8 days (4 at a time, stalest first) and refreshes
   those teams' `team_stats` rows. Older finished events are read from `tba_cache`, not refetched. If it runs out of
   time it says so in the log, and the next day's run continues with the events and teams it missed.
 
+- **follow-sync** — adds rounds for the events of each league's followed teams.
+- **season-dates** — keeps full-season rounds' start and end dates on TBA's calendar.
+
 To run it by hand (for example right after an event):
-`curl -H "Authorization: Bearer $CRON_SECRET" https://frc-fantasy-6yo3.vercel.app/api/cron/daily`
+`curl -H "Authorization: Bearer $CRON_SECRET" https://frc-fantasy-5181.vercel.app/api/cron/daily`
 Logs: Vercel dashboard -> the project -> Logs, filter by `/api/cron/daily`. The daily call also keeps the Supabase
 free-tier project from pausing.
 
 ## Live site
 
-Production: https://frc-fantasy-6yo3.vercel.app (Vercel, deploys automatically from `main`).
+Production: https://frc-fantasy-5181.vercel.app (Vercel, deploys automatically from `main`).
 
 ## Design
 
