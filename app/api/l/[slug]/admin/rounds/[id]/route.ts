@@ -32,6 +32,12 @@ const patchSchema = z
       .max(50, 'Too many players in the draft order')
       .optional(),
     scoring: scoringConfigSchema.optional(),
+    draftMode: z.enum(['commissioner', 'live'], 'draftMode must be commissioner or live').optional(),
+    pickSeconds: z
+      .union([z.literal(30), z.literal(60), z.literal(90), z.literal(120), z.null()], {
+        error: 'The pick timer must be off, 30, 60, 90, or 120 seconds',
+      })
+      .optional(),
     finalized: z.boolean().optional(),
   })
   .refine((v) => Object.values(v).some((x) => x !== undefined), { message: 'Nothing to change' });
@@ -54,6 +60,21 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
     const repo = getRepo();
     const now = new Date();
 
+    // v2 §7.1 / §7.3: live-draft settings and locks.
+    if (patch.draftMode !== undefined && patch.draftMode !== round.draftMode) {
+      if (round.draftStartedAt) throw new HttpError(409, 'The draft has already started');
+      if ((await repo.listPicks(round.id)).length > 0) {
+        throw new HttpError(409, 'Undo all picks to change the draft mode');
+      }
+    }
+    let pausedRemainingMs: null | undefined;
+    if (patch.pickSeconds !== undefined && patch.pickSeconds !== round.pickSeconds) {
+      if (round.draftStartedAt && !round.draftPausedAt) {
+        throw new HttpError(409, 'Pause the draft to change the timer');
+      }
+      if (round.draftPausedAt) pausedRemainingMs = null; // resume gives the full new timer
+    }
+
     const rosterSize = patch.rosterSize ?? round.rosterSize;
     const draftOrder = patch.draftOrder ?? round.draftOrder;
     const draftChanged =
@@ -62,6 +83,9 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
       draftOrder.some((playerId, i) => playerId !== round.draftOrder[i]);
 
     if (draftChanged) {
+      if (round.draftStartedAt) {
+        throw new HttpError(409, 'The draft has started — the order and roster size are locked');
+      }
       const picks = await repo.listPicks(round.id);
       if (picks.length > 0) {
         throw new HttpError(409, 'Undo all picks to change the draft order or roster size');
@@ -97,6 +121,9 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
       rosterSize: patch.rosterSize,
       draftOrder: patch.draftOrder,
       scoring: patch.scoring,
+      draftMode: patch.draftMode,
+      pickSeconds: patch.pickSeconds,
+      pausedRemainingMs,
       finalizedAt:
         patch.finalized === undefined ? undefined : patch.finalized ? now.toISOString() : null,
     });

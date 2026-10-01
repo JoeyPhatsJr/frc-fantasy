@@ -14,6 +14,7 @@ import * as eventsRoute from '@/app/api/l/[slug]/admin/events/[eventKey]/route';
 import * as inviteRoute from '@/app/api/l/[slug]/admin/invite/route';
 import * as leagueRoute from '@/app/api/l/[slug]/admin/league/route';
 import * as playerRoute from '@/app/api/l/[slug]/admin/players/[id]/route';
+import * as draftActionRoute from '@/app/api/l/[slug]/admin/rounds/[id]/draft/[action]/route';
 import * as adjustmentRoute from '@/app/api/l/[slug]/admin/rounds/[id]/adjustments/[adjId]/route';
 import * as adjustmentsRoute from '@/app/api/l/[slug]/admin/rounds/[id]/adjustments/route';
 import * as pickRoute from '@/app/api/l/[slug]/admin/rounds/[id]/picks/[pickNumber]/route';
@@ -58,6 +59,7 @@ const MODULES: Record<string, RouteModule> = {
   'rounds/[id]': roundRoute,
   'rounds/[id]/adjustments': adjustmentsRoute,
   'rounds/[id]/adjustments/[adjId]': adjustmentRoute,
+  'rounds/[id]/draft/[action]': draftActionRoute,
   'rounds/[id]/picks': picksRoute,
   'rounds/[id]/picks/[pickNumber]': pickRoute,
   'rounds/[id]/refresh': refreshRoute,
@@ -94,6 +96,7 @@ const CASES: Case[] = [
     body: () => ({ points: 99 }),
   },
   { route: 'rounds/[id]/adjustments/[adjId]', method: 'DELETE', params: (s) => ({ ...roundOf(s), adjId: s.adjustment.id }) },
+  { route: 'rounds/[id]/draft/[action]', method: 'POST', params: (s) => ({ ...roundOf(s), action: 'start' }) },
   { route: 'rounds/[id]/picks', method: 'POST', params: roundOf, body: () => ({ expectedPickNumber: 1, teamKey: 'frc254' }) },
   { route: 'rounds/[id]/picks/[pickNumber]', method: 'PATCH', params: (s) => ({ ...roundOf(s), pickNumber: '0' }), body: () => ({ teamKey: 'frc254' }) },
   { route: 'rounds/[id]/picks/[pickNumber]', method: 'DELETE', params: (s) => ({ ...roundOf(s), pickNumber: '0' }) },
