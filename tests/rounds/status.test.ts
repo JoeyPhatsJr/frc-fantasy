@@ -76,6 +76,10 @@ describe('cacheWindowFor (§7.3)', () => {
 describe('roundStatus (§7.8)', () => {
   const eventDay = new Date('2026-10-24T18:00:00Z');
 
+  it('is Drafting once a live draft has started, even before the first pick (v2 §7.1)', () => {
+    expect(roundStatus({ ...drafted, draftStartedAt: '2026-10-23T23:00:00Z' }, 0, eventDay)).toBe('drafting');
+    expect(roundStatus({ ...drafted, draftStartedAt: null }, 0, eventDay)).toBe('setup');
+  });
   it('is Final whenever finalized_at is set, regardless of picks or dates', () => {
     const final = { ...drafted, finalizedAt: '2026-10-25T01:00:00Z' };
     expect(roundStatus(final, 0, eventDay)).toBe('final');
