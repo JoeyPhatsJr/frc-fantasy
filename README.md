@@ -38,7 +38,9 @@ Then create an account with an email and password (one-time setup below).
 
 Database setup, once: paste the files in `supabase/migrations/` (`0001_init.sql`, `0002_accounts.sql`,
 `0003_live_draft.sql`, `0004_team_stats.sql`) into the Supabase SQL Editor and run each one in order. Migration `0003` must be
-applied before deploying SP4 (the live draft room), or the draft pages will fail.
+applied before deploying SP4 (the live draft room), or the draft pages will fail. **Migration `0004` must be applied before
+the SP3 code runs anywhere against the real database** (merging, a Vercel Preview, or `npm run dev`), or every round and
+league page errors. `0004` is safe to re-run.
 
 ## Live drafts (v2)
 
@@ -110,13 +112,25 @@ been removed.
 
 ### SP3 morning sequence (team info)
 
-Migration `0004_team_stats.sql` is not applied yet. In this order:
+Migration `0004_team_stats.sql` is not applied yet.
 
-1. Paste `supabase/migrations/0004_team_stats.sql` into the Supabase SQL Editor and run it.
-2. `npx tsx --env-file=.env.local scripts/backfill-body-hash.ts`
-3. `npx tsx --env-file=.env.local scripts/build-team-stats.ts 2025`
-4. `npx tsx --env-file=.env.local scripts/build-team-stats.ts 2026`
-5. `npx tsx --env-file=.env.local scripts/show-team-stats.ts 5181 2026` (sanity check: 5181's rows and projection)
+> **Apply 0004 FIRST, before this branch's code runs anywhere against the real database**: before merging, before
+> opening a Vercel Preview of the PR (Preview uses the same Supabase project), and before `npm run dev` on this branch.
+> Without it every round page, league page, and the draft pool errors, even with a warm cache. (The other order is
+> safe: old code keeps working with 0004 applied.)
+
+In this order:
+
+1. Paste `supabase/migrations/0004_team_stats.sql` into the Supabase SQL Editor and run it. It is safe to run again
+   if a paste was cut off.
+2. `npx tsx --env-file=.env.local scripts/db-smoke.ts` must print no `FAIL` (it checks `body_hash`, `event_scores`,
+   `team_stats`, and RLS on both new tables).
+3. `npx tsx --env-file=.env.local scripts/backfill-body-hash.ts`
+4. `npx tsx --env-file=.env.local scripts/build-team-stats.ts 2025`
+5. `npx tsx --env-file=.env.local scripts/build-team-stats.ts 2026`
+6. `npx tsx --env-file=.env.local scripts/show-team-stats.ts 5181 2026` (sanity check: 5181's rows and projection)
+7. Only now merge or deploy. Optional, after the production deploy: run `backfill-body-hash.ts` once more to hash rows
+   the old code wrote in between (they also fix themselves within a day).
 
 Also set `CRON_SECRET` in Vercel (Production and Preview) **before merging SP3**: `vercel.json` adds a daily cron
 that fails without it.

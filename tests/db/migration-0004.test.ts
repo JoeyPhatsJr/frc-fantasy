@@ -6,13 +6,21 @@ const sql = readFileSync(path.join(process.cwd(), 'supabase', 'migrations', '000
 
 describe('migration 0004_team_stats.sql', () => {
   it('adds body_hash to tba_cache', () => {
-    expect(sql).toMatch(/alter table tba_cache\s+add column body_hash text/);
+    expect(sql).toMatch(/alter table tba_cache\s+add column if not exists body_hash text/);
   });
 
   it.each(['event_scores', 'team_stats'])('creates %s with RLS on and no policies', (table) => {
-    expect(sql).toMatch(new RegExp(`create table ${table} \\(`));
+    expect(sql).toMatch(new RegExp(`create table if not exists ${table} \\(`));
     expect(sql).toMatch(new RegExp(`alter table ${table}\\s+enable row level security`));
     expect(sql).not.toMatch(/create policy/i);
+  });
+
+  // Final review M9: a partial paste in the SQL Editor can be re-run as a whole.
+  it('is safe to re-run: every column, table, and index is created only if missing', () => {
+    expect(sql).not.toMatch(/add column (?!if not exists)/i);
+    expect(sql).not.toMatch(/create table (?!if not exists)/i);
+    expect(sql).not.toMatch(/create index (?!if not exists)/i);
+    expect(sql).toMatch(/create index if not exists team_stats_season_idx on team_stats \(season\)/);
   });
 
   it('keys event_scores by (event_key, config_hash) and team_stats by (team_key, season)', () => {

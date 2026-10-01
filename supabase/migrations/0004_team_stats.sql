@@ -1,12 +1,15 @@
 -- 0004_team_stats.sql — SP3 (spec §5.6, §6.1). Additive only: the previous deploy keeps working.
 -- event_scores and team_stats are DERIVED caches. They can be truncated at any time and rebuild
 -- themselves (scripts/rebuild-event-scores.ts, scripts/build-team-stats.ts).
+-- Safe to re-run (every statement is "if not exists" or idempotent), e.g. after a partial paste.
+-- Apply it BEFORE the SP3 code runs anywhere against this database (merge, Vercel Preview, or
+-- `npm run dev`): that code reads body_hash, event_scores and team_stats on every round page.
 
 -- sha256 of the canonical JSON of tba_cache.body; null when body is null. Written by the app's
 -- upsertCache, never by callers. Existing rows are filled by scripts/backfill-body-hash.ts.
-alter table tba_cache add column body_hash text;
+alter table tba_cache add column if not exists body_hash text;
 
-create table event_scores (
+create table if not exists event_scores (
   event_key     text not null check (event_key ~ '^[0-9]{4}[a-z0-9]+$'),
   config_hash   text not null,   -- sha256 of canonical (sorted-key) JSON of the ScoringConfig
   source_stamp  text not null,   -- sha256 of the six input paths' body_hash values, in fixed path order
@@ -16,7 +19,7 @@ create table event_scores (
   primary key (event_key, config_hash)
 );
 
-create table team_stats (
+create table if not exists team_stats (
   team_key          text not null check (team_key ~ '^frc[1-9][0-9]{0,4}[A-Z]?$'),
   season            integer not null check (season between 1992 and 2100),
   events_played     integer not null,          -- events with >= 1 played qual match for this team
@@ -33,7 +36,7 @@ create table team_stats (
   updated_at        timestamptz not null default now(),
   primary key (team_key, season)
 );
-create index team_stats_season_idx on team_stats (season);
+create index if not exists team_stats_season_idx on team_stats (season);
 
 alter table event_scores enable row level security;
 alter table team_stats   enable row level security;
