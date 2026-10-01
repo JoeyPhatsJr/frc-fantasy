@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { adminFetch, createLeague } from '@/lib/admin/client';
+import { adminFetch, ApiError, createLeague } from '@/lib/admin/client';
 import { parseFollowInput } from '@/lib/follow/input';
 import { allowedSeasonYears, defaultSeasonYear } from '@/lib/season/calendar';
 import type { PoolFilter } from '@/lib/season/poolFilter';
@@ -22,6 +22,20 @@ type FormatBody =
 /** Where to go after creating. round_error=1 makes the dashboard say the first round wasn't added. */
 export function afterCreateUrl(slug: string, roundFailed: boolean): string {
   return `/l/${slug}/admin${roundFailed ? '?round_error=1' : ''}`;
+}
+
+/**
+ * Adds the prefilled event as the new league's first round. True when the event is in the league.
+ * A 409 means it already is: following a team that attends the event lets the server's follow sync
+ * add it first (SP2 final review, Minor 1), so that is not a failure.
+ */
+export async function addFirstRound(slug: string, eventKey: string, fetchImpl: typeof fetch = fetch): Promise<boolean> {
+  try {
+    await adminFetch(slug, '/rounds', { method: 'POST', body: { eventKey } }, fetchImpl);
+    return true;
+  } catch (err) {
+    return err instanceof ApiError && err.status === 409;
+  }
 }
 
 /** The format part of the POST /api/leagues body (spec §5), or what to fix first. */
@@ -73,16 +87,9 @@ export function CreateLeagueForm({ event }: { event?: { key: string; name: strin
     setBusy(true);
     try {
       const { slug } = await createLeague({ name, visibility, ...checked.fields });
-      let roundFailed = false;
       // A season league's one round is made by the server; only event leagues add the prefilled event.
-      if (event && format === 'event') {
-        try {
-          await adminFetch(slug, '/rounds', { method: 'POST', body: { eventKey: event.key } });
-        } catch {
-          // The league exists; the dashboard tells the commissioner to add the round there.
-          roundFailed = true;
-        }
-      }
+      // If that fails, the league still exists, and the dashboard tells the commissioner to add the round.
+      const roundFailed = event && format === 'event' ? !(await addFirstRound(slug, event.key)) : false;
       window.location.assign(afterCreateUrl(slug, roundFailed));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
