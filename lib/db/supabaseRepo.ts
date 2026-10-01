@@ -1,8 +1,10 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { generateInviteCode } from '@/lib/leagues/inviteCode';
+import { bodyHash } from '@/lib/scores/hash';
 import { DbUnavailableError, UniqueViolation, type Repo } from '@/lib/db/repo';
 import type {
   AdjustmentRow,
+  CacheMeta,
   CacheRow,
   LeagueRow,
   PickRow,
@@ -89,6 +91,19 @@ const toCache = (r: Raw): CacheRow => ({
   lastError: r.last_error,
   lastErrorAt: r.last_error_at,
 });
+const toCacheMeta = (r: Raw): CacheMeta => ({
+  path: r.path,
+  fetchedAt: r.fetched_at,
+  bodyHash: r.body_hash,
+  lastErrorAt: r.last_error_at,
+});
+
+/** Splits a list so `.in(...)` filters stay well under PostgREST's URL length limit. */
+function chunks<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
 
 /** Drops keys whose value is undefined, so a patch only touches the columns it names. */
 function defined(obj: Raw): Raw {
@@ -469,6 +484,7 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
             path: row.path,
             etag: row.etag,
             body: row.body, // JS null is stored as SQL NULL
+            body_hash: bodyHash(row.body), // computed here only (spec §5.6), so 304s keep the same hash
             fetched_at: row.fetchedAt,
             last_error: row.lastError,
             last_error_at: row.lastErrorAt,
@@ -476,6 +492,15 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
           { onConflict: 'path' },
         ),
       );
+    },
+    async getCacheMeta(paths) {
+      if (paths.length === 0) return [];
+      const batches = await Promise.all(
+        chunks(paths, 100).map((batch) =>
+          run(db.from('tba_cache').select('path, fetched_at, body_hash, last_error_at').in('path', batch)),
+        ),
+      );
+      return batches.flat().map(toCacheMeta);
     },
 
     async makePickAtomic(input) {

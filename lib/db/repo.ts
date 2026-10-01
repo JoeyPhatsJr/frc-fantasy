@@ -1,5 +1,6 @@
 import type {
   AdjustmentRow,
+  CacheMeta,
   CacheRow,
   DraftMode,
   LeagueRole,
@@ -147,6 +148,8 @@ export interface Repo {
 
   getCache(path: string): Promise<CacheRow | null>;
   upsertCache(row: CacheRow): Promise<void>;
+  /** Metadata for the given tba_cache paths (no bodies), for the rows that exist. One round trip per 100 paths. */
+  getCacheMeta(paths: string[]): Promise<CacheMeta[]>;
 
   // Live draft (v2 §7). Each returns false instead of throwing when the draft state doesn't allow it.
   makePickAtomic(input: AtomicPick): Promise<boolean>;

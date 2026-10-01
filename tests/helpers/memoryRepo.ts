@@ -2,8 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { generateInviteCode } from '@/lib/leagues/inviteCode';
 import { nextDeadline, pausedRemainingMs, resumeDeadline, totalPicks } from '@/lib/draft/live';
 import { UniqueViolation, type Repo } from '@/lib/db/repo';
+import { bodyHash } from '@/lib/scores/hash';
 import type {
   AdjustmentRow,
+  CacheMeta,
   CacheRow,
   LeagueRow,
   PickRow,
@@ -23,7 +25,7 @@ export function createMemoryRepo(opts: { now?: () => Date } = {}): Repo {
   let extraTeams: { roundId: string; teamKey: string }[] = [];
   let picks: PickRow[] = [];
   let adjustments: AdjustmentRow[] = [];
-  const cache = new Map<string, CacheRow>();
+  const cache = new Map<string, CacheRow & { bodyHash: string | null }>();
   const queues = new Map<string, string[]>(); // `${roundId}|${playerId}` -> team keys in order
   const autodraft = new Map<string, boolean>();
   const qk = (roundId: string, playerId: string) => `${roundId}|${playerId}`;
@@ -295,10 +297,24 @@ export function createMemoryRepo(opts: { now?: () => Date } = {}): Repo {
     },
 
     async getCache(path) {
-      return copy(cache.get(path) ?? null);
+      const hit = cache.get(path);
+      if (!hit) return null;
+      const { bodyHash: _hash, ...row } = hit;
+      return copy(row);
     },
     async upsertCache(row) {
-      cache.set(row.path, copy(row));
+      // Like the real repo: the hash is computed here, never passed in (spec §5.6).
+      cache.set(row.path, { ...copy(row), bodyHash: bodyHash(row.body) });
+    },
+    async getCacheMeta(paths) {
+      const out: CacheMeta[] = [];
+      for (const path of paths) {
+        const hit = cache.get(path);
+        if (hit) {
+          out.push({ path, fetchedAt: hit.fetchedAt, bodyHash: hit.bodyHash, lastErrorAt: hit.lastErrorAt });
+        }
+      }
+      return out;
     },
 
     // Emulations of the 0003 SQL functions. Each body is one synchronous block (no `await`), so,
