@@ -71,7 +71,8 @@ export async function getEventScores(
   }
 
   // Step 4: refresh through getTba exactly as v1 does (304s keep body_hash, so the stamp stays put).
-  const loaded = await loadEventData(eventKey, { windowMs }, { store: repo, ...opts.tba });
+  // One clock for the hit check and getTba's window, unless the caller overrides tba.now.
+  const loaded = await loadEventData(eventKey, { windowMs }, { store: repo, now: () => now, ...opts.tba });
   const data = cleanEventData(loaded.data);
   const info = eventInfo(data);
   const newStamp = sourceStamp(paths, toMap(await repo.getCacheMeta(paths)));

@@ -171,6 +171,27 @@ describe('getEventScores', () => {
     expect(await repo.getEventScoresRow(EVENT, configHash(defaultScoring()))).not.toBeNull();
   });
 
+  it('with only opts.now given, the TBA refresh uses that same clock', async () => {
+    await run();
+    // The real clock says "still in the window"; opts.now says "window passed". opts.now must win.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date(now.getTime() + 30_000));
+      later(2 * WINDOW);
+      tba.calls.length = 0;
+      const res = await getEventScores(EVENT, defaultScoring(), WINDOW, {
+        now,
+        repo,
+        tba: { fetchImpl: tba.fetchImpl, apiKey: 'k' },
+      });
+      expect(tba.calls).toHaveLength(6);
+      expect(res.fetchedAt).toBe(now.toISOString());
+      expect(res.stale).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // Review Focus 2.
   it('when TBA has never answered: empty scores, marked stale, nothing cached, tries again next time', async () => {
     tba = fakeTba(null);
