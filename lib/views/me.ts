@@ -1,6 +1,6 @@
 import { getRepo } from '@/lib/db';
 import { addDays, cacheWindowFor, localDate } from '@/lib/rounds/status';
-import { hasResult } from '@/lib/scoring/matches';
+import { hasResult, winnerOf } from '@/lib/scoring/matches';
 import { getTba } from '@/lib/tba/client';
 import type { MatchSimple } from '@/lib/tba/types';
 import { loadLeaguePage } from '@/lib/views/league';
@@ -37,15 +37,36 @@ export function matchLabel(m: MatchSimple): string {
 const plays = (m: MatchSimple, teamKey: string) =>
   Boolean(m.alliances?.red?.team_keys?.includes(teamKey) || m.alliances?.blue?.team_keys?.includes(teamKey));
 
-/** "Q14 · up next" / "Q14 · in 2 matches" / "Quals done" / "Eliminated" / "Done" (spec §4.6). */
+/** Did the team lose two playoff matches at one level? (Two losses end a best-of-3 series or a double-elimination run.) */
+function outOfPlayoffs(teamKey: string, playoffMatches: MatchSimple[]): boolean {
+  const losses = new Map<string, number>();
+  for (const m of playoffMatches) {
+    const side = m.alliances?.red?.team_keys?.includes(teamKey) ? 'red' : 'blue';
+    const winner = winnerOf(m);
+    if (winner !== null && winner !== side) losses.set(m.comp_level, (losses.get(m.comp_level) ?? 0) + 1);
+  }
+  return [...losses.values()].some((n) => n >= 2);
+}
+
+/**
+ * "Q14 · up next" / "Q14 · in 2 matches" / "Quals done" / "Waiting for playoffs" /
+ * "Waiting for next match" / "Eliminated" / "Done" (spec §4.6).
+ * TBA posts playoff matches only once the teams are known, so "nothing scheduled" during alliance
+ * selection or between double-elimination rounds means waiting, not done or out.
+ */
 export function nextMatchLabel(teamKey: string, matches: MatchSimple[] | null): string {
   if (!matches || matches.length === 0) return 'Schedule not posted';
   const unplayed = matches.filter((m) => !hasResult(m)).sort(order);
   const i = unplayed.findIndex((m) => plays(m, teamKey));
   if (i === 0) return `${matchLabel(unplayed[0])} · up next`;
   if (i > 0) return `${matchLabel(unplayed[i])} · in ${i} ${i === 1 ? 'match' : 'matches'}`;
+
+  const playoffs = matches.filter((m) => m.comp_level !== 'qm');
+  if (playoffs.length === 0) return unplayed.length === 0 ? 'Waiting for playoffs' : 'Quals done';
   if (unplayed.length === 0) return 'Done';
-  return unplayed.some((m) => m.comp_level === 'qm') ? 'Quals done' : 'Eliminated';
+  const mine = playoffs.filter((m) => plays(m, teamKey));
+  if (mine.length === 0) return 'Eliminated'; // not on a playoff alliance
+  return outOfPlayoffs(teamKey, mine) ? 'Eliminated' : 'Waiting for next match';
 }
 
 export type SeasonInput = {
@@ -108,15 +129,22 @@ export async function loadMePage(userId: string, now: Date): Promise<MePage> {
       if (view.status !== 'live' && !soon) continue;
       const myTeams = view.picks.filter((p) => p.playerId === player.id).map((p) => p.teamKey);
       if (myTeams.length === 0) continue;
-      const matches = await getTba<MatchSimple[]>(`/event/${view.round.eventKey}/matches/simple`, {
-        windowMs: cacheWindowFor(view.round, now),
-      });
+      // One event's schedule failing (TBA or tba_cache) degrades only its own rows, not the Me page.
+      let schedule: MatchSimple[] | null = null;
+      try {
+        const matches = await getTba<MatchSimple[]>(`/event/${view.round.eventKey}/matches/simple`, {
+          windowMs: cacheWindowFor(view.round, now),
+        });
+        schedule = Array.isArray(matches.data) ? matches.data : null;
+      } catch (err) {
+        console.error(err);
+      }
       for (const teamKey of myTeams) {
         teams.push({
           teamKey,
           leagueName: league.name,
           eventName: view.round.eventName,
-          label: nextMatchLabel(teamKey, Array.isArray(matches.data) ? matches.data : null),
+          label: nextMatchLabel(teamKey, schedule),
           status: view.status === 'live' ? 'live' : 'upcoming',
         });
       }

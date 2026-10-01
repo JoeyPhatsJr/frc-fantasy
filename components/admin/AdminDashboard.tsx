@@ -17,14 +17,20 @@ import type { AdminApi } from '@/lib/admin/client';
 import type { AdminState, EventLookup } from '@/lib/api/types';
 import { formatDateRange } from '@/lib/format';
 
-export function AdminDashboard({ slug }: { slug: string }) {
-  return <AdminGate slug={slug}>{(api) => <Dashboard slug={slug} api={api} />}</AdminGate>;
+export const FIRST_ROUND_FAILED = "Your league is ready, but the first round couldn't be added. Add it under Rounds below.";
+
+/** firstRoundFailed: /leagues/new made the league but couldn't add the prefilled event (?round_error=1). */
+export function AdminDashboard({ slug, firstRoundFailed = false }: { slug: string; firstRoundFailed?: boolean }) {
+  return (
+    <AdminGate slug={slug}>{(api) => <Dashboard slug={slug} api={api} firstRoundFailed={firstRoundFailed} />}</AdminGate>
+  );
 }
 
-function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
+function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminApi; firstRoundFailed: boolean }) {
   const [state, setState] = useState<AdminState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [roundWarning, setRoundWarning] = useState(firstRoundFailed);
   /** Which action is running (it shows the spinner); every other control is disabled meanwhile. */
   const [pending, setPending] = useState<string | null>(null);
   const busy = pending !== null;
@@ -53,6 +59,7 @@ function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
       setPending(key);
       setError(null);
       setNotice(null);
+      setRoundWarning(false);
       let ok = false;
       try {
         await action();
@@ -114,6 +121,7 @@ function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
         <CopyButton text={publicLink} label="Copy public link" />
       </div>
 
+      {roundWarning ? <Alert tone="warning">{FIRST_ROUND_FAILED}</Alert> : null}
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {notice ? <Alert tone="success">{notice}</Alert> : null}
 

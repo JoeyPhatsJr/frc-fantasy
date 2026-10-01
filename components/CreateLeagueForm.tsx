@@ -9,6 +9,11 @@ import { adminFetch, createLeague } from '@/lib/admin/client';
 
 type Visibility = 'link' | 'members';
 
+/** Where to go after creating. round_error=1 makes the dashboard say the first round wasn't added. */
+export function afterCreateUrl(slug: string, roundFailed: boolean): string {
+  return `/l/${slug}/admin${roundFailed ? '?round_error=1' : ''}`;
+}
+
 /** /leagues/new (spec §4.6). With ?event=, the event becomes the first round. */
 export function CreateLeagueForm({ event }: { event?: { key: string; name: string } }) {
   const [name, setName] = useState('');
@@ -22,14 +27,16 @@ export function CreateLeagueForm({ event }: { event?: { key: string; name: strin
     setError(null);
     try {
       const { slug } = await createLeague({ name, visibility });
+      let roundFailed = false;
       if (event) {
         try {
           await adminFetch(slug, '/rounds', { method: 'POST', body: { eventKey: event.key } });
         } catch {
-          // The league exists; the commissioner can add the round from the dashboard.
+          // The league exists; the dashboard tells the commissioner to add the round there.
+          roundFailed = true;
         }
       }
-      window.location.assign(`/l/${slug}/admin`);
+      window.location.assign(afterCreateUrl(slug, roundFailed));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
       setBusy(false);

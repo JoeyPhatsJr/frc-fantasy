@@ -29,13 +29,60 @@ describe('nextMatchLabel (spec §4.6 Live now)', () => {
     ms.push(upcoming(4, ['frc6'], ['frc7']), upcoming(5, ['frc8'], ['frc2']));
     expect(nextMatchLabel('frc2', ms)).toBe('Q5 · in 3 matches');
   });
-  it('quals done, eliminated, done, no schedule', () => {
+  it('quals done, eliminated, no schedule', () => {
     expect(nextMatchLabel('frc1', [played(1, ['frc1'], ['frc2']), upcoming(2, ['frc3'], ['frc4'])])).toBe('Quals done');
     const elim = [played(1, ['frc1'], ['frc2']), match({ level: 'sf', set: 1, num: 1, red: ['frc3'], blue: ['frc4'] })];
-    expect(nextMatchLabel('frc1', elim)).toBe('Eliminated');
-    expect(nextMatchLabel('frc1', [played(1, ['frc1'], ['frc2'])])).toBe('Done');
+    expect(nextMatchLabel('frc1', elim)).toBe('Eliminated'); // not on a playoff alliance
     expect(nextMatchLabel('frc1', [])).toBe('Schedule not posted');
     expect(nextMatchLabel('frc1', null)).toBe('Schedule not posted');
+  });
+
+  // Between quals and playoffs, and between double-elimination rounds, a team with nothing scheduled
+  // is not necessarily done or out (final review, Minor #1).
+  const de = (set: number, red: string[], blue: string[], winner?: 'red' | 'blue') =>
+    match({
+      level: 'sf', set, num: 1, red, blue,
+      ...(winner ? { redScore: winner === 'red' ? 10 : 5, blueScore: winner === 'blue' ? 10 : 5 } : {}),
+    });
+  const final = (num: number, red: string[], blue: string[], winner?: 'red' | 'blue') =>
+    match({
+      level: 'f', set: 1, num, red, blue,
+      ...(winner ? { redScore: winner === 'red' ? 10 : 5, blueScore: winner === 'blue' ? 10 : 5 } : {}),
+    });
+
+  it('all quals played and no bracket posted yet: waiting for playoffs, not "Done"', () => {
+    expect(nextMatchLabel('frc1', [played(1, ['frc1'], ['frc2']), played(2, ['frc3'], ['frc4'])])).toBe('Waiting for playoffs');
+  });
+
+  it('won a double-elimination match, next one not posted: waiting, not "Eliminated"', () => {
+    const ms = [played(1, ['frc1'], ['frc2']), de(1, ['frc1'], ['frc2'], 'red'), de(2, ['frc3'], ['frc4'])];
+    expect(nextMatchLabel('frc1', ms)).toBe('Waiting for next match');
+  });
+
+  it('one double-elimination loss is not out yet', () => {
+    const ms = [played(1, ['frc1'], ['frc2']), de(1, ['frc1'], ['frc2'], 'blue'), de(2, ['frc3'], ['frc4'])];
+    expect(nextMatchLabel('frc1', ms)).toBe('Waiting for next match');
+  });
+
+  it('two playoff losses at the same level is eliminated', () => {
+    const ms = [
+      played(1, ['frc1'], ['frc2']),
+      de(1, ['frc1'], ['frc2'], 'blue'),
+      de(5, ['frc3'], ['frc1'], 'red'),
+      de(9, ['frc5'], ['frc6']),
+    ];
+    expect(nextMatchLabel('frc1', ms)).toBe('Eliminated');
+  });
+
+  it('a bracket loss plus one finals loss is not out while the finals go on', () => {
+    const ms = [de(1, ['frc1'], ['frc2'], 'blue'), final(1, ['frc1'], ['frc2'], 'blue'), final(2, ['frc1'], ['frc2'])];
+    expect(nextMatchLabel('frc1', ms)).toBe('F2 · up next');
+    expect(nextMatchLabel('frc1', ms.slice(0, 2).concat(final(2, ['frc9'], ['frc8'])))).toBe('Waiting for next match');
+  });
+
+  it('every match played, playoffs included: Done', () => {
+    expect(nextMatchLabel('frc1', [played(1, ['frc1'], ['frc2']), de(1, ['frc1'], ['frc2'], 'red')])).toBe('Done');
+    expect(nextMatchLabel('frc9', [played(1, ['frc1'], ['frc2']), de(1, ['frc1'], ['frc2'], 'red')])).toBe('Done');
   });
 });
 
@@ -84,5 +131,38 @@ describe('loadMePage', () => {
       { slug: 'bad-abc234', name: 'Bad', isCommissioner: false, rank: null, total: 0, anyLive: false, error: true },
     ]);
     expect(page.teams).toEqual([]);
+  });
+
+  it("one event's schedule failing to load only degrades that team's row", async () => {
+    await repo.createProfile({ id: 'u1', displayName: 'Joey', avatarUrl: null });
+    const lg = await repo.createLeague({ slug: 'fam-abc234', name: 'Fam', defaultScoring: defaultScoring() });
+    const me = await repo.createMember({ leagueId: lg.id, userId: 'u1', name: 'Joey', role: 'commissioner' });
+    for (const [eventKey, teamKey] of [['2026aaa', 'frc1'], ['2026bbb', 'frc2']]) {
+      const r = await repo.createRound({
+        leagueId: lg.id, eventKey, eventName: `Event ${eventKey}`, startDate: '2026-10-01', endDate: '2026-10-01',
+        timezone: 'America/New_York', scoring: defaultScoring(),
+      });
+      await repo.updateRound(r.id, { draftOrder: [me.id], rosterSize: 1 });
+      await repo.insertPick({ roundId: r.id, pickNumber: 0, playerId: me.id, teamKey });
+    }
+    let bbbScheduleCalls = 0;
+    h.getTba.mockImplementation(async (path: string) => {
+      if (path === '/event/2026aaa/matches/simple') {
+        return { data: [match({ num: 1, red: ['frc1'], blue: ['frc9'] })], fetchedAt: null, stale: false };
+      }
+      // The league page's load works; the Me loop's own schedule read fails (e.g. tba_cache unreachable).
+      if (path === '/event/2026bbb/matches/simple' && ++bbbScheduleCalls > 1) throw new Error('tba_cache down');
+      return { data: null, fetchedAt: null, stale: false };
+    });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const page = await loadMePage('u1', new Date('2026-10-01T16:00:00Z'));
+    expect(page.leagues.map((l) => l.error)).toEqual([false]);
+    expect(page.teams).toEqual([
+      { teamKey: 'frc1', leagueName: 'Fam', eventName: 'Event 2026aaa', label: 'Q1 · up next', status: 'live' },
+      { teamKey: 'frc2', leagueName: 'Fam', eventName: 'Event 2026bbb', label: 'Schedule not posted', status: 'live' },
+    ]);
+    expect(log).toHaveBeenCalled();
+    log.mockRestore();
   });
 });

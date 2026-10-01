@@ -1,0 +1,50 @@
+'use client';
+
+import { useRouter } from 'next/navigation';
+import { startTransition, useEffect } from 'react';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { RefreshCw, TriangleAlert } from '@/components/ui/icons';
+
+// In production Next.js hides the real error message from the browser, so every failure gets this
+// one friendly page; by far the most likely cause is the paused Supabase database (spec §8.2).
+// Used by app/error.tsx and app/l/[slug]/error.tsx.
+export function DbAsleepError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  const router = useRouter();
+
+  useEffect(() => {
+    console.error(error);
+  }, [error]);
+
+  // reset() alone only re-renders on the client; refresh() refetches the server page too, so retrying
+  // after the database wakes up actually loads fresh data.
+  function retry() {
+    startTransition(() => {
+      router.refresh();
+      reset();
+    });
+  }
+
+  return (
+    <main id="main" className="space-y-6">
+      <Card className="space-y-4 border-t-4 border-t-accent">
+        <TriangleAlert className="size-8 text-warning" />
+        <h1 className="break-words font-display text-3xl font-bold uppercase leading-tight tracking-wide text-fg">
+          The league database is asleep
+        </h1>
+        <p className="text-fg">
+          This usually means the league database is asleep, or The Blue Alliance data couldn&rsquo;t be read.
+          Your picks and scores are safe.
+        </p>
+        <p className="text-sm text-fg-muted">
+          If you are the commissioner: open the Supabase dashboard and press &ldquo;Restore project&rdquo;, wait
+          a minute, then try again.
+        </p>
+        <Button type="button" onClick={retry}>
+          <RefreshCw className="size-4 shrink-0" />
+          Try again
+        </Button>
+      </Card>
+    </main>
+  );
+}
