@@ -36,8 +36,31 @@ Then create an account with an email and password (one-time setup below).
 | `CRON_SECRET` | 32+ random characters (`openssl rand -base64 32`). Used by the scheduled jobs. |
 | `E2E_AUTH_SECRET` | Another random string. Local only, never on Vercel: lets Playwright sign in through `/api/test/login`. |
 
-Database setup, once: paste the files in `supabase/migrations/` into the Supabase SQL Editor and run
-them in order.
+Database setup, once: paste the files in `supabase/migrations/` (`0001_init.sql`, `0002_accounts.sql`,
+`0003_live_draft.sql`) into the Supabase SQL Editor and run each one in order. Migration `0003` must be
+applied before deploying SP4 (the live draft room), or the draft pages will fail.
+
+## Live drafts (v2)
+
+A round can be drafted two ways (round admin -> **Live draft** card):
+
+- **Commissioner enters picks** — the v1 draft entry screen.
+- **Live draft on everyone's phones** — pick a timer (off / 30 / 60 / 90 / 120 s), set the draft order, and press **Start draft**. Everyone opens the round's **draft room** (`/l/{slug}/r/{roundId}/draft`, also linked from the "Draft is live — join" banner). When a timer runs out, the server picks for that player: the first available team in their queue, else the lowest team number (projections arrive in SP3). Players can turn on **Auto-draft for me**. The commissioner can pause, resume, undo the last pick, and pick for whoever is on the clock.
+
+Fallback: until the draft starts, a round can be switched back to commissioner entry.
+
+### Live draft checks
+
+- `npx tsx --env-file=.env.local scripts/smoke-v2.ts` — real-database checks (racing picks, undo vs timeout, pause/resume, RLS on, anon key locked out). Run after applying a migration.
+- `npm run e2e` — two-phone live draft in Playwright against a local production build (port 3100, about 1-2 minutes; it cleans up its own league and users).
+
+To run the E2E:
+
+1. Apply migration `0003_live_draft.sql` to the Supabase project.
+2. Make sure `.env.local` has `E2E_AUTH_SECRET` plus the Supabase keys and `TBA_API_KEY`, that `VERCEL` is unset, and that nothing else is running on port 3100. Never set `E2E_AUTH_SECRET` on Vercel.
+3. `npx playwright install chromium` (once).
+4. `npm run e2e`.
+5. On a failure: `npx playwright show-trace test-results/*/trace.zip`.
 
 ## One-time sign-in setup
 

@@ -1,6 +1,7 @@
 import type { AdminRoundDetail } from '@/lib/api/types';
 import { getRepo } from '@/lib/db';
 import type { RoundRow } from '@/lib/db/types';
+import { draftPhase } from '@/lib/draft/live';
 import { loadPool } from '@/lib/rounds/pool';
 import { roundStatus, shouldNudgeFinalize } from '@/lib/rounds/status';
 
@@ -26,7 +27,12 @@ export async function roundDetail(round: RoundRow, now: Date): Promise<AdminRoun
       draftOrder: round.draftOrder,
       scoring: round.scoring,
       finalizedAt: round.finalizedAt,
+      draftMode: round.draftMode,
+      pickSeconds: round.pickSeconds,
+      draftStartedAt: round.draftStartedAt,
+      draftPausedAt: round.draftPausedAt,
     },
+    draftPhase: draftPhase(round, picks.length),
     status: roundStatus(round, picks.length, now),
     nudgeFinalize: shouldNudgeFinalize(round, now),
     players: players.map((p) => ({ id: p.id, name: p.name })),

@@ -15,6 +15,7 @@ The design specs: v1 `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md` a
 - Deployed: https://frc-fantasy-6yo3.vercel.app (PR #1 merged 2026-09-30). The caching proof passed. The v1 test leagues were deleted 2026-09-30; the family league will be created fresh after the SP1 merge.
 - UI overhaul shipped (PR #3, 2026-09-30): shell with a light/dark toggle (since 2026-09-30: light by default, dark toggle), bumper plates, scoreboard leaderboards; brief in `design-system/frc-fantasy/OVERHAUL.md`. Its two cosmetic leftovers (draft banner wrapping at 360px, faint gold ring in light mode) were fixed 2026-09-30.
 - v2 SP1 (accounts & leagues) merged 2026-09-30; next SP4 live draft. v2 roadmap: see memory v2-league-formats-idea.
+- v2 SP4 (live draft room) is built on branch `v2-sp4-live-draft` (live/commissioner draft modes, atomic pick/undo/control SQL functions, Realtime doorbell + polling, `scripts/smoke-v2.ts`, Playwright E2E). Waiting for migration 0003 to be applied plus the real-DB smoke and E2E checks before merge.
 
 ## Locked decisions (don't re-litigate)
 

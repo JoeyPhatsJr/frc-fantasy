@@ -9,12 +9,15 @@ export function DraftBoard({
   rosterSize,
   playerNames,
   teamNames,
+  highlightPick,
 }: {
   picks: BoardPick[];
   draftOrder: string[];
   rosterSize: number;
   playerNames: Record<string, string>;
   teamNames: Record<string, string>;
+  /** Rings this pick number (the newest pick in a live draft). */
+  highlightPick?: number;
 }) {
   const P = draftOrder.length;
   if (P === 0) return <p className="text-sm text-fg-muted">The draft order hasn&apos;t been set yet.</p>;
@@ -36,7 +39,11 @@ export function DraftBoard({
               const pickerId = r % 2 === 0 ? draftOrder[slot] : draftOrder[P - 1 - slot];
               const who = playerNames[pick?.playerId ?? pickerId] ?? 'Unknown';
               return (
-                <li key={n} className="flex min-w-0 flex-col items-center gap-1">
+                <li
+                  key={n}
+                  data-newest={highlightPick === n ? 'true' : undefined}
+                  className={`flex min-w-0 flex-col items-center gap-1 ${highlightPick === n ? 'rounded-xl ring-2 ring-accent-strong' : ''}`}
+                >
                   {/* Screen readers get the pick number and picker; sighted users see the plate and name. */}
                   <span className="sr-only">
                     #{n + 1} · {who}

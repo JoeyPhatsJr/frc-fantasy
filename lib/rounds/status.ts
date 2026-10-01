@@ -61,12 +61,13 @@ export function cacheWindowFor(round: RoundTiming, now: Date): number {
 }
 
 export function roundStatus(
-  round: RoundTiming & { rosterSize: number; draftOrder: string[] },
+  round: RoundTiming & { rosterSize: number; draftOrder: string[]; draftStartedAt?: string | null },
   pickCount: number,
   now: Date,
 ): RoundStatus {
   if (round.finalizedAt) return 'final';
-  if (pickCount <= 0) return 'setup';
+  // v2 §7.1: a started live draft shows as Drafting even before the first pick.
+  if (pickCount <= 0 && !round.draftStartedAt) return 'setup';
   if (pickCount < round.draftOrder.length * round.rosterSize) return 'drafting';
   const phase = eventPhase(round, now);
   if (phase === 'before') return 'upcoming';

@@ -1,4 +1,5 @@
-import type { LeagueRole, Visibility } from '@/lib/db/types';
+import type { DraftMode, LeagueRole, PickSeconds, Visibility } from '@/lib/db/types';
+import type { DraftPhase } from '@/lib/draft/live';
 import type { RoundStatus } from '@/lib/rounds/status';
 import type { ScoringConfig } from '@/lib/scoring/config';
 import type { PoolTeam } from '@/lib/teams';
@@ -55,7 +56,13 @@ export type AdminRoundDetail = {
     draftOrder: string[];
     scoring: ScoringConfig;
     finalizedAt: string | null;
+    draftMode: DraftMode;
+    pickSeconds: PickSeconds | null;
+    draftStartedAt: string | null;
+    draftPausedAt: string | null;
   };
+  /** Live-draft phase (v2 §7.1); 'setup' until started, for commissioner-mode rounds until full. */
+  draftPhase: DraftPhase;
   status: RoundStatus;
   /** True when the event is over but the round isn't final yet (spec §5.5). */
   nudgeFinalize: boolean;

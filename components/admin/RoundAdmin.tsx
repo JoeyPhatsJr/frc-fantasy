@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AdjustmentEditor } from '@/components/admin/AdjustmentEditor';
 import { AdminGate } from '@/components/admin/AdminGate';
 import { DraftEntry } from '@/components/admin/DraftEntry';
+import { LiveDraftControls } from '@/components/admin/LiveDraftControls';
 import { DETAILS_SUMMARY, RoundSetup } from '@/components/admin/RoundSetup';
 import { usePending } from '@/components/admin/usePending';
 import { usePolling } from '@/components/admin/usePolling';
@@ -151,6 +152,12 @@ function RoundManager({ slug, roundId, api }: { slug: string; roundId: string; a
               <RoundSetup key={`${round.draftOrder.join(',')}|${round.rosterSize}`} {...section} />
             </div>
           </details>
+        </Card>
+      </section>
+
+      <section>
+        <Card title="Live draft">
+          <LiveDraftControls {...section} slug={slug} />
         </Card>
       </section>
 

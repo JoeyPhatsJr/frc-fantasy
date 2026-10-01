@@ -52,6 +52,18 @@ describe('handle', () => {
     expect(await status(new HttpError(409, 'Draft is full'))).toEqual([409, 'Draft is full']);
   });
 
+  it('adds the error code to the body when an HttpError has one', async () => {
+    const res = await handle(async () => {
+      throw new HttpError(409, 'That team was just taken', 'taken');
+    });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'That team was just taken', code: 'taken' });
+    const plain = await handle(async () => {
+      throw new HttpError(404, 'Round not found');
+    });
+    expect(await plain.json()).toEqual({ error: 'Round not found' });
+  });
+
   it('maps unique constraints to the spec messages (§8.4)', async () => {
     expect(await status(new UniqueViolation('picks_round_team_key'))).toEqual([409, 'That team was just taken']);
     expect(await status(new UniqueViolation('picks_round_pick_number_key'))).toEqual([

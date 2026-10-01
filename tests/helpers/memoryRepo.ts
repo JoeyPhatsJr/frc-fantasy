@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { generateInviteCode } from '@/lib/leagues/inviteCode';
+import { nextDeadline, pausedRemainingMs, resumeDeadline, totalPicks } from '@/lib/draft/live';
 import { UniqueViolation, type Repo } from '@/lib/db/repo';
 import type {
   AdjustmentRow,
@@ -11,8 +12,10 @@ import type {
   RoundRow,
 } from '@/lib/db/types';
 
-/** A Repo that lives in memory and enforces the same unique constraints as the real schema. */
-export function createMemoryRepo(): Repo {
+/** A Repo that lives in memory and enforces the same unique constraints as the real schema.
+ *  `now` is the "database clock" the live-draft functions use (Task 3); tests pass a fake one. */
+export function createMemoryRepo(opts: { now?: () => Date } = {}): Repo {
+  const dbNow = opts.now ?? (() => new Date());
   let leagues: LeagueRow[] = [];
   let players: PlayerRow[] = [];
   let profiles: ProfileRow[] = [];
@@ -21,6 +24,18 @@ export function createMemoryRepo(): Repo {
   let picks: PickRow[] = [];
   let adjustments: AdjustmentRow[] = [];
   const cache = new Map<string, CacheRow>();
+  const queues = new Map<string, string[]>(); // `${roundId}|${playerId}` -> team keys in order
+  const autodraft = new Map<string, boolean>();
+  const qk = (roundId: string, playerId: string) => `${roundId}|${playerId}`;
+  /** Like `on delete cascade` from draft_queue/draft_prefs to rounds and players. */
+  function dropDraftPrefs(matches: (roundId: string, playerId: string) => boolean) {
+    for (const map of [queues, autodraft]) {
+      for (const key of [...map.keys()]) {
+        const [roundId, playerId] = key.split('|');
+        if (matches(roundId, playerId)) map.delete(key);
+      }
+    }
+  }
 
   let tick = 0;
   const stamp = () => new Date(Date.UTC(2026, 0, 1) + tick++ * 1000).toISOString();
@@ -40,6 +55,7 @@ export function createMemoryRepo(): Repo {
     picks = picks.filter((p) => !ids.includes(p.roundId));
     adjustments = adjustments.filter((a) => !ids.includes(a.roundId));
     extraTeams = extraTeams.filter((t) => !ids.includes(t.roundId));
+    dropDraftPrefs((roundId) => ids.includes(roundId));
   }
 
   return {
@@ -123,6 +139,7 @@ export function createMemoryRepo(): Repo {
       players = players.filter((p) => p.id !== id);
       picks = picks.filter((p) => p.playerId !== id);
       adjustments = adjustments.filter((a) => a.playerId !== id);
+      dropDraftPrefs((_, playerId) => playerId === id);
     },
 
     async createMember(input) {
@@ -191,6 +208,12 @@ export function createMemoryRepo(): Repo {
         rosterSize: 4,
         draftOrder: [],
         finalizedAt: null,
+        draftMode: 'commissioner',
+        pickSeconds: null,
+        draftStartedAt: null,
+        draftPausedAt: null,
+        pausedRemainingMs: null,
+        pickDeadline: null,
         createdAt: stamp(),
         ...copy(input),
       };
@@ -232,7 +255,7 @@ export function createMemoryRepo(): Repo {
         throw new UniqueViolation('picks_round_pick_number_key');
       }
       if (inRound.some((p) => p.teamKey === input.teamKey)) throw new UniqueViolation('picks_round_team_key');
-      const row: PickRow = { id: randomUUID(), createdAt: stamp(), ...input };
+      const row: PickRow = { id: randomUUID(), createdAt: stamp(), ...input, auto: input.auto ?? false };
       picks.push(row);
       return copy(row);
     },
@@ -276,6 +299,95 @@ export function createMemoryRepo(): Repo {
     },
     async upsertCache(row) {
       cache.set(row.path, copy(row));
+    },
+
+    // Emulations of the 0003 SQL functions. Each body is one synchronous block (no `await`), so,
+    // like the real `select ... for update`, two calls can never interleave. Like the SQL, they
+    // return false instead of throwing; `dbNow()` plays the database's now().
+    async makePickAtomic(input) {
+      const r = rounds.find((x) => x.id === input.roundId);
+      if (!r) return false;
+      if (r.draftMode !== 'live' || !r.draftStartedAt || r.draftPausedAt) return false;
+      const total = totalPicks(r);
+      const inRound = picks.filter((p) => p.roundId === r.id);
+      const n = inRound.length;
+      if (n >= total || n !== input.pickNumber) return false;
+      const nowMs = dbNow().getTime();
+      if (input.requireDue && (!r.pickDeadline || nowMs < Date.parse(r.pickDeadline))) return false;
+      // The SQL catches unique_violation: the slot is filled or the team is taken.
+      if (inRound.some((p) => p.pickNumber === input.pickNumber || p.teamKey === input.teamKey)) return false;
+      picks.push({
+        id: randomUUID(), createdAt: stamp(), roundId: r.id, pickNumber: input.pickNumber,
+        playerId: input.playerId, teamKey: input.teamKey, auto: input.auto,
+      });
+      r.pickDeadline = nextDeadline(r.pickSeconds, n + 1, total, nowMs);
+      return true;
+    },
+    async undoPickAtomic(roundId, pickNumber) {
+      const r = rounds.find((x) => x.id === roundId);
+      if (!r) return false;
+      const n = picks.filter((p) => p.roundId === roundId).length;
+      if (n === 0 || pickNumber !== n - 1) return false;
+      picks = picks.filter((p) => !(p.roundId === roundId && p.pickNumber === pickNumber));
+      const paused = r.draftPausedAt !== null;
+      // nextDeadline(s, 0, 1, now) is "a fresh full timer": 0 picks made of 1 remaining.
+      r.pickDeadline =
+        r.pickSeconds === null || !r.draftStartedAt || paused
+          ? null
+          : nextDeadline(r.pickSeconds, 0, 1, dbNow().getTime());
+      // Paused with a timer: the undone player gets a full timer on resume.
+      if (paused && r.pickSeconds !== null) r.pausedRemainingMs = r.pickSeconds * 1000;
+      return true;
+    },
+    async draftControl(roundId, action) {
+      const r = rounds.find((x) => x.id === roundId);
+      if (!r) return false;
+      const nowMs = dbNow().getTime();
+      const nowIso = new Date(nowMs).toISOString();
+      if (action === 'start') {
+        if (r.draftMode !== 'live' || r.draftStartedAt) return false;
+        r.draftStartedAt = nowIso;
+        r.draftPausedAt = null;
+        r.pausedRemainingMs = null;
+        r.pickDeadline = nextDeadline(r.pickSeconds, 0, 1, nowMs);
+        return true;
+      }
+      if (action === 'pause') {
+        if (!r.draftStartedAt || r.draftPausedAt) return false;
+        r.draftPausedAt = nowIso;
+        r.pausedRemainingMs = pausedRemainingMs(r.pickDeadline, nowMs);
+        r.pickDeadline = null;
+        return true;
+      }
+      if (action === 'resume') {
+        if (!r.draftPausedAt) return false;
+        const n = picks.filter((p) => p.roundId === roundId).length;
+        r.draftPausedAt = null;
+        // Never a deadline on a finished draft.
+        r.pickDeadline = n >= totalPicks(r) ? null : resumeDeadline(r.pickSeconds, r.pausedRemainingMs, nowMs);
+        return true;
+      }
+      return false;
+    },
+    async getQueue(roundId, playerId) {
+      return [...(queues.get(qk(roundId, playerId)) ?? [])];
+    },
+    async setQueue(roundId, playerId, teamKeys) {
+      queues.set(qk(roundId, playerId), [...teamKeys]);
+    },
+    async getAutodraft(roundId, playerId) {
+      return autodraft.get(qk(roundId, playerId)) ?? false;
+    },
+    async setAutodraft(roundId, playerId, on) {
+      autodraft.set(qk(roundId, playerId), on);
+    },
+    async listAutodraftPlayers(roundId) {
+      return [...autodraft.entries()]
+        .filter(([key, on]) => on && key.startsWith(`${roundId}|`))
+        .map(([key]) => key.split('|')[1]);
+    },
+    async rlsDisabledTables() {
+      return [];
     },
   };
 }
