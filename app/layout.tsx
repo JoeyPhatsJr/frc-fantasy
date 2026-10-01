@@ -85,7 +85,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <div className="mx-auto w-full max-w-2xl flex-1 px-4 py-6 pb-24 md:max-w-3xl md:pb-8">{children}</div>
         {headerUser ? <AppTabBar /> : null}
 
-        <footer className="mx-auto w-full max-w-2xl px-4 pb-6 text-center md:max-w-3xl">
+        <footer className="mx-auto w-full max-w-2xl px-4 pb-24 text-center md:max-w-3xl md:pb-6">
           <p className="text-sm text-fg-muted">
             Made by students on FRC Team 5181 ·{' '}
             <a

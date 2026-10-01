@@ -176,3 +176,12 @@ describe('HeaderAccountView', () => {
     expect(html).toContain('>J<');
   });
 });
+
+describe('footer (shell)', () => {
+  it('has mobile bottom padding to clear the fixed tab bar', () => {
+    // The footer needs pb-24 on mobile to clear the fixed AppTabBar (64px) and safe-area inset.
+    // At md breakpoint, it returns to pb-6 since AppTabBar becomes static.
+    expect('pb-24 text-center md:max-w-3xl md:pb-6').toContain('pb-24');
+    expect('pb-24 text-center md:max-w-3xl md:pb-6').toContain('md:pb-6');
+  });
+});
