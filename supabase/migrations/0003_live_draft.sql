@@ -31,6 +31,8 @@ alter table draft_queue enable row level security;
 alter table draft_prefs enable row level security;
 
 -- §7.2: one live-draft pick, atomically. Returns false (never raises) when a check fails.
+-- Only unique_violation is caught: callers must validate the team key (format, pool) and the
+-- player (pickerFor) before calling, or a check/foreign-key violation raises.
 create or replace function draft_make_pick(
   p_round_id uuid, p_pick_number integer, p_player_id uuid, p_team_key text,
   p_require_due boolean, p_auto boolean
@@ -69,6 +71,8 @@ end;
 $$;
 
 -- §7.2: live-mode undo of the last pick, atomically, with the deadline restarted.
+-- Callers use it only for live-mode rounds; commissioner-mode undo stays v1's plain delete.
+-- Paused with a timer: no deadline, but the undone player gets a full timer on resume.
 create or replace function draft_undo_pick(p_round_id uuid, p_pick_number integer) returns boolean
 language plpgsql
 set search_path = public
@@ -86,6 +90,10 @@ begin
      set pick_deadline = case
            when r.pick_seconds is null or r.draft_started_at is null or r.draft_paused_at is not null then null
            else now() + make_interval(secs => r.pick_seconds)
+         end,
+         paused_remaining_ms = case
+           when r.draft_paused_at is not null and r.pick_seconds is not null then r.pick_seconds * 1000
+           else r.paused_remaining_ms
          end
    where id = p_round_id;
   return true;
@@ -98,7 +106,9 @@ language plpgsql
 set search_path = public
 as $$
 declare
-  r  rounds%rowtype;
+  r      rounds%rowtype;
+  n      integer;
+  total  integer;
 begin
   select * into r from rounds where id = p_round_id for update;
   if not found then return false; end if;
@@ -119,10 +129,12 @@ begin
      where id = p_round_id;
   elsif p_action = 'resume' then
     if r.draft_paused_at is null then return false; end if;
+    total := r.roster_size * coalesce(cardinality(r.draft_order), 0);
+    select count(*) into n from picks where round_id = p_round_id;
     update rounds
        set draft_paused_at = null,
            pick_deadline = case
-             when r.pick_seconds is null then null
+             when r.pick_seconds is null or n >= total then null   -- never a deadline on a finished draft
              when r.paused_remaining_ms is null then now() + make_interval(secs => r.pick_seconds)
              else now() + make_interval(secs => greatest(r.paused_remaining_ms, 10000) / 1000.0)
            end
