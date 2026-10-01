@@ -5813,3 +5813,412 @@ git commit -m "docs: SP1 merged — accounts live"
 ```
 
 Stop and report to Joey: what shipped, the test count, and "say 'go' to start SP4 (live draft)".
+
+---
+
+## Addendum (2026-09-30 evening) — email + password instead of Google/Discord
+
+Joey chose email + password (confirmation off) over Google/Discord OAuth during Task 20 (spec §2 "Sign-in", §4.1, §11 updated). Run **Tasks 22 → 23 before Task 21**. Task 20's console Steps 1–5 are replaced by spec §11 (three short Supabase settings + env vars). OAuth code from Task 11 stays dormant (tested, no buttons).
+
+### Task 22: Email + password sign-in form and `/auth/finish`
+
+**Files:**
+- Create: `lib/auth/passwordErrors.ts`, `components/SignInForm.tsx`, `app/auth/finish/route.ts`
+- Modify: every renderer of `SignInButtons` → `SignInForm` (`components/JoinView.tsx`, `components/PrivateLeague.tsx`, `components/SignInCard.tsx`, `components/admin/AdminGate.tsx`, `components/landing/Landing.tsx`) and any tests asserting "Continue with Google"/"Continue with Discord"
+- Delete: `components/SignInButtons.tsx`
+- Test: `tests/auth/passwordErrors.test.ts`, `tests/auth/finish.test.ts`, `tests/ui/signInForm.test.ts`
+
+**Interfaces:**
+- Consumes: `createBrowserSupabase` (Task 1), `createServerSupabase` (Task 1), `safeNext` (Task 1), `ensureProfile` (Task 11), `cleanName`/`NAME_MAX` (Task 3), `json` (`lib/api/http.ts`).
+- Produces: `MIN_PASSWORD = 8`; `authErrorMessage(err: { code?: string; status?: number } | null | undefined): string`; `POST /auth/finish` body `{ next?: string }` → 200 `{ redirectTo }` | 401 | 500 `{ error }`; `<SignInForm next?: string initialMode?: 'signin' | 'signup' />`.
+
+- [ ] **Step 1: Write the failing tests**
+
+`tests/auth/passwordErrors.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { authErrorMessage, MIN_PASSWORD } from '@/lib/auth/passwordErrors';
+
+describe('authErrorMessage (spec §4.1 error copy)', () => {
+  it('maps Supabase auth error codes to friendly copy', () => {
+    expect(authErrorMessage({ code: 'invalid_credentials' })).toBe('Wrong email or password.');
+    expect(authErrorMessage({ code: 'user_already_exists' })).toBe(
+      "There's already an account with that email — sign in instead.",
+    );
+    expect(authErrorMessage({ code: 'email_exists' })).toBe(
+      "There's already an account with that email — sign in instead.",
+    );
+    expect(authErrorMessage({ code: 'weak_password' })).toBe('Use at least 8 characters.');
+    expect(authErrorMessage({ code: 'over_request_rate_limit' })).toBe(
+      'Too many tries — wait a minute and try again.',
+    );
+    expect(authErrorMessage({ status: 429 })).toBe('Too many tries — wait a minute and try again.');
+  });
+  it('falls back for anything else', () => {
+    expect(authErrorMessage({ code: 'something_new' })).toBe("Couldn't sign in. Try again.");
+    expect(authErrorMessage(null)).toBe("Couldn't sign in. Try again.");
+  });
+  it('minimum password length is 8', () => {
+    expect(MIN_PASSWORD).toBe(8);
+  });
+});
+```
+
+`tests/auth/finish.test.ts`:
+
+```ts
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const h = vi.hoisted(() => ({
+  user: null as null | { id: string; user_metadata: unknown },
+  getUserError: null as null | { message: string },
+  ensure: vi.fn(),
+  signOut: vi.fn(async () => ({ error: null })),
+}));
+vi.mock('@/lib/supabase/server', () => ({
+  createServerSupabase: async () => ({
+    auth: {
+      getUser: async () => ({ data: { user: h.user }, error: h.getUserError }),
+      signOut: h.signOut,
+    },
+  }),
+}));
+vi.mock('@/lib/auth/profile', () => ({ ensureProfile: (...a: unknown[]) => h.ensure(...a) }));
+vi.mock('@/lib/db', () => ({ getRepo: () => ({}) }));
+
+import { POST } from '@/app/auth/finish/route';
+
+const post = (body: unknown) =>
+  POST(new Request('http://test.local/auth/finish', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+  }));
+
+beforeEach(() => {
+  h.user = { id: 'u1', user_metadata: { full_name: 'Mom' } };
+  h.getUserError = null;
+  h.ensure.mockReset().mockResolvedValue({ id: 'u1' });
+  h.signOut.mockClear();
+});
+
+describe('POST /auth/finish', () => {
+  it('creates the profile and returns a safe redirect', async () => {
+    const res = await post({ next: '/join/ABC234' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ redirectTo: '/join/ABC234' });
+    expect(h.ensure).toHaveBeenCalledWith({}, h.user);
+  });
+  it('never redirects off-site', async () => {
+    const res = await post({ next: '//evil.com' });
+    expect(await res.json()).toEqual({ redirectTo: '/' });
+  });
+  it('401 when there is no session', async () => {
+    h.user = null;
+    const res = await post({});
+    expect(res.status).toBe(401);
+    expect(h.ensure).not.toHaveBeenCalled();
+  });
+  it('signs out and answers 500 when the profile cannot be created', async () => {
+    h.ensure.mockRejectedValue(new Error('db down'));
+    const res = await post({ next: '/' });
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "Sign-in didn't finish — try again." });
+    expect(h.signOut).toHaveBeenCalled();
+  });
+  it('tolerates a missing or non-JSON body', async () => {
+    const res = await POST(new Request('http://test.local/auth/finish', { method: 'POST', body: 'x' }));
+    expect(await res.json()).toEqual({ redirectTo: '/' });
+  });
+});
+```
+
+`tests/ui/signInForm.test.ts` (same SSR-render style as `tests/ui/pages.test.ts`; use `renderToStaticMarkup`):
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { SignInForm } from '@/components/SignInForm';
+
+describe('SignInForm', () => {
+  it('sign-in mode: email, password, switch to create account, forgot-password hint', () => {
+    const html = renderToStaticMarkup(createElement(SignInForm, { next: '/leagues' }));
+    expect(html).toContain('type="email"');
+    expect(html).toContain('type="password"');
+    expect(html).toContain('autocomplete="current-password"');
+    expect(html).toContain('Create account');
+    expect(html).toContain('Forgot your password? Ask the site admin to reset it.');
+    expect(html).not.toContain('Continue with Google');
+  });
+  it('create-account mode asks for a name too', () => {
+    const html = renderToStaticMarkup(createElement(SignInForm, { initialMode: 'signup' }));
+    expect(html).toContain('Your name');
+    expect(html).toContain('autocomplete="new-password"');
+    expect(html).toContain('minlength="8"');
+  });
+});
+```
+
+(React renders `autoComplete`/`minLength` as lowercase `autocomplete`/`minlength` attributes in markup, which is what these assertions expect.)
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `npx vitest run tests/auth/passwordErrors.test.ts tests/auth/finish.test.ts tests/ui/signInForm.test.ts`
+Expected: FAIL — modules not found.
+
+- [ ] **Step 3: Implement**
+
+`lib/auth/passwordErrors.ts`:
+
+```ts
+/** Spec §4.1: password rules and the error copy the sign-in form shows. */
+export const MIN_PASSWORD = 8;
+
+const TAKEN = "There's already an account with that email — sign in instead.";
+const SLOW_DOWN = 'Too many tries — wait a minute and try again.';
+
+export function authErrorMessage(err: { code?: string; status?: number } | null | undefined): string {
+  switch (err?.code) {
+    case 'invalid_credentials':
+      return 'Wrong email or password.';
+    case 'user_already_exists':
+    case 'email_exists':
+      return TAKEN;
+    case 'weak_password':
+      return `Use at least ${MIN_PASSWORD} characters.`;
+    case 'over_request_rate_limit':
+      return SLOW_DOWN;
+  }
+  if (err?.status === 429) return SLOW_DOWN;
+  return "Couldn't sign in. Try again.";
+}
+```
+
+`app/auth/finish/route.ts`:
+
+```ts
+import { json } from '@/lib/api/http';
+import { safeNext } from '@/lib/auth/next';
+import { ensureProfile } from '@/lib/auth/profile';
+import { getRepo } from '@/lib/db';
+import { createServerSupabase } from '@/lib/supabase/server';
+
+export const dynamic = 'force-dynamic';
+
+const DIDNT_FINISH = "Sign-in didn't finish — try again.";
+
+/**
+ * Spec §4.1: after the browser signs in or signs up with Supabase Auth, it posts here.
+ * The session cookie is already set; this makes sure the profile row exists.
+ */
+export async function POST(request: Request): Promise<Response> {
+  let next: unknown = null;
+  try {
+    next = ((await request.json()) as { next?: unknown })?.next ?? null;
+  } catch {
+    // No body or not JSON: land on "/".
+  }
+  const supabase = await createServerSupabase();
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) return json({ error: DIDNT_FINISH }, 401);
+  try {
+    await ensureProfile(getRepo(), data.user);
+  } catch (err) {
+    console.error(err);
+    await supabase.auth.signOut(); // never leave someone signed in without a profile
+    return json({ error: DIDNT_FINISH }, 500);
+  }
+  return json({ redirectTo: safeNext(typeof next === 'string' ? next : null) });
+}
+```
+
+`components/SignInForm.tsx`:
+
+```tsx
+'use client';
+
+import { useState, type FormEvent } from 'react';
+import { Alert } from '@/components/ui/Alert';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { authErrorMessage, MIN_PASSWORD } from '@/lib/auth/passwordErrors';
+import { cleanName, NAME_MAX } from '@/lib/leagues/names';
+import { createBrowserSupabase } from '@/lib/supabase/browser';
+
+type Mode = 'signin' | 'signup';
+
+/** Spec §4.1: one form for "Sign in" and "Create account". `next` is where to land afterwards. */
+export function SignInForm({ next = '/', initialMode = 'signin' }: { next?: string; initialMode?: Mode }) {
+  const [mode, setMode] = useState<Mode>(initialMode);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const signup = mode === 'signup';
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const cleanEmail = email.trim();
+    const displayName = signup ? cleanName(name) : null;
+    if (signup && !displayName) return setError(`Enter your name (1–${NAME_MAX} characters).`);
+    if (signup && password.length < MIN_PASSWORD) return setError(`Use at least ${MIN_PASSWORD} characters.`);
+    setBusy(true);
+    try {
+      const auth = createBrowserSupabase().auth;
+      const { error: authError } = signup
+        ? await auth.signUp({ email: cleanEmail, password, options: { data: { full_name: displayName } } })
+        : await auth.signInWithPassword({ email: cleanEmail, password });
+      if (authError) {
+        setError(authErrorMessage(authError));
+        return;
+      }
+      const res = await fetch('/auth/finish', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ next }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { redirectTo?: string; error?: string };
+      if (!res.ok || !body.redirectTo) {
+        setError(body.error ?? "Sign-in didn't finish — try again.");
+        return;
+      }
+      window.location.assign(body.redirectTo);
+    } catch {
+      setError("Couldn't sign in. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-3" noValidate>
+      {signup ? (
+        <Input
+          label="Your name"
+          name="name"
+          autoComplete="name"
+          maxLength={NAME_MAX}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+        />
+      ) : null}
+      <Input
+        label="Email"
+        name="email"
+        type="email"
+        autoComplete="email"
+        inputMode="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        required
+      />
+      <Input
+        label="Password"
+        name="password"
+        type="password"
+        autoComplete={signup ? 'new-password' : 'current-password'}
+        minLength={signup ? MIN_PASSWORD : undefined}
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        required
+      />
+      {error ? <Alert tone="danger">{error}</Alert> : null}
+      <Button type="submit" busy={busy} className="w-full">
+        {signup ? 'Create account' : 'Sign in'}
+      </Button>
+      <button
+        type="button"
+        className="min-h-11 w-full text-sm text-fg-muted underline underline-offset-2"
+        onClick={() => {
+          setMode(signup ? 'signin' : 'signup');
+          setError(null);
+        }}
+      >
+        {signup ? 'Have an account? Sign in' : 'New here? Create account'}
+      </button>
+      {!signup ? (
+        <p className="text-center text-sm text-fg-muted">Forgot your password? Ask the site admin to reset it.</p>
+      ) : null}
+    </form>
+  );
+}
+```
+
+Check `components/ui/Input.tsx` and `Button.tsx` props before pasting: if `Input` has no `label` prop, wrap each field in the same `<label>` pattern `components/SettingsForm.tsx` uses; if `Button` has no `className` prop, drop `className="w-full"`. Keep the copy strings exactly.
+
+Then replace every `SignInButtons` render with `SignInForm` (same `next` prop), delete `components/SignInButtons.tsx`, and update any test that asserted "Continue with Google"/"Continue with Discord" to assert the form instead (`type="password"` and "Sign in"). `grep -rn "SignInButtons\|Continue with" app components tests` must come back empty afterwards (except `app/auth/callback` comments).
+
+- [ ] **Step 4: Run tests and typecheck**
+
+Run: `npx vitest run tests/auth tests/ui && npm run typecheck && npm test`
+Expected: PASS; full suite green.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A lib/auth/passwordErrors.ts components/SignInForm.tsx app/auth/finish components tests
+git commit -m "feat(auth): email + password sign-in form and /auth/finish (replaces OAuth buttons)"
+```
+
+---
+
+### Task 23: Password reset script and docs for email + password
+
+**Files:**
+- Create: `scripts/reset-password.ts`
+- Modify: `README.md` (sign-in setup section, scripts), `CLAUDE.md` (Access locked decision, env gotcha)
+
+- [ ] **Step 1: Write the script**
+
+`scripts/reset-password.ts`:
+
+```ts
+// Spec §4.1: no emails are ever sent, so the site admin resets forgotten passwords by hand.
+// Usage: npx tsx --env-file=.env.local scripts/reset-password.ts <email> <new-password>
+import { MIN_PASSWORD } from '@/lib/auth/passwordErrors';
+import { createSupabaseClient } from '@/lib/db/supabaseRepo';
+
+async function main() {
+  const [email, password] = process.argv.slice(2);
+  if (!email || !password) throw new Error('Usage: reset-password.ts <email> <new-password>');
+  if (password.length < MIN_PASSWORD) throw new Error(`Passwords need at least ${MIN_PASSWORD} characters.`);
+  const admin = createSupabaseClient().auth.admin;
+  const wanted = email.trim().toLowerCase();
+  for (let page = 1; ; page++) {
+    const { data, error } = await admin.listUsers({ page, perPage: 200 });
+    if (error) throw new Error(error.message);
+    const user = data.users.find((u) => u.email?.toLowerCase() === wanted);
+    if (user) {
+      const upd = await admin.updateUserById(user.id, { password });
+      if (upd.error) throw new Error(upd.error.message);
+      console.log(`Password reset for ${user.email}. Give them the new password.`);
+      return;
+    }
+    if (data.users.length < 200) break;
+  }
+  throw new Error(`No account with the email ${email}.`);
+}
+
+main().catch((err) => {
+  console.error(err instanceof Error ? err.message : err);
+  process.exit(1);
+});
+```
+
+Run `npm run typecheck` (do NOT run the script — it touches the real project).
+
+- [ ] **Step 2: Docs**
+
+`README.md`: replace the Google/Discord "One-time sign-in setup" section with spec §11 (three steps: Email provider with Confirm email **off** + min length 8 + anonymous sign-ins off; Site URL; env vars incl. "set them in Vercel **before** merging SP1"). Add `reset-password <email> <new-password>` to Scripts ("forgotten passwords — no emails are sent"). Remove any remaining Google/Discord setup steps; one line may say "Google/Discord sign-in code exists but is switched off."
+
+`CLAUDE.md`: the **Access (v2)** locked decision becomes "Email + password via Supabase Auth (confirmation off, no emails sent; forgotten passwords reset with `scripts/reset-password.ts`); every player has an account; per-league visibility (`link` / `members`); invite codes. Admin-token links are gone. Google/Discord OAuth code is dormant." Env gotcha: sign-in needs the two `NEXT_PUBLIC_…` vars (locally and on Vercel).
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add scripts/reset-password.ts README.md CLAUDE.md
+git commit -m "feat(scripts): reset-password for email sign-in; docs for email + password"
+```

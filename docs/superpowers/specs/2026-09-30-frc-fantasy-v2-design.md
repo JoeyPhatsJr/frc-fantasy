@@ -14,7 +14,7 @@ Take FRC Fantasy from a family prototype to a usable app for the **FRC community
 
 ### 1.1 Success criteria
 
-1. A person who has never seen the app can land on `/`, understand what it is from the landing page, sign in with Google or Discord, create a league, and share an invite code — without help.
+1. A person who has never seen the app can land on `/`, understand what it is from the landing page, sign in with an email and password, create a league, and share an invite code — without help.
 2. Ramp Riot 2026 draft night (Oct 23) runs as a **live draft on everyone's phones**, in the Habich family league created fresh in v2 (v1 only ever held demo/test leagues, so nothing is migrated — §4.7).
 3. Each signed-in user sees a personal **Me** dashboard: their teams playing now, their rank in every league, and their season stats.
 4. A full-season league can draft from all FRC teams (optionally filtered by region) and scores every official event automatically.
@@ -40,7 +40,8 @@ Order rationale (changed in spec review 2026-09-30): Ramp Riot needs only sign-i
 - Trades, waivers, free agents (**parked for v3**).
 - Season awards / recaps, league chat, a public league browser.
 - A big-screen / TV draft board (phones only).
-- Email or password sign-in (would require a domain + mail provider).
+- Emails of any kind, including sign-up confirmation and password-reset emails (they would need a domain + mail provider). Forgotten passwords are reset by the site admin with `scripts/reset-password.ts` (§4.1).
+- Google/Discord sign-in in v2 (changed 2026-09-30, see §2). The OAuth callback code from SP1 stays in the repo so it can be switched on later.
 - Name-only ("ghost") players. Every player has an account.
 - Migrating v1 leagues (none hold real data; §4.7).
 - Per-league-config projections (projections use default scoring, §6.1).
@@ -53,7 +54,7 @@ Order rationale (changed in spec review 2026-09-30): Ramp Riot needs only sign-i
 | Topic | Decision |
 |---|---|
 | Audience | FRC community; open sign-up; free tiers; light abuse limits |
-| Sign-in | Supabase Auth, **Google + Discord** OAuth only |
+| Sign-in | Supabase Auth **email + password**, email confirmation **off** (changed 2026-09-30 from Google + Discord OAuth, which Joey found too fiddly to set up; no emails are ever sent) |
 | Players | **Accounts required** for all players |
 | App shell | Signed-out `/` = landing page. Signed-in = bottom tabs **Me** + **Leagues** |
 | League visibility | Per league, commissioner chooses: `link` (anyone with the link can view; default) or `members` |
@@ -93,7 +94,7 @@ Same stack as v1 (v1 §9): Next.js App Router + TypeScript, Tailwind, Supabase P
 
 **Unchanged:** the TBA client and its cache windows (v1 §7.3), the scoring engine (`scoreEvent`, v1 §7.9), snake order (`pickerFor`), adjustments, round status derivation (v1 §7.8, extended in §5.2), the `Repo` interface pattern (extended, with the in-memory repo used in tests).
 
-**Trust boundaries:** the browser never talks to Postgres. The browser *does* talk to Supabase Auth (OAuth redirect) and Supabase Realtime (subscribe to a public Broadcast channel with the anon key). Broadcast messages carry no data (§7.5), so a public channel leaks nothing beyond "something changed in draft X".
+**Trust boundaries:** the browser never talks to Postgres. The browser *does* talk to Supabase Auth (password sign-in / sign-up) and Supabase Realtime (subscribe to a public Broadcast channel with the anon key). Broadcast messages carry no data (§7.5), so a public channel leaks nothing beyond "something changed in draft X".
 
 ---
 
@@ -101,13 +102,16 @@ Same stack as v1 (v1 §9): Next.js App Router + TypeScript, Tailwind, Supabase P
 
 ### 4.1 Sign-in
 
-- **Providers:** Google and Discord via Supabase Auth OAuth (PKCE). Configured in the Supabase dashboard; client IDs/secrets live in Supabase, not in our env.
-- **Flow:** "Continue with Google/Discord" button → `supabase.auth.signInWithOAuth({ provider, options: { redirectTo: <origin>/auth/callback?next=<path> } })` from the browser client → provider → `GET /auth/callback` exchanges the code for a session (cookie set via `@supabase/ssr`) → first sign-in creates the profile (§4.2) → redirect to `next`.
+- **Method:** email + password via Supabase Auth, with **Confirm email turned off** in the dashboard (no mail provider, so no emails are ever sent). Minimum password length 8 (dashboard setting + client check). Anonymous sign-ins stay off.
+- **Flow:** one **Sign in / Create account** form. The **browser** calls `supabase.auth.signInWithPassword({ email, password })` or `supabase.auth.signUp({ email, password, options: { data: { full_name: name } } })` (so Supabase's per-IP auth rate limits apply to each visitor, not to Vercel's shared IPs). On success the browser posts `{ next }` to **`POST /auth/finish`**, which reads the session server-side, runs `ensureProfile` (display name from the sign-up name, §4.2), and answers `{ redirectTo: safeNext(next) }`; if the profile can't be created it signs the user out and answers 500 "Sign-in didn't finish — try again." Create account asks for **name, email, password**.
+- **Error copy:** wrong email/password → "Wrong email or password."; email already registered → "There's already an account with that email — sign in instead."; short password → "Use at least 8 characters."; rate-limited → "Too many tries — wait a minute and try again."; anything else → "Couldn't sign in. Try again."
+- **Forgot password:** the form says "Forgot your password? Ask the site admin to reset it." The admin runs `npx tsx --env-file=.env.local scripts/reset-password.ts <email> <new-password>` (service-role `auth.admin.updateUserById`) and passes the new password on.
+- **OAuth (dormant):** SP1's `/auth/callback` route and `oauthRedirectUrl` stay (tested), with no buttons rendering them. Turning Google/Discord on later = dashboard setup (old §11 steps) + a button.
 - `next` must be a same-origin relative path starting with `/` and not `//` or `/\` (browsers normalize `/\` to protocol-relative); anything else becomes `/`.
 - **Session refresh:** Next.js middleware (named `proxy.ts` if the installed Next version uses that convention) calls the `@supabase/ssr` refresh helper on every request except static assets.
 - **Sign out:** `POST /auth/signout` → clears the session → redirect `/`.
 - **Env vars:** add `NEXT_PUBLIC_SUPABASE_URL` (same value as the existing `SUPABASE_URL`; they must match), `NEXT_PUBLIC_SUPABASE_ANON_KEY` (public by design; the anon key can do nothing to our tables because RLS has no policies). `SUPABASE_SERVICE_ROLE_KEY` stays server-only. Remove `CREATE_LEAGUE_PASSCODE`.
-- **Auth failure** (user cancels, provider error): callback redirects to `/?auth_error=1`, and the landing page shows "Sign-in didn't finish — try again."
+- **Auth failure:** the form shows the error copy above in place; `/?auth_error=1` (from the dormant OAuth callback) still shows "Sign-in didn't finish — try again."
 
 ### 4.2 Profiles
 
@@ -184,7 +188,7 @@ alter table leagues
 
 | Block | Content |
 |---|---|
-| Hero | Display headline (working copy: "Draft FRC teams. Watch every match. Roast your friends."), one-line explainer, **Continue with Google** / **Continue with Discord**, and a "Have an invite code?" input that goes to `/join/{CODE}` |
+| Hero | Display headline (working copy: "Draft FRC teams. Watch every match. Roast your friends."), one-line explainer, the **Sign in / Create account** form, and a "Have an invite code?" input that goes to `/join/{CODE}` |
 | Sample scoreboard | Static demo leaderboard (4 players, bumper plates) with one expanded breakdown (e.g. "341: +10 rank · +8 captain · +15 winner") — explains scoring by showing it |
 | How it works | 3 scoreboard cards: **Draft** (snake draft live from your phone) → **Watch** (points from real results via The Blue Alliance) → **Win** (season standings) |
 | Two ways to play | Cards for Event-by-event and Full season |
@@ -583,7 +587,7 @@ Each migration is applied to production when its sub-project merges to `main`. B
 
 | Dates | Work |
 |---|---|
-| Oct 1 | Spec approval; implementation plans (one per sub-project); Joey does OAuth setup (§11); tag `main` as `v1.0` |
+| Oct 1 | Spec approval; implementation plans (one per sub-project); Joey does the Supabase sign-in setup (§11); tag `main` as `v1.0` |
 | Oct 1–5 | SP1 Accounts & leagues + landing page → delete v1 test leagues → merge, migration 0002 → Joey creates the family league |
 | Oct 6–10 | SP4 Live draft (basic pool, auto-pick by queue → team number) → merge, migration 0003 |
 | Oct 11–14 | SP3 `event_scores` + team info; run `build-team-stats` for 2025 + 2026 → merge, migration 0004 |
@@ -601,12 +605,11 @@ Each sub-project follows the v1 working style: brief on disk, subagent implement
 
 ---
 
-## 11. One-time setup (Joey, ~30 min, guided)
+## 11. One-time setup (Joey, ~5 min, guided)
 
-1. **Google:** Google Cloud console → new project → OAuth consent screen (External; scopes `email`, `profile`, `openid`; app name "FRC Fantasy") → OAuth client (Web) with redirect URI `https://<project-ref>.supabase.co/auth/v1/callback`.
-2. **Discord:** Discord Developer Portal → New Application → OAuth2 → add the same redirect URI.
-3. **Supabase:** Authentication → Providers → enable Google and Discord with their IDs/secrets. URL configuration: Site URL `https://frc-fantasy-6yo3.vercel.app`; redirect allow-list includes `https://frc-fantasy-6yo3.vercel.app/**` and `http://localhost:3000/**`.
-4. **Vercel env:** add `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `CRON_SECRET` (random 32+ chars); remove `CREATE_LEAGUE_PASSCODE`. Same in `.env.local`, plus `E2E_AUTH_SECRET` (local only, never on Vercel).
+1. **Supabase → Authentication → Sign In / Providers → Email:** enabled; **Confirm email OFF**; minimum password length **8**. Anonymous sign-ins **off**.
+2. **Supabase → Authentication → URL Configuration:** Site URL `https://frc-fantasy-6yo3.vercel.app`.
+3. **Env vars:** `.env.local` gets `NEXT_PUBLIC_SUPABASE_URL` (= `SUPABASE_URL`), `NEXT_PUBLIC_SUPABASE_ANON_KEY` (Project Settings → API Keys → anon/publishable), `CRON_SECRET`, `E2E_AUTH_SECRET`; remove `CREATE_LEAGUE_PASSCODE`. **Vercel** (Production + Preview) gets `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `CRON_SECRET` **before** the SP1 merge (without them `proxy.ts` fails every request); never `E2E_AUTH_SECRET`.
 
 ---
 
@@ -616,7 +619,7 @@ Each sub-project follows the v1 working style: brief on disk, subagent implement
 |---|---|---|
 | Scope doesn't fit before Oct 21 | Medium-High | Build order puts the draft-night essentials first (SP1, SP4); SP2 is last and cuttable; SP4 falls back to commissioner mode (§10); anything unfinished continues after Ramp Riot toward 2027 Week 1 |
 | Auth change breaks commissioner access on draft night | Medium | Route tests for every admin endpoint; sign-in party on Oct 22 (not the 23rd); Vercel rollback |
-| A family member can't sign in (school account, no Discord) | Medium | Two providers; the Oct 22 sign-in party surfaces it a day early (a personal Google account can be made on the spot); in either draft mode the commissioner can pick for any member who's stuck on draft night |
+| A family member forgets their password | Medium | `scripts/reset-password.ts` (admin reset, no email needed); the Oct 22 sign-in party surfaces problems a day early; in either draft mode the commissioner can pick for any member who's stuck on draft night |
 | Live draft desync / timer disputes | Medium | Database clock + atomic RPC; server authoritative; polling fallback; pause/undo |
 | Realtime connection blocked (school/venue Wi-Fi) | Low-Medium | 3 s polling fallback |
 | TBA rate limits while building stats | Low | Throttled, resumable script run locally |
@@ -628,6 +631,6 @@ Each sub-project follows the v1 working style: brief on disk, subagent implement
 
 ## 13. Doc updates when v2 lands
 
-- `CLAUDE.md`: source of truth now lists both specs; update locked decisions (accounts via Google/Discord; the caching rule wording from §5.6; formats), current status, and env var list.
+- `CLAUDE.md`: source of truth now lists both specs; update locked decisions (accounts via email + password; the caching rule wording from §5.6; formats), current status, and env var list.
 - `README.md`: setup (§11), cron, scripts (`build-team-stats`, `rebuild-event-scores`, `smoke-v2`), removal of the admin-link recovery section (in SP1, when admin links go away).
 - v1 spec §13 backlog: mark accounts, live draft, and projections as done in v2; notifications, awards stay in the backlog; add trades (v3).
