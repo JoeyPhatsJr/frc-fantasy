@@ -9,6 +9,7 @@ import { MAX_LEAGUES_PER_USER } from '@/lib/leagues/membership';
 import { defaultScoring } from '@/lib/scoring/config';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
 const bodySchema = z
   .object({

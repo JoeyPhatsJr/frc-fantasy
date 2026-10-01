@@ -7,6 +7,7 @@ import { roundStatus } from '@/lib/rounds/status';
 import { playersInUse } from '@/lib/rounds/usage';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
 type Ctx = { params: Promise<{ slug: string }> };
 

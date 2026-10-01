@@ -23,8 +23,10 @@ const all = walk(join(ROOT, 'app')).map(rel);
 const routes = all.filter((f) => f.endsWith('/route.ts'));
 const pages = all.filter((f) => f.startsWith('app/l/') && f.endsWith('/page.tsx'));
 
-// Anything that reaches TBA, directly or through the loaders and views that call it.
-const TBA_USERS = /\b(getTba|loadPool|loadEventData|getEventScores|loadRoundPage|loadLeaguePage|roundDetail|buildRoundView)\b/;
+// Anything that reaches TBA, directly or through the loaders and views that call it. SP2 adds the
+// follow sync (one /event/{key} look-up per new event) and league format setup (season dates).
+const TBA_USERS =
+  /\b(getTba|loadPool|loadEventData|getEventScores|loadRoundPage|loadLeaguePage|roundDetail|buildRoundView|syncFollowedEvents|scheduleFollowSync|setUpLeagueFormat|createSeasonRound|fetchSeasonDates)\b/;
 
 const modules = [...routes, ...pages];
 
