@@ -5,19 +5,31 @@ import type { TeamSimple } from '@/lib/tba/types';
 const DAY_MS = 24 * 60 * 60_000;
 /** TBA pages hold 500 teams; 40 pages is far more than FRC has, and stops a runaway loop. */
 const MAX_PAGES = 40;
+/** Pages fetched at once (final review I6): ~22 pages become ~6 round trips instead of 22. */
+const PAGE_BATCH = 4;
 
 export function seasonEmptyMessage(year: number): string {
   return `TBA hasn't published ${year} teams yet — usually by January.`;
 }
 
+/**
+ * Every team for the year, in page order. Pages are fetched PAGE_BATCH at a time; the walk ends with
+ * the batch that holds the first empty (or missing) page, and pages after that one are ignored, so the
+ * result matches a one-page-at-a-time walk that stops at the first empty page (spec §5.5).
+ */
 async function allTeams(year: number): Promise<{ teams: TeamSimple[]; stale: boolean }> {
   const teams: TeamSimple[] = [];
   let stale = false;
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const res = await getTba<TeamSimple[]>(`/teams/${year}/${page}/simple`, { windowMs: DAY_MS });
-    stale ||= res.stale;
-    if (!Array.isArray(res.data) || res.data.length === 0) break;
-    teams.push(...res.data);
+  for (let start = 0; start < MAX_PAGES; start += PAGE_BATCH) {
+    const pages = Array.from({ length: Math.min(PAGE_BATCH, MAX_PAGES - start) }, (_, i) => start + i);
+    const results = await Promise.all(
+      pages.map((page) => getTba<TeamSimple[]>(`/teams/${year}/${page}/simple`, { windowMs: DAY_MS })),
+    );
+    for (const res of results) {
+      stale ||= res.stale;
+      if (!Array.isArray(res.data) || res.data.length === 0) return { teams, stale };
+      teams.push(...res.data);
+    }
   }
   return { teams, stale };
 }
