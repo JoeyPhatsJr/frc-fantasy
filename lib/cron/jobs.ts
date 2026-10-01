@@ -1,6 +1,7 @@
 import { getRepo } from '@/lib/db';
 import { followSyncJob } from '@/lib/follow/sync';
 import { localDate } from '@/lib/rounds/status';
+import { seasonDatesJob } from '@/lib/season/jobs';
 import { refreshRecentTeams } from '@/lib/stats/build';
 
 /** One piece of daily work. It must stop on its own once Date.now() >= deadline. */
@@ -25,6 +26,7 @@ export const DAILY_JOBS: DailyJob[] = [
     },
   },
   followSyncJob,
+  seasonDatesJob,
 ];
 
 export async function runDailyJobs(

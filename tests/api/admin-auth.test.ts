@@ -26,6 +26,7 @@ import * as roundRoute from '@/app/api/l/[slug]/admin/rounds/[id]/route';
 import * as teamRoute from '@/app/api/l/[slug]/admin/rounds/[id]/teams/[teamKey]/route';
 import * as teamsRoute from '@/app/api/l/[slug]/admin/rounds/[id]/teams/route';
 import * as roundsRoute from '@/app/api/l/[slug]/admin/rounds/route';
+import * as seasonsRoute from '@/app/api/l/[slug]/admin/seasons/route';
 import * as stateRoute from '@/app/api/l/[slug]/admin/state/route';
 import * as verifyRoute from '@/app/api/l/[slug]/admin/verify/route';
 import type { Repo } from '@/lib/db/repo';
@@ -69,6 +70,7 @@ const MODULES: Record<string, RouteModule> = {
   'rounds/[id]/results/[teamKey]': resultRoute,
   'rounds/[id]/teams': teamsRoute,
   'rounds/[id]/teams/[teamKey]': teamRoute,
+  seasons: seasonsRoute,
   state: stateRoute,
   verify: verifyRoute,
 };
@@ -112,6 +114,8 @@ const CASES: Case[] = [
   { route: 'rounds/[id]/results/[teamKey]', method: 'DELETE', params: (s) => ({ ...roundOf(s), teamKey: 'frc341' }) },
   { route: 'rounds/[id]/teams', method: 'POST', params: roundOf, body: () => ({ teamNumber: '254' }) },
   { route: 'rounds/[id]/teams/[teamKey]', method: 'DELETE', params: (s) => ({ ...roundOf(s), teamKey: 'frc9999' }) },
+  // The seeded league is an event league, so a commissioner gets 409 here; still not 401/403.
+  { route: 'seasons', method: 'POST', params: slugOf },
   { route: 'state', method: 'GET', params: slugOf },
   { route: 'verify', method: 'GET', params: slugOf },
 ];

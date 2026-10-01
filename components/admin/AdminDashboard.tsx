@@ -19,6 +19,7 @@ import type { AdminApi } from '@/lib/admin/client';
 import type { AdminState, EventLookup } from '@/lib/api/types';
 import { autoAddedNote } from '@/lib/follow/input';
 import { formatDateRange } from '@/lib/format';
+import { nextSeasonYear } from '@/lib/season/next';
 
 /** Members-only leagues have no public page, so the shortcuts don't call it one. */
 export function leagueLinkLabels(visibility: 'link' | 'members'): { view: string; copy: string } {
@@ -207,6 +208,26 @@ function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminAp
               </li>
             ))}
           </ul>
+          {state.league.format === 'season' ? (
+            (() => {
+              const next = nextSeasonYear(state.rounds);
+              return next === null ? (
+                <p className="text-[13px] leading-[18px] text-fg-muted">
+                  Full-season leagues have one round per season. Mark this season final to start the next one.
+                </p>
+              ) : (
+                <Button
+                  type="button"
+                  variant="accent"
+                  busy={pending === 'next-season'}
+                  disabled={busy}
+                  onClick={() => run('next-season', () => api('/seasons', { method: 'POST' }), `Started the ${next} season.`)}
+                >
+                  Start {next} season
+                </Button>
+              );
+            })()
+          ) : null}
           {state.league.format === 'event' ? (
             <div className="space-y-3">
               <FollowTeamsForm
