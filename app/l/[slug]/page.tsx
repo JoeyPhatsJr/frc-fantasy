@@ -4,6 +4,7 @@ import { AutoRefresh } from '@/components/AutoRefresh';
 import { DateBlock } from '@/components/DateBlock';
 import { Freshness } from '@/components/Freshness';
 import { Leaderboard } from '@/components/Leaderboard';
+import { LeagueMeCard } from '@/components/LeagueMeCard';
 import { PrivateLeague } from '@/components/PrivateLeague';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/Button';
@@ -80,7 +81,7 @@ export default async function LeaguePage({ params }: Props) {
               total: s.total,
               detail: s.perRound.length > 1 ? s.perRound.join(' ') : undefined,
             }))}
-            emptyText="No players yet. The commissioner adds them."
+            emptyText="No players yet — people join with the league's invite code."
           />
           {rounds.length > 1 ? (
             <p className="mt-3 text-[13px] leading-[18px] text-fg-muted">
@@ -122,6 +123,13 @@ export default async function LeaguePage({ params }: Props) {
           )}
         </Card>
       </section>
+
+      {/* Signed-in members only: rename yourself here, or leave (spec §4.3). */}
+      {access.player ? (
+        <section>
+          <LeagueMeCard slug={league.slug} leagueName={league.name} name={access.player.name} />
+        </section>
+      ) : null}
     </main>
   );
 }

@@ -29,3 +29,13 @@ export function uniqueName(base: string, taken: string[]): string {
     if (!used.has(candidate.toLowerCase())) return candidate;
   }
 }
+
+/** How a player shows on league pages (spec §4.3): an unlinked former member reads "Mom (left)". */
+export function publicPlayerName(p: { name: string; userId: string | null }): string {
+  return p.userId === null ? `${p.name} (left)` : p.name;
+}
+
+/** The league's players with public names, for standings, scores and rosters. */
+export function withPublicNames<T extends { name: string; userId: string | null }>(players: T[]): T[] {
+  return players.map((p) => ({ ...p, name: publicPlayerName(p) }));
+}

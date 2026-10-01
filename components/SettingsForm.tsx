@@ -66,7 +66,7 @@ export function SettingsForm({ profile }: { profile: { displayName: string; frcT
             value={team}
             onChange={(e) => setTeam(e.target.value.replace(/\D/g, ''))}
             maxLength={5}
-            hint="New leagues use your display name. Rename yourself inside a league from its page."
+            hint="New leagues use your display name. To change your name in one league, open that league and use “You in this league”."
           />
           {message ? <Alert tone={message.tone}>{message.text}</Alert> : null}
           <Button type="submit" busy={busy === 'save'} disabled={busy !== null}>

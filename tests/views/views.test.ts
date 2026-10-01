@@ -30,7 +30,7 @@ import type { EventData } from '@/lib/tba/types';
 import { loadLeaguePage } from '@/lib/views/league';
 import { cleanEventData, loadRoundPage } from '@/lib/views/round';
 import { seedLeague } from '../helpers/api';
-import { setUser } from '../helpers/auth';
+import { makeUser, setUser } from '../helpers/auth';
 import { emptyEvent, match, rankRow, rankings } from '../helpers/builders';
 import { createMemoryRepo } from '../helpers/memoryRepo';
 
@@ -82,14 +82,20 @@ async function newRound(eventKey: string, startDate: string) {
   });
 }
 
+/** A linked member (a signed-up account), like every v2 player. */
+async function member(name: string): Promise<PlayerRow> {
+  const user = await makeUser(repo, name);
+  return repo.createMember({ leagueId: league.id, userId: user.id, name, role: 'player' });
+}
+
 beforeEach(async () => {
   setUser(null);
   repo = createMemoryRepo();
   h.repo = repo;
   ({ league, commissioner } = await seedLeague(repo));
-  mom = await repo.createPlayer(league.id, 'Mom');
-  dad = await repo.createPlayer(league.id, 'Dad');
-  joey = await repo.createPlayer(league.id, 'Joey');
+  mom = await member('Mom');
+  dad = await member('Dad');
+  joey = await member('Joey');
   round = await newRound('2025parr', '2025-10-25');
   round = await repo.updateRound(round.id, { draftOrder: [mom.id, dad.id], rosterSize: 1 });
   await repo.insertPick({ roundId: round.id, pickNumber: 0, playerId: mom.id, teamKey: 'frc1' });
@@ -119,6 +125,14 @@ describe('loadRoundPage', () => {
   it('names every league player, including ones not in this round', async () => {
     const page = (await loadRoundPage(league.slug, round.id, NOW))!;
     expect(page.playerNames).toEqual({ [commissioner.id]: 'Commish', [mom.id]: 'Mom', [dad.id]: 'Dad', [joey.id]: 'Joey' });
+  });
+
+  it('marks unlinked former members "(left)" in scores and player names (spec §4.3)', async () => {
+    await repo.updatePlayer(mom.id, { userId: null });
+    const page = (await loadRoundPage(league.slug, round.id, NOW))!;
+    expect(page.view.scores.map((s) => s.name)).toEqual(['Mom (left)', 'Dad']);
+    expect(page.playerNames[mom.id]).toBe('Mom (left)');
+    expect(page.playerNames[dad.id]).toBe('Dad');
   });
 
   it('never exposes the admin token hash', async () => {
@@ -251,6 +265,14 @@ describe('loadLeaguePage', () => {
       { playerId: commissioner.id, name: 'Commish', total: 0, rank: 4, perRound: [0, 0] },
     ]);
     expect(page.anyLive).toBe(false);
+  });
+
+  it('marks unlinked former members "(left)" in season standings and round scores (spec §4.3)', async () => {
+    await repo.updatePlayer(dad.id, { userId: null });
+    const page = (await loadLeaguePage(league.slug, NOW))!;
+    expect(page.standings.find((s) => s.playerId === dad.id)!.name).toBe('Dad (left)');
+    expect(page.standings.find((s) => s.playerId === mom.id)!.name).toBe('Mom');
+    expect(page.rounds[0].scores.find((s) => s.playerId === dad.id)!.name).toBe('Dad (left)');
   });
 
   it('knows when a round is live', async () => {

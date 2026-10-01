@@ -82,30 +82,32 @@ export function MembersCard({ inviteLink, league, players, me, busy, pending, on
               {p.role === 'commissioner' ? <span className="text-sm font-semibold text-secondary">Commissioner</span> : null}
             </span>
             {p.linked ? (
-              <>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  busy={pending === `role:${p.id}`}
-                  disabled={busy}
-                  onClick={() => onRole(p.id, p.role === 'commissioner' ? 'player' : 'commissioner')}
-                >
-                  {p.role === 'commissioner' ? 'Make player' : 'Make commissioner'}
-                </Button>
-                <Button
-                  type="button"
-                  variant="danger"
-                  size="sm"
-                  busy={pending === `remove:${p.id}`}
-                  disabled={busy}
-                  onClick={() => {
-                    if (window.confirm(removeConfirmText(p))) onRemove(p);
-                  }}
-                >
-                  Remove
-                </Button>
-              </>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                busy={pending === `role:${p.id}`}
+                disabled={busy}
+                onClick={() => onRole(p.id, p.role === 'commissioner' ? 'player' : 'commissioner')}
+              >
+                {p.role === 'commissioner' ? 'Make player' : 'Make commissioner'}
+              </Button>
+            ) : null}
+            {/* A "(left)" row with history stays for the standings; one without history can go, so it stops counting toward the cap. */}
+            {p.linked || !p.inUse ? (
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                aria-label={`Remove ${p.name}`}
+                busy={pending === `remove:${p.id}`}
+                disabled={busy}
+                onClick={() => {
+                  if (window.confirm(removeConfirmText(p))) onRemove(p);
+                }}
+              >
+                Remove
+              </Button>
             ) : null}
           </li>
         ))}

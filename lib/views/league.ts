@@ -1,4 +1,5 @@
 import { getRepo } from '@/lib/db';
+import { withPublicNames } from '@/lib/leagues/names';
 import { seasonStandings } from '@/lib/scoring/round';
 import type { SeasonRow } from '@/lib/scoring/types';
 import { buildRoundView, type RoundView } from '@/lib/views/round';
@@ -19,7 +20,8 @@ export async function loadLeaguePage(slug: string, now: Date): Promise<LeaguePag
   const league = await repo.getLeagueBySlug(slug);
   if (!league) return null;
 
-  const [players, rounds] = await Promise.all([repo.listPlayers(league.id), repo.listRounds(league.id)]);
+  const [rows, rounds] = await Promise.all([repo.listPlayers(league.id), repo.listRounds(league.id)]);
+  const players = withPublicNames(rows);
   const roundIds = rounds.map((r) => r.id);
   const [picks, adjustments] = await Promise.all([
     repo.listPicksForRounds(roundIds),

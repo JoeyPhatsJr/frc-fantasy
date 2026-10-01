@@ -151,6 +151,22 @@ describe('MembersCard (spec §4.6 admin additions)', () => {
     expect(html).toContain('Make player'); // for Joey
     expect(html.match(/Make commissioner/g)).toHaveLength(1); // not for Grandpa
   });
+  it('offers Remove for a "(left)" row with no history (so it stops counting toward the cap), but no role toggle', () => {
+    const out = render(
+      h(MembersCard, {
+        inviteLink: 'https://x.test/join/ABC234', league, me: 'p1', busy: false, pending: null,
+        players: [members[0], { id: 'p4', name: 'Ghost', inUse: false, role: 'player' as const, linked: false }],
+        onReset: noop, onVisibility: noop, onRole: noop, onRemove: noop,
+      }),
+    );
+    expect(out).toContain('Ghost (left)');
+    expect(out).toContain('aria-label="Remove Ghost"');
+    expect(out.match(/Make (commissioner|player)/g)).toEqual(['Make player']); // only Joey's toggle
+  });
+  it('offers no Remove for a "(left)" row that still has history', () => {
+    expect(html).not.toContain('aria-label="Remove Grandpa"');
+    expect(html).toContain('aria-label="Remove Mom"');
+  });
   it('shows the visibility choice', () => {
     expect(html).toContain('Anyone with the link');
     expect(html).toContain('Members only');

@@ -58,5 +58,6 @@ describe('InviteCodeBox and SettingsForm', () => {
     expect(out).toContain('value="5181"');
     expect(out).toContain('Sign out');
     expect(out).toContain('Delete account');
+    expect(out).toContain('To change your name in one league, open that league and use “You in this league”.');
   });
 });

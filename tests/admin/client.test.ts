@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { adminFetch, ApiError, createLeague } from '@/lib/admin/client';
+import { adminFetch, ApiError, createLeague, leaveLeague, renameMe } from '@/lib/admin/client';
 
 function respond(status: number, body?: unknown): typeof fetch {
   return vi.fn(async () =>
@@ -81,5 +81,31 @@ describe('createLeague', () => {
   it('surfaces the server message (e.g. the 5-league cap)', async () => {
     const attempt = createLeague({ name: 'Fam' }, respond(409, { error: "You've reached the 5-league limit" }));
     await expect(attempt).rejects.toMatchObject({ status: 409, message: "You've reached the 5-league limit" });
+  });
+});
+
+describe('renameMe and leaveLeague (the "You in this league" card)', () => {
+  it('PATCHes /api/l/{slug}/me with the new name', async () => {
+    const fetchImpl = respond(200, { player: { id: 'p1', name: 'Joey' } });
+    expect(await renameMe('fam-abc234', 'Joey', fetchImpl)).toEqual({ player: { id: 'p1', name: 'Joey' } });
+    const [url, init] = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/l/fam-abc234/me');
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(init.body as string)).toEqual({ name: 'Joey' });
+  });
+  it('POSTs /api/l/{slug}/me/leave', async () => {
+    const fetchImpl = respond(200, { result: 'deleted' });
+    expect(await leaveLeague('fam-abc234', fetchImpl)).toEqual({ result: 'deleted' });
+    const [url, init] = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/l/fam-abc234/me/leave');
+    expect(init.method).toBe('POST');
+  });
+  it('surfaces server messages: a name clash, and the last-commissioner 409', async () => {
+    await expect(renameMe('fam-abc234', 'Mom', respond(409, { error: "There's already a player with that name" }))).rejects.toMatchObject({
+      status: 409,
+      message: "There's already a player with that name",
+    });
+    const msg = 'A league needs at least one commissioner. Make someone else commissioner first.';
+    await expect(leaveLeague('fam-abc234', respond(409, { error: msg }))).rejects.toMatchObject({ status: 409, message: msg });
   });
 });

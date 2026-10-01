@@ -67,3 +67,17 @@ export function adminFetch<T>(
 ): Promise<T> {
   return send<T>(`/api/l/${encodeURIComponent(slug)}/admin${path}`, init, fetchImpl);
 }
+
+/** A member renames themselves in one league (PATCH /api/l/{slug}/me). */
+export function renameMe(
+  slug: string,
+  name: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ player: { id: string; name: string } }> {
+  return send(`/api/l/${encodeURIComponent(slug)}/me`, { method: 'PATCH', body: { name } }, fetchImpl);
+}
+
+/** A member leaves a league (POST /api/l/{slug}/me/leave). The last commissioner gets a 409. */
+export function leaveLeague(slug: string, fetchImpl: typeof fetch = fetch): Promise<{ result: 'deleted' | 'unlinked' }> {
+  return send(`/api/l/${encodeURIComponent(slug)}/me/leave`, { method: 'POST' }, fetchImpl);
+}
