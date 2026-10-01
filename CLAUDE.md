@@ -14,8 +14,8 @@ The design specs: v1 `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md` a
 - Local dev works against the real Supabase project; demo league seeded (`scripts/seed-demo.ts`).
 - Deployed: https://frc-fantasy-5181.vercel.app (PR #1 merged 2026-09-30). The caching proof passed. The v1 test leagues were deleted 2026-09-30; the family league will be created fresh after the SP1 merge.
 - UI overhaul shipped (PR #3, 2026-09-30): shell with a light/dark toggle (since 2026-09-30: light by default, dark toggle), bumper plates, scoreboard leaderboards; brief in `design-system/frc-fantasy/OVERHAUL.md`. Its two cosmetic leftovers (draft banner wrapping at 360px, faint gold ring in light mode) were fixed 2026-09-30.
-- v2 SP1 (accounts & leagues), SP4 (live draft room) and SP3 (team info) are merged and live: SP1 as PR #4 on 2026-09-30, SP4 and SP3 as PRs #5 and #6 on 2026-10-01. Migrations 0002–0004 are applied and `team_stats` is built for 2025 and 2026. v2 roadmap: see memory v2-league-formats-idea.
-- v2 SP2 (league formats: manual events, follow teams, full season) is built on branch `v2-sp2-formats`, waiting for migration `0005_formats.sql` (apply it before the code runs anywhere against the real DB; see the README SP2 deploy order).
+- **v2 is complete and live.** SP1 (accounts & leagues) PR #4 on 2026-09-30; SP4 (live draft room), SP3 (team info) and SP2 (league formats) PRs #5, #6, #7 on 2026-10-01. Migrations 0002–0005 are applied; `team_stats` is built for 2025 and 2026; `smoke-v2`, `db-smoke` and the Playwright two-phone E2E pass against the real DB. v2 roadmap: see memory v2-league-formats-idea.
+- Next: Joey's phone check of the live draft on both themes, the Oct 22 sign-in party (invite link from Admin → Members), draft night Oct 23.
 - Tabled for a later phase: auto-finalize rounds at event end, and a UX overhaul of the player screens.
 
 ## Locked decisions (don't re-litigate)
