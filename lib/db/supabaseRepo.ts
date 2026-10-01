@@ -132,6 +132,12 @@ function first<T>(rows: Raw[], map: (r: Raw) => T, what: string): T {
   return map(rows[0]);
 }
 
+/** A Postgres function that returns boolean arrives as a bare `true`/`false`. */
+async function rpcBool(query: PromiseLike<Result>): Promise<boolean> {
+  const rows = await run(query);
+  return (rows[0] as unknown) === true;
+}
+
 export function createSupabaseClient(): SupabaseClient {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -470,6 +476,64 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
           { onConflict: 'path' },
         ),
       );
+    },
+
+    async makePickAtomic(input) {
+      return rpcBool(
+        db.rpc('draft_make_pick', {
+          p_round_id: input.roundId,
+          p_pick_number: input.pickNumber,
+          p_player_id: input.playerId,
+          p_team_key: input.teamKey,
+          p_require_due: input.requireDue,
+          p_auto: input.auto,
+        }),
+      );
+    },
+    async undoPickAtomic(roundId, pickNumber) {
+      return rpcBool(db.rpc('draft_undo_pick', { p_round_id: roundId, p_pick_number: pickNumber }));
+    },
+    async draftControl(roundId, action) {
+      return rpcBool(db.rpc('draft_control', { p_round_id: roundId, p_action: action }));
+    },
+    async getQueue(roundId, playerId) {
+      const rows = await run(
+        db.from('draft_queue').select('team_key').eq('round_id', roundId).eq('player_id', playerId).order('position'),
+      );
+      return rows.map((r) => r.team_key as string);
+    },
+    async setQueue(roundId, playerId, teamKeys) {
+      // Two statements: only this player ever writes their own queue, so there's no race to guard.
+      await run(db.from('draft_queue').delete().eq('round_id', roundId).eq('player_id', playerId));
+      if (teamKeys.length === 0) return;
+      await run(
+        db.from('draft_queue').insert(
+          teamKeys.map((teamKey, position) => ({ round_id: roundId, player_id: playerId, team_key: teamKey, position })),
+        ),
+      );
+    },
+    async getAutodraft(roundId, playerId) {
+      const rows = await run(
+        db.from('draft_prefs').select('autodraft').eq('round_id', roundId).eq('player_id', playerId),
+      );
+      return rows[0]?.autodraft === true;
+    },
+    async setAutodraft(roundId, playerId, on) {
+      await run(
+        db
+          .from('draft_prefs')
+          .upsert({ round_id: roundId, player_id: playerId, autodraft: on }, { onConflict: 'round_id,player_id' }),
+      );
+    },
+    async listAutodraftPlayers(roundId) {
+      const rows = await run(
+        db.from('draft_prefs').select('player_id').eq('round_id', roundId).eq('autodraft', true),
+      );
+      return rows.map((r) => r.player_id as string);
+    },
+    async rlsDisabledTables() {
+      const rows = await run(db.rpc('public_tables_without_rls'));
+      return rows.map((r) => (typeof r === 'string' ? r : String(Object.values(r)[0])));
     },
   };
 }

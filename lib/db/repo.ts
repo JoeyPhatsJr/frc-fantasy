@@ -83,6 +83,17 @@ export type ProfilePatch = { displayName?: string; frcTeam?: number | null };
 export type NewMember = { leagueId: string; userId: string; name: string; role: LeagueRole };
 export type PlayerPatch = { name?: string; role?: LeagueRole; userId?: null };
 export type MemberLeague = { league: LeagueRow; player: PlayerRow };
+export type AtomicPick = {
+  roundId: string;
+  pickNumber: number;
+  playerId: string;
+  teamKey: string;
+  /** true = only pick if the database clock is past pick_deadline (timeouts). */
+  requireDue: boolean;
+  /** true = made by tick/advance, not a person. */
+  auto: boolean;
+};
+export type DraftAction = 'start' | 'pause' | 'resume';
 
 export interface Repo {
   createLeague(input: NewLeague): Promise<LeagueRow>;
@@ -136,4 +147,16 @@ export interface Repo {
 
   getCache(path: string): Promise<CacheRow | null>;
   upsertCache(row: CacheRow): Promise<void>;
+
+  // Live draft (v2 §7). Each returns false instead of throwing when the draft state doesn't allow it.
+  makePickAtomic(input: AtomicPick): Promise<boolean>;
+  undoPickAtomic(roundId: string, pickNumber: number): Promise<boolean>;
+  draftControl(roundId: string, action: DraftAction): Promise<boolean>;
+  getQueue(roundId: string, playerId: string): Promise<string[]>;
+  setQueue(roundId: string, playerId: string, teamKeys: string[]): Promise<void>;
+  getAutodraft(roundId: string, playerId: string): Promise<boolean>;
+  setAutodraft(roundId: string, playerId: string, on: boolean): Promise<void>;
+  listAutodraftPlayers(roundId: string): Promise<string[]>;
+  /** Tables in `public` with RLS off. Must always be empty (v2 §8.1). */
+  rlsDisabledTables(): Promise<string[]>;
 }
