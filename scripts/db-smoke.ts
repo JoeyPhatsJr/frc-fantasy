@@ -4,6 +4,7 @@ import { UniqueViolation } from '@/lib/db/repo';
 import { createSupabaseClient, createSupabaseRepo } from '@/lib/db/supabaseRepo';
 import { defaultScoring } from '@/lib/scoring/config';
 import { bodyHash } from '@/lib/scores/hash';
+import { DEFAULT_POOL_FILTER } from '@/lib/season/poolFilter';
 
 function check(label: string, ok: boolean) {
   console.log(`${ok ? 'ok  ' : 'FAIL'}  ${label}`);
@@ -20,9 +21,37 @@ async function constraintOf(p: Promise<unknown>): Promise<string | null> {
   }
 }
 
+/**
+ * v2 SP2 (migration 0005). The SP2 code can't create leagues or load the commissioner dashboard without it,
+ * so stop before anything else runs instead of printing a wall of unrelated FAILs.
+ */
+async function require0005() {
+  const db = createSupabaseClient();
+  const probes: [string, PromiseLike<{ error: { message: string } | null }>][] = [
+    ['leagues.format, leagues.follows_synced_at', db.from('leagues').select('format, follows_synced_at').limit(1)],
+    ['rounds.kind, season_year, pool_filter, auto_added', db.from('rounds').select('kind, season_year, pool_filter, auto_added').limit(1)],
+    ['manual_results table', db.from('manual_results').select('round_id').limit(1)],
+    ['league_follows table', db.from('league_follows').select('league_id').limit(1)],
+    ['league_skipped_events table', db.from('league_skipped_events').select('league_id').limit(1)],
+  ];
+  const missing: string[] = [];
+  for (const [label, probe] of probes) {
+    const { error } = await probe;
+    if (error) missing.push(`${label}: ${error.message}`);
+  }
+  if (missing.length > 0) {
+    console.error('STOP: migration 0005_formats.sql is not applied (or only partly applied):');
+    for (const m of missing) console.error(`  - ${m}`);
+    console.error('Paste supabase/migrations/0005_formats.sql into the Supabase SQL Editor, run it, then rerun db-smoke.');
+    process.exit(1);
+  }
+  console.log('ok    0005 columns and tables exist');
+}
+
 async function main() {
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!anonKey) throw new Error('NEXT_PUBLIC_SUPABASE_ANON_KEY is missing from .env.local (needed for the RLS checks)');
+  await require0005();
   const repo = createSupabaseRepo(createSupabaseClient());
   const slug = `smoke-test-${Date.now().toString(36)}`;
   const league = await repo.createLeague({
@@ -152,6 +181,76 @@ async function main() {
   // RLS on, no policies (spec §8.1): the public anon key sees nothing and can't call our functions.
   const { createClient } = await import('@supabase/supabase-js');
   const anon = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, anonKey);
+
+  // v2 SP2: league formats (migration 0005). The anon checks run while rows exist, so they prove RLS.
+  const sp2 = await repo.createLeague({
+    slug: `smoke-sp2-${Date.now().toString(36)}`, name: 'Smoke Formats', defaultScoring: defaultScoring(), format: 'season',
+  });
+  try {
+    check('league format round-trips', sp2.format === 'season' && sp2.followsSyncedAt === null);
+    const stamp = new Date().toISOString();
+    check('follows_synced_at saves',
+      Date.parse((await repo.updateLeague(sp2.id, { followsSyncedAt: stamp })).followsSyncedAt ?? '') === Date.parse(stamp));
+
+    const manual = await repo.createRound({
+      leagueId: sp2.id, eventKey: null, kind: 'manual', eventName: 'Smoke Garage Games',
+      startDate: '2026-11-07', endDate: '2026-11-07', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    check('manual round has no event key', manual.kind === 'manual' && manual.eventKey === null && manual.autoAdded === false);
+
+    const season = await repo.createRound({
+      leagueId: sp2.id, eventKey: null, kind: 'season', seasonYear: 2027, poolFilter: DEFAULT_POOL_FILTER, rosterSize: 15,
+      eventName: '2027 Season', startDate: '2027-02-26', endDate: '2027-04-18', timezone: 'America/New_York',
+      scoring: defaultScoring(),
+    });
+    check('season round round-trips (roster 15, pool filter)',
+      season.kind === 'season' && season.seasonYear === 2027 && season.rosterSize === 15 && season.poolFilter?.type === 'all');
+    check('a second 2027 season is rejected by rounds_league_season_year',
+      (await constraintOf(repo.createRound({
+        leagueId: sp2.id, eventKey: null, kind: 'season', seasonYear: 2027, poolFilter: DEFAULT_POOL_FILTER,
+        eventName: '2027 Season again', startDate: '2027-02-26', endDate: '2027-04-18', timezone: 'America/New_York',
+        scoring: defaultScoring(),
+      }))) === 'rounds_league_season_year');
+    check('listOpenSeasonRounds finds the season', (await repo.listOpenSeasonRounds()).some((r) => r.id === season.id));
+
+    const auto = {
+      leagueId: sp2.id, eventKey: '2025parr', eventName: 'Ramp Riot', autoAdded: true,
+      startDate: '2025-10-25', endDate: '2025-10-25', timezone: 'America/New_York', scoring: defaultScoring(),
+    };
+    const first = await repo.createRoundIfAbsent(auto);
+    check('createRoundIfAbsent inserts', first?.eventKey === '2025parr' && first.kind === 'tba' && first.autoAdded === true);
+    check('createRoundIfAbsent twice returns null', (await repo.createRoundIfAbsent(auto)) === null);
+    check('createRoundIfAbsent keeps one copy',
+      (await repo.listRounds(sp2.id)).filter((r) => r.eventKey === '2025parr').length === 1);
+
+    const result = {
+      roundId: manual.id, teamKey: 'frc5181', qualWins: 4, qualLosses: 2, qualTies: 1, rankingPoints: null,
+      qualRank: 3, allianceRole: 'captain' as const, playoffWins: 2, eventResult: null, awardTypes: [1, 9],
+    };
+    await repo.upsertManualResult(result);
+    await repo.upsertManualResult({ ...result, qualWins: 5 });
+    const results = await repo.listManualResults(manual.id);
+    check('manual result upserts and round-trips',
+      results.length === 1 && results[0].qualWins === 5 && results[0].rankingPoints === null &&
+        JSON.stringify(results[0].awardTypes) === '[1,9]' && results[0].allianceRole === 'captain');
+
+    await repo.setFollows(sp2.id, [5181, 341, 5181]);
+    check('follows replace, dedupe and sort', JSON.stringify(await repo.listFollows(sp2.id)) === '[341,5181]');
+    const followed = (await repo.listLeaguesWithFollows()).filter((l) => l.id === sp2.id);
+    check('listLeaguesWithFollows joins league_follows, one row per league', followed.length === 1 && followed[0].format === 'season');
+
+    await repo.addSkippedEvent(sp2.id, '2025parr');
+    await repo.addSkippedEvent(sp2.id, '2025parr');
+    check('skipped event added twice keeps one copy', JSON.stringify(await repo.listSkippedEvents(sp2.id)) === '["2025parr"]');
+
+    for (const table of ['manual_results', 'league_follows', 'league_skipped_events']) {
+      const leaked = await anon.from(table).select('*').limit(1);
+      check(`anon key reads no ${table} (rows exist)`, (leaked.data ?? []).length === 0);
+    }
+  } finally {
+    await repo.deleteLeague(sp2.id).catch((e) => { console.error('cleanup deleteLeague (SP2) failed', e); process.exitCode = 1; });
+  }
+  check('league delete cascades to follows', (await repo.listFollows(sp2.id)).length === 0);
   for (const table of ['leagues', 'players', 'profiles', 'rounds', 'picks', 'adjustments', 'tba_cache', 'event_scores', 'team_stats']) {
     const leaked = await anon.from(table).select('*').limit(1);
     check(`anon key reads no ${table}`, (leaked.data ?? []).length === 0);
