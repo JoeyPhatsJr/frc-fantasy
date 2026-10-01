@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import type { PoolEntry } from '@/lib/pool/entries';
 import { teamLabel } from '@/lib/teams';
@@ -10,6 +10,19 @@ export function confirmText(entry: PoolEntry, forName: string | null): string {
   const label = teamLabel(entry.teamKey);
   if (forName) return `Pick ${label} for ${forName}?`;
   return entry.proj === null ? `Draft ${label}?` : `Draft ${label} · Proj ${entry.proj.toFixed(1)}?`;
+}
+
+const FOCUSABLE =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Where Tab (or Shift+Tab when `backwards`) moves focus inside the sheet: wraps at either end, and comes
+ * back in from outside. `current` is the focused element's index (-1 = outside); -1 = nothing to focus.
+ */
+export function trappedFocusIndex(current: number, count: number, backwards: boolean): number {
+  if (count === 0) return -1;
+  if (current < 0) return backwards ? count - 1 : 0;
+  return (current + (backwards ? count - 1 : 1)) % count;
 }
 
 export function ConfirmSheet({
@@ -25,10 +38,33 @@ export function ConfirmSheet({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const sheet = useRef<HTMLDivElement>(null);
+  // Read during the first render, before autoFocus moves focus into the sheet: the button that opened it.
+  const [opener] = useState(() => (typeof document === 'undefined' ? null : document.activeElement));
+
+  // Focus starts inside the sheet and goes back to the opener when the sheet closes.
+  useEffect(() => {
+    const el = sheet.current;
+    if (el && !el.contains(document.activeElement)) {
+      const nodes = el.querySelectorAll<HTMLElement>(FOCUSABLE);
+      nodes[nodes.length - 1]?.focus();
+    }
+    return () => {
+      if (opener instanceof HTMLElement) opener.focus();
+    };
+  }, [opener]);
+
   // Escape closes the sheet like a tap outside it, unless the pick is already on its way.
+  // Tab and Shift+Tab stay inside the sheet instead of reaching the page behind the scrim.
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === 'Escape' && !busy) onCancel();
+      if (ev.key === 'Tab' && sheet.current) {
+        const nodes = [...sheet.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
+        const next = trappedFocusIndex(nodes.indexOf(document.activeElement as HTMLElement), nodes.length, ev.shiftKey);
+        ev.preventDefault();
+        nodes[next]?.focus();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -37,6 +73,7 @@ export function ConfirmSheet({
   return (
     <div className="fixed inset-0 z-40 flex items-end bg-black/50" onClick={busy ? undefined : onCancel}>
       <div
+        ref={sheet}
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-pick-title"

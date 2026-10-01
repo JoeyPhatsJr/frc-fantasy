@@ -10,7 +10,8 @@ import { useDraftRoom } from '@/components/draft/useDraftRoom';
 import { DraftBoard } from '@/components/DraftBoard';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
-import { DraftApiError } from '@/lib/draft/api';
+import { DraftApiError, type DraftApi } from '@/lib/draft/api';
+import type { DraftState } from '@/lib/draft/state';
 import type { PoolEntry } from '@/lib/pool/entries';
 import { teamLabel } from '@/lib/teams';
 
@@ -32,11 +33,46 @@ export function toggledQueue(queue: string[], teamKey: string): string[] | null 
   return queue.length >= MAX_QUEUE ? null : [...queue, teamKey];
 }
 
+/** The pick a confirm sheet is for. Frozen when the sheet opens, so a clock that moves on can't retarget it. */
+export type PickTarget = { entry: PoolEntry; pickNumber: number; forName: string | null };
+
+/**
+ * Review I2: the target for drafting `entry` right now. My own turn → my pick; a commissioner with someone
+ * else on the clock → "Pick for" them (§7.3); otherwise null.
+ */
+export function confirmTarget(state: DraftState, entry: PoolEntry): PickTarget | null {
+  const me = state.me;
+  if (!me || state.phase !== 'live' || !state.onClock) return null;
+  if (state.onClock.playerId === me.playerId) return { entry, pickNumber: state.pickNumber, forName: null };
+  if (me.isCommissioner) return { entry, pickNumber: state.pickNumber, forName: state.onClock.name };
+  return null;
+}
+
+/** Sends the frozen pick. If the clock moved since the sheet opened, the server answers 409 stale. */
+export function submitPick(api: Pick<DraftApi, 'pick' | 'pickFor'>, target: PickTarget): Promise<unknown> {
+  const { pickNumber, entry } = target;
+  return target.forName !== null ? api.pickFor(pickNumber, entry.teamKey) : api.pick(pickNumber, entry.teamKey);
+}
+
+/** A tapped auto-draft value not yet confirmed by fresh state. `savedAt` is when the save succeeded. */
+export type PendingToggle = { value: boolean; savedAt: number | null };
+
+/**
+ * Review I4: the auto-draft checkbox shows the tapped value at once and keeps it until a state fetched
+ * after the save arrives (`stateSentAt` = when that state's request was sent); from then on the server wins.
+ */
+export function autodraftShown(server: boolean, pending: PendingToggle | null, stateSentAt: number): boolean {
+  if (!pending) return server;
+  if (pending.savedAt !== null && stateSentAt >= pending.savedAt) return server;
+  return pending.value;
+}
+
 export function DraftRoom({ slug, roundId, eventName }: { slug: string; roundId: string; eventName: string }) {
   const room = useDraftRoom(slug, roundId, `${eventName} draft`);
   const { api, state, pool } = room;
   const [tab, setTab] = useState<Tab>('pool');
-  const [confirming, setConfirming] = useState<PoolEntry | null>(null);
+  const [confirming, setConfirming] = useState<PickTarget | null>(null);
+  const [autodraftPending, setAutodraftPending] = useState<PendingToggle | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -68,12 +104,23 @@ export function DraftRoom({ slug, roundId, eventName }: { slug: string; roundId:
   }
 
   function confirmPick() {
-    if (!confirming || !state) return;
-    const teamKey = confirming.teamKey;
-    void run(
-      () => (pickingFor ? api.pickFor(state.pickNumber, teamKey) : api.pick(state.pickNumber, teamKey)),
-      teamKey,
-    );
+    if (!confirming) return;
+    const target = confirming;
+    void run(() => submitPick(api, target), target.entry.teamKey);
+  }
+
+  /** Optimistic: the box flips at once, reverts on error, and follows the server once fresh state arrives. */
+  function toggleAutodraft(on: boolean) {
+    setAutodraftPending({ value: on, savedAt: null });
+    void run(async () => {
+      try {
+        await api.setAutodraft(on);
+      } catch (err) {
+        setAutodraftPending(null);
+        throw err;
+      }
+      setAutodraftPending({ value: on, savedAt: Date.now() });
+    });
   }
 
   function toggleQueue(teamKey: string) {
@@ -116,9 +163,9 @@ export function DraftRoom({ slug, roundId, eventName }: { slug: string; roundId:
               <input
                 type="checkbox"
                 className="size-5"
-                checked={me.autodraft}
+                checked={autodraftShown(me.autodraft, autodraftPending, room.stateSentAt)}
                 disabled={busy || state.phase === 'done'}
-                onChange={(ev) => void run(() => api.setAutodraft(ev.target.checked))}
+                onChange={(ev) => toggleAutodraft(ev.target.checked)}
               />
               Auto-draft for me
             </label>
@@ -186,7 +233,8 @@ export function DraftRoom({ slug, roundId, eventName }: { slug: string; roundId:
             canDraft={!busy && (myTurn || Boolean(pickingFor))}
             draftLabel={pickingFor ? `Pick for ${pickingFor.name}` : 'Draft'}
             readOnly={!me}
-            onDraft={setConfirming}
+            queueDisabled={busy}
+            onDraft={(entry) => setConfirming(confirmTarget(state, entry))}
             onToggleQueue={toggleQueue}
           />
         ) : null}
@@ -216,8 +264,8 @@ export function DraftRoom({ slug, roundId, eventName }: { slug: string; roundId:
 
       {confirming ? (
         <ConfirmSheet
-          entry={confirming}
-          forName={pickingFor?.name ?? null}
+          entry={confirming.entry}
+          forName={confirming.forName}
           busy={busy}
           onConfirm={confirmPick}
           onCancel={() => setConfirming(null)}

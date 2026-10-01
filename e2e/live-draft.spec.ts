@@ -52,7 +52,10 @@ test('two phones run a live draft: pick, race, pause/resume, timeout, auto-draft
 
     // 5. Joey turns on auto-draft while on the clock: picks 3 and 4 (both his) happen at once.
     await joey.getByText('Draft options').click();
-    await joey.getByLabel('Auto-draft for me').check();
+    // .click(), not .check(): the box is controlled by server state, so poll for the saved result instead.
+    await joey.getByLabel('Auto-draft for me').click();
+    await expect.poll(async () => (await stateOf(joeyCtx.request)).me.autodraft, { timeout: 10_000 }).toBe(true);
+    await expect(joey.getByLabel('Auto-draft for me')).toBeChecked({ timeout: 10_000 });
     await expect.poll(async () => (await stateOf(joeyCtx.request)).pickNumber, { timeout: 10_000 }).toBe(5);
 
     // 6. Joey (commissioner) undoes his last auto-pick: it stays undone and his auto-draft is off.

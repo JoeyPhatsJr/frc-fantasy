@@ -34,6 +34,8 @@ type RowActions = {
   canDraft: boolean;
   draftLabel: string;
   readOnly: boolean;
+  /** True while a save is in flight, so two quick taps can't build from the same stale queue. */
+  queueDisabled: boolean;
   onDraft: (entry: PoolEntry) => void;
   onToggleQueue: (teamKey: string) => void;
 };
@@ -64,6 +66,7 @@ function PoolRow({ entry: e, queued, ...a }: RowActions & { entry: PoolEntry; qu
             variant="ghost"
             aria-label={queued ? `Remove ${label} from queue` : `Add ${label} to queue`}
             aria-pressed={queued}
+            disabled={a.queueDisabled}
             onClick={() => a.onToggleQueue(e.teamKey)}
           >
             {queued ? <Check className="size-5" /> : <Plus className="size-5" />}

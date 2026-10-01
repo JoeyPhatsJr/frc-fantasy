@@ -1,7 +1,7 @@
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { ConfirmSheet, confirmText } from '@/components/draft/ConfirmSheet';
+import { ConfirmSheet, confirmText, trappedFocusIndex } from '@/components/draft/ConfirmSheet';
 import { bannerLines, DraftRoomBanner } from '@/components/draft/DraftRoomBanner';
 import { DraftRosters } from '@/components/draft/DraftRosters';
 import { PoolList } from '@/components/draft/PoolList';
@@ -57,7 +57,7 @@ describe('PoolList (§6.3)', () => {
   const entries = [entry('frc341', null, 'Miss Daisy'), entry('frc25', 12.5, 'Raider Robotix')];
   const props = {
     entries, taken: new Set<string>(), queued: new Set(['frc25']), canDraft: false, draftLabel: 'Draft',
-    readOnly: false, onDraft: () => {}, onToggleQueue: () => {},
+    readOnly: false, queueDisabled: false, onDraft: () => {}, onToggleQueue: () => {},
   };
   it('shows a New chip for teams without a projection and Proj otherwise', () => {
     const t = text(renderToStaticMarkup(h(PoolList, props)));
@@ -71,6 +71,15 @@ describe('PoolList (§6.3)', () => {
     expect(html).toContain('aria-label="Remove 25 from queue"');
     const ro = renderToStaticMarkup(h(PoolList, { ...props, readOnly: true }));
     expect(ro).not.toContain('>Draft<');
+  });
+  it('disables the queue buttons while a queue save is in flight (review M7)', () => {
+    const queueButtons = (html: string) => html.match(/<button[^>]*aria-label="(Add|Remove) [^"]+ (to|from) queue"[^>]*>/g) ?? [];
+    const idle = queueButtons(renderToStaticMarkup(h(PoolList, props)));
+    expect(idle).toHaveLength(2);
+    expect(idle.every((b) => !/ disabled=""/.test(b))).toBe(true);
+    const saving = queueButtons(renderToStaticMarkup(h(PoolList, { ...props, queueDisabled: true })));
+    expect(saving).toHaveLength(2);
+    expect(saving.every((b) => / disabled=""/.test(b))).toBe(true);
   });
 });
 
@@ -97,6 +106,19 @@ describe('ConfirmSheet', () => {
     const html = renderToStaticMarkup(h(ConfirmSheet, { entry: entry('frc341', null), forName: null, busy: false, onConfirm: () => {}, onCancel: () => {} }));
     expect(html).toContain('role="dialog"');
     expect(text(html)).toContain('Draft 341?');
+  });
+
+  it('Tab and Shift+Tab cycle inside the sheet (review M9)', () => {
+    // Two buttons: Cancel (0) and Draft (1).
+    expect(trappedFocusIndex(0, 2, false)).toBe(1);
+    expect(trappedFocusIndex(1, 2, false)).toBe(0); // Tab past the last wraps to the first
+    expect(trappedFocusIndex(0, 2, true)).toBe(1); // Shift+Tab before the first wraps to the last
+    expect(trappedFocusIndex(1, 2, true)).toBe(0);
+    // Focus somewhere outside the sheet: come back in at the start (Tab) or end (Shift+Tab).
+    expect(trappedFocusIndex(-1, 2, false)).toBe(0);
+    expect(trappedFocusIndex(-1, 2, true)).toBe(1);
+    // Nothing focusable (both buttons disabled while the pick is sending): stay put.
+    expect(trappedFocusIndex(-1, 0, false)).toBe(-1);
   });
 });
 
