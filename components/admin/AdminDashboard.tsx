@@ -17,6 +17,13 @@ import type { AdminApi } from '@/lib/admin/client';
 import type { AdminState, EventLookup } from '@/lib/api/types';
 import { formatDateRange } from '@/lib/format';
 
+/** Members-only leagues have no public page, so the shortcuts don't call it one. */
+export function leagueLinkLabels(visibility: 'link' | 'members'): { view: string; copy: string } {
+  return visibility === 'link'
+    ? { view: 'View public page', copy: 'Copy public link' }
+    : { view: 'View league page', copy: 'Copy league link' };
+}
+
 export const FIRST_ROUND_FAILED = "Your league is ready, but the first round couldn't be added. Add it under Rounds below.";
 
 /** firstRoundFailed: /leagues/new made the league but couldn't add the prefilled event (?round_error=1). */
@@ -108,7 +115,8 @@ function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminAp
     );
   }
 
-  const publicLink = typeof window === 'undefined' ? '' : `${window.location.origin}/l/${slug}`;
+  const leagueLink = typeof window === 'undefined' ? '' : `${window.location.origin}/l/${slug}`;
+  const labels = leagueLinkLabels(state.league.visibility);
 
   return (
     <main id="main" className="space-y-6">
@@ -116,9 +124,9 @@ function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminAp
       <h1 className="sr-only">Commissioner dashboard for {state.league.name}</h1>
       <div className="flex flex-wrap items-center gap-2">
         <Button href={`/l/${slug}`} variant="secondary">
-          View public page
+          {labels.view}
         </Button>
-        <CopyButton text={publicLink} label="Copy public link" />
+        <CopyButton text={leagueLink} label={labels.copy} />
       </div>
 
       {roundWarning ? <Alert tone="warning">{FIRST_ROUND_FAILED}</Alert> : null}

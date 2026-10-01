@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: () => {} }), usePathname: () => '/' }));
 
 import AdminPage from '@/app/l/[slug]/admin/page';
-import { AdminDashboard, FIRST_ROUND_FAILED } from '@/components/admin/AdminDashboard';
+import { AdminDashboard, FIRST_ROUND_FAILED, leagueLinkLabels } from '@/components/admin/AdminDashboard';
 import { afterCreateUrl, CreateLeagueForm } from '@/components/CreateLeagueForm';
 import { InviteCodeBox } from '@/components/InviteCodeBox';
 import { JoinView } from '@/components/JoinView';
@@ -63,6 +63,13 @@ describe('a failed prefilled first round is not silent (final review, Minor #13)
     expect(failed.props).toEqual({ slug: 'fam-abc234', firstRoundFailed: true });
     expect((await page('fam-abc234', {})).props).toEqual({ slug: 'fam-abc234', firstRoundFailed: false });
     expect(FIRST_ROUND_FAILED).toBe("Your league is ready, but the first round couldn't be added. Add it under Rounds below.");
+  });
+});
+
+describe('admin shortcuts (final review, Minor #6)', () => {
+  it('only call the league page "public" when it is', () => {
+    expect(leagueLinkLabels('link')).toEqual({ view: 'View public page', copy: 'Copy public link' });
+    expect(leagueLinkLabels('members')).toEqual({ view: 'View league page', copy: 'Copy league link' });
   });
 });
 

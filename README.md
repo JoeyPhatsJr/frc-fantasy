@@ -81,10 +81,12 @@ npx tsx --env-file=.env.local scripts/db-smoke.ts   # talks to the real database
 | `scripts/capture-fixture.ts <eventKey>` | Downloads an event's TBA data into `tests/fixtures/` |
 | `scripts/seed-demo.ts <owner-user-id> [site-url]` | Creates a demo league that replays Ramp Riot 2025, owned by that user (find your id in Supabase → Authentication → Users; sign in once first). Note: creates a NEW league each run |
 | `scripts/db-smoke.ts` | Checks the real database matches the code |
-| `scripts/delete-v1-leagues.ts` | One-time cleanup of the old pre-accounts leagues. Already run; don't run it again |
 
 Run them with `npx tsx --env-file=.env.local scripts/<name>.ts ...`. For example, the demo league:
 `npx tsx --env-file=.env.local scripts/seed-demo.ts <your-user-id>`.
+
+The one-time v1 cleanup (deleting the old pre-accounts leagues) was run on 2026-09-30; its script has
+been removed.
 
 ## Live site
 
@@ -124,10 +126,11 @@ Skip any item that is already done.
      site (`https://<your-app>.vercel.app/**`).
    - [x] Press Deploy. Expect a green build and a URL like `https://frc-fantasy-xxxx.vercel.app`.
    - [x] Open the URL. Expect the home page.
-3. **Create the real league on production.**
-   - [x] Sign in on the production home page and create the league (for example "Habich Fam").
-   - [x] Copy the league link and the invite code to share.
-   - [ ] In the admin page, add the family as players and add round `2025parr` for the replay.
+3. **Create the real league on production.** (The v1 league was removed in the 2026-09-30 cleanup.)
+   - [ ] Sign in on the production home page and create the league (for example "Habich Fam").
+   - [ ] Copy the invite link from Admin → Members and send it to the family. Each person signs in and
+     joins with it; nobody can be added by name any more.
+   - [ ] In the admin page, add round `2025parr` for the replay.
 4. **Prove nothing is cached by Next.js (spec section 9.2).**
    - [x] Open the public round page for `2025parr` on your phone. Note a player's total.
    - [x] On your laptop, in the round admin, add a player adjustment of +100 with the reason "cache test".
