@@ -72,3 +72,19 @@ export type EventData = {
   awards: Award[] | null;
   oprs: OprsResponse | null;
 };
+
+/** TBA Event_Simple, as returned by /team/{key}/events/{year}/simple and /events/{year}/simple. No timezone. */
+export type EventSimple = {
+  key: string;
+  name: string;
+  /** 0 Regional · 1 District · 2 District Championship · 3 Champs Division · 4 Champs Finals ·
+   *  5 District Champs Division · 99 Offseason · 100 Preseason · -1 Unlabeled */
+  event_type: number;
+  start_date: string; // YYYY-MM-DD
+  end_date: string;
+  year?: number;
+  city?: string | null;
+  state_prov?: string | null;
+  country?: string | null;
+  district?: { key: string; abbreviation: string; display_name?: string } | null;
+};
