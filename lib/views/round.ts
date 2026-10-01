@@ -6,6 +6,7 @@ import { scoreSourceFor } from '@/lib/rounds/scoreSource';
 import { roundStatus, type RoundStatus } from '@/lib/rounds/status';
 import { roundPlayers, scoreRound } from '@/lib/scoring/round';
 import type { PlayerRoundScore, RpMethod } from '@/lib/scoring/types';
+import type { SeasonTeamDetail } from '@/lib/season/score';
 
 // Kept so existing imports (tests/views/views.test.ts) keep working.
 export { cleanEventData } from '@/lib/tba/clean';
@@ -26,6 +27,8 @@ export type RoundView = {
   hasRankings: boolean;
   fetchedAt: string | null;
   stale: boolean;
+  /** Season rounds only: teamKey -> that team's per-event breakdown. Null for every other kind. */
+  season: Record<string, SeasonTeamDetail> | null;
 };
 
 export type RoundPage = {
@@ -42,7 +45,7 @@ export async function buildRoundView(
   adjustments: AdjustmentRow[],
   now: Date,
 ): Promise<RoundView> {
-  const source = await scoreSourceFor(round, now);
+  const source = await scoreSourceFor(round, now, [...new Set(picks.map((p) => p.teamKey))]);
   const players = roundPlayers(allPlayers, round.draftOrder, adjustments);
   return {
     round,
@@ -57,6 +60,7 @@ export async function buildRoundView(
     hasRankings: source.hasRankings,
     fetchedAt: source.fetchedAt,
     stale: source.stale,
+    season: source.season,
   };
 }
 

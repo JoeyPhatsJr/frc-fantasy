@@ -82,8 +82,8 @@ describe('a manual round page', () => {
   });
 });
 
-describe('a season round page (until Task 15 scores it)', () => {
-  it('has no event key, so it shows "no data" without calling TBA', async () => {
+describe('a season round page with no drafted teams', () => {
+  it('has nothing to score, so it shows "no data" without calling TBA', async () => {
     const season = await repo.createRound({
       leagueId: league.id, eventKey: null, kind: 'season', seasonYear: 2027, eventName: '2027 season',
       startDate: '2027-01-01', endDate: '2027-04-30', timezone: 'America/New_York', scoring: defaultScoring(),

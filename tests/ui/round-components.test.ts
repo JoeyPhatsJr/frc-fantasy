@@ -190,3 +190,37 @@ describe('Freshness', () => {
     expect(html).not.toContain('role=');
   });
 });
+
+describe('RosterList with season detail', () => {
+  const scores: PlayerRoundScore[] = [
+    {
+      playerId: 'p1', name: 'Joey', total: 58, rank: 1, adjustments: [],
+      teams: [{ teamKey: 'frc5181', total: 58, lines: [{ category: 'adjustment', label: 'Spirit', points: 5 }] }],
+    },
+  ];
+  const season = {
+    frc5181: {
+      teamKey: 'frc5181',
+      total: 53,
+      events: [
+        { eventKey: '2027paca', name: 'Chesapeake', startDate: '2027-03-05', endDate: '2027-03-07', total: 41, stale: false,
+          lines: [{ category: 'qualRecord' as const, label: 'Qual record 9-3-0', points: 27 }] },
+        { eventKey: '2027pahat', name: 'Hatboro-Horsham', startDate: '2027-03-13', endDate: '2027-03-15', total: 12, stale: false, lines: [] },
+      ],
+      next: { eventKey: '2027mrcmp', name: 'Mid-Atlantic Championship', startDate: '2027-04-08' },
+    },
+  };
+  const t = text(render(h(RosterList, { scores, teamNames: {}, draftInProgress: false, season })));
+
+  it('shows one row per event with its subtotal, then the event lines', () => {
+    expect(t).toContain('Mar 5–7, 2027 · Chesapeake');
+    expect(t).toContain('+41');
+    expect(t).toContain('Qual record 9-3-0');
+    expect(t).toContain('Mar 13–15, 2027 · Hatboro-Horsham');
+  });
+
+  it('keeps team adjustments and shows the next event', () => {
+    expect(t).toContain('Spirit');
+    expect(t).toContain('Next: Mid-Atlantic Championship · Apr 8, 2027');
+  });
+});

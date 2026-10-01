@@ -51,9 +51,10 @@ export default async function RoundPage({ params }: Props) {
   const drafts = await memberLiveDrafts(slug, [view]);
   const draftInProgress = view.status === 'setup' || view.status === 'drafting';
   const manual = round.kind === 'manual';
+  const season = round.kind === 'season';
   const notStarted = !view.hasEventData;
-  const oprPending = view.hasEventData && !view.qualsComplete;
-  const rpMissing = view.hasRankings && view.rpMethod === 'none';
+  const oprPending = view.hasEventData && !view.qualsComplete && !season;
+  const rpMissing = view.hasRankings && view.rpMethod === 'none' && !season;
 
   return (
     <main id="main" className="space-y-6">
@@ -91,7 +92,7 @@ export default async function RoundPage({ params }: Props) {
       {notStarted || oprPending || rpMissing ? (
         <div className="space-y-2">
           {notStarted ? (
-            <Alert tone="info">{manual ? 'No results entered yet' : 'Event hasn’t started'}</Alert>
+            <Alert tone="info">{manual ? 'No results entered yet' : season ? 'No events yet this season' : 'Event hasn’t started'}</Alert>
           ) : null}
           {oprPending ? <Note>OPR bonus: after quals</Note> : null}
           {rpMissing ? <Note>RP data unavailable for this event</Note> : null}
@@ -109,8 +110,15 @@ export default async function RoundPage({ params }: Props) {
 
       <section>
         <Card title="Rosters">
-          <p className="-mt-1 mb-3 text-[15px] text-fg-muted">Tap a player to see where their points came from.</p>
-          <RosterList scores={view.scores} teamNames={view.teamNames} draftInProgress={draftInProgress} />
+          <p className="-mt-1 mb-3 text-[15px] text-fg-muted">
+            {season ? 'Tap a player, then a team, to see each event.' : 'Tap a player to see where their points came from.'}
+          </p>
+          <RosterList
+            scores={view.scores}
+            teamNames={view.teamNames}
+            draftInProgress={draftInProgress}
+            season={view.season}
+          />
         </Card>
       </section>
 

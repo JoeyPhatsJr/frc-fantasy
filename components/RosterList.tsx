@@ -1,7 +1,8 @@
 import { BumperPlate } from '@/components/ui/BumperPlate';
 import { ChevronDown } from '@/components/ui/icons';
-import { signed } from '@/lib/format';
+import { formatDateRange, signed } from '@/lib/format';
 import type { Line, PlayerRoundScore } from '@/lib/scoring/types';
+import type { SeasonEventScore, SeasonTeamDetail } from '@/lib/season/score';
 import { teamLabel } from '@/lib/teams';
 
 /** First character of the name, for the avatar circle. Array.from keeps emoji whole. */
@@ -28,14 +29,69 @@ function LineItem({ line }: { line: Line }) {
   );
 }
 
+export function seasonEventLabel(e: SeasonEventScore): string {
+  return `${formatDateRange(e.startDate, e.endDate)} · ${e.name}`;
+}
+
+/** Season rounds (spec §5.5): the team's season total → one row per event → that event's v1 lines. */
+function SeasonBreakdown({ detail, adjustments }: { detail: SeasonTeamDetail; adjustments: Line[] }) {
+  return (
+    <div className="mt-2 space-y-2">
+      {detail.events.length === 0 ? (
+        <p className="text-[13px] leading-[18px] text-fg-muted">No events yet</p>
+      ) : (
+        <ul className="divide-y divide-border rounded-lg bg-surface-2 px-3">
+          {detail.events.map((e) => {
+            const lines = e.lines.filter((l) => l.points !== 0);
+            return (
+              <li key={e.eventKey}>
+                <details className="group/event">
+                  <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 py-1.5 text-[15px] leading-[22px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                    <span className="min-w-0 break-words text-fg">{seasonEventLabel(e)}</span>
+                    <span className={`shrink-0 font-semibold tabular-nums ${pointsTone(e.total)}`}>{signed(e.total)}</span>
+                  </summary>
+                  {lines.length === 0 ? (
+                    <p className="pb-2 text-[13px] leading-[18px] text-fg-muted">No points yet</p>
+                  ) : (
+                    <ul className="divide-y divide-border pb-1 pl-3">
+                      {lines.map((line, i) => (
+                        <LineItem key={i} line={line} />
+                      ))}
+                    </ul>
+                  )}
+                </details>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {adjustments.length > 0 ? (
+        <ul className="divide-y divide-border rounded-lg bg-surface-2 px-3">
+          {adjustments.map((line, i) => (
+            <LineItem key={i} line={line} />
+          ))}
+        </ul>
+      ) : null}
+      {detail.next ? (
+        <p className="text-[13px] leading-[18px] text-fg-muted">
+          Next: {detail.next.name} · {formatDateRange(detail.next.startDate, detail.next.startDate)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function RosterList({
   scores,
   teamNames,
   draftInProgress,
+  season,
 }: {
   scores: PlayerRoundScore[];
   teamNames: Record<string, string>;
   draftInProgress: boolean;
+  /** Season rounds only: each team expands into its per-event subtotals. */
+  season?: Record<string, SeasonTeamDetail> | null;
 }) {
   if (scores.length === 0) return <p className="text-sm text-fg-muted">No players in this round yet.</p>;
   return (
@@ -85,7 +141,12 @@ export function RosterList({
                           {team.total} pts
                         </span>
                       </p>
-                      {lines.length === 0 ? (
+                      {season?.[team.teamKey] ? (
+                        <SeasonBreakdown
+                          detail={season[team.teamKey]}
+                          adjustments={team.lines.filter((l) => l.category === 'adjustment' && l.points !== 0)}
+                        />
+                      ) : lines.length === 0 ? (
                         <p className="mt-2 text-[13px] leading-[18px] text-fg-muted">No points yet</p>
                       ) : (
                         <ul className="mt-2 divide-y divide-border rounded-lg bg-surface-2 px-3">
