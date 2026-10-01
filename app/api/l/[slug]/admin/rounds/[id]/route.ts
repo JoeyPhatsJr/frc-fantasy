@@ -13,6 +13,8 @@ import { getRepo } from '@/lib/db';
 import { roundDetail } from '@/lib/rounds/detail';
 import { loadPool } from '@/lib/rounds/pool';
 import { scoringConfigSchema } from '@/lib/scoring/config';
+import { MAX_SEASON_ROSTER } from '@/lib/season/calendar';
+import { poolFilterSchema } from '@/lib/season/poolFilter';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -21,12 +23,9 @@ type Ctx = { params: Promise<{ slug: string; id: string }> };
 
 const patchSchema = z
   .strictObject({
-    rosterSize: z
-      .number('Roster size must be a whole number from 1 to 10')
-      .int('Roster size must be a whole number from 1 to 10')
-      .min(1, 'Roster size must be a whole number from 1 to 10')
-      .max(10, 'Roster size must be a whole number from 1 to 10')
-      .optional(),
+    // Type-only here: the range depends on the round's kind (1–10, or 1–15 for season rounds).
+    rosterSize: z.number('Roster size must be a whole number from 1 to 10').optional(),
+    poolFilter: poolFilterSchema.optional(),
     draftOrder: z
       .array(z.string().regex(UUID_RE, 'Draft order must be a list of player ids'))
       .max(50, 'Too many players in the draft order')
@@ -59,6 +58,25 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
     const patch = await parseBody(req, patchSchema);
     const repo = getRepo();
     const now = new Date();
+
+    if (patch.rosterSize !== undefined) {
+      const max = round.kind === 'season' ? MAX_SEASON_ROSTER : 10;
+      if (!Number.isInteger(patch.rosterSize) || patch.rosterSize < 1 || patch.rosterSize > max) {
+        throw new HttpError(400, `Roster size must be a whole number from 1 to ${max}`);
+      }
+    }
+    // Spec §5.5: the pool filter is editable only while the round has no picks (and, per SP4, before the start).
+    if (patch.poolFilter !== undefined) {
+      if (round.kind !== 'season') throw new HttpError(409, 'Only season rounds have a team pool filter');
+      if (round.draftStartedAt || (await repo.listPicks(round.id)).length > 0) {
+        throw new HttpError(409, 'Undo all picks to change the team pool');
+      }
+      if (patch.poolFilter.type === 'district' && !patch.poolFilter.key.startsWith(String(round.seasonYear))) {
+        throw new HttpError(400, `Pick a district from the ${round.seasonYear} season`);
+      }
+    }
+    // The size check below must use the filter being saved, not the old one.
+    const poolRound = patch.poolFilter ? { ...round, poolFilter: patch.poolFilter } : round;
 
     // v2 §7.1 / §7.3: live-draft settings and locks.
     if (patch.draftMode !== undefined && patch.draftMode !== round.draftMode) {
@@ -97,13 +115,24 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
       if (draftOrder.some((playerId) => !playerIds.has(playerId))) {
         throw new HttpError(400, "The draft order includes someone who isn't a player in this league");
       }
-      const P = draftOrder.length;
-      if (P > 0) {
-        const pool = await loadPool(round, now);
-        if (pool.stale && pool.tbaCount === 0) {
+    }
+
+    // v1's P × R ≤ T rule, re-checked when the order, roster size, or (season) pool filter changes.
+    const P = draftOrder.length;
+    if (P > 0 && (draftChanged || patch.poolFilter !== undefined)) {
+      const pool = await loadPool(poolRound, now);
+      const unknown = pool.stale && pool.tbaCount === 0;
+      // Season rounds: TBA hasn't published the year's teams yet (spec §5.5).
+      const emptyMessage = pool.teams.length === 0 ? pool.emptyMessage : null;
+      if (draftChanged) {
+        if (unknown) {
           // TBA was never reached (or has no list yet): the team count is unknown, not zero.
           throw new HttpError(503, "Couldn't reach The Blue Alliance for the team list. Try again in a minute.");
         }
+        if (emptyMessage) throw new HttpError(409, emptyMessage);
+      }
+      // A filter alone can still be chosen before TBA publishes the year's teams; draft start re-checks.
+      if (!unknown && !emptyMessage) {
         const T = pool.teams.length;
         if (P * rosterSize > T) {
           const max = Math.floor(T / P);
@@ -123,6 +152,7 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
       scoring: patch.scoring,
       draftMode: patch.draftMode,
       pickSeconds: patch.pickSeconds,
+      poolFilter: patch.poolFilter,
       pausedRemainingMs,
       finalizedAt:
         patch.finalized === undefined ? undefined : patch.finalized ? now.toISOString() : null,

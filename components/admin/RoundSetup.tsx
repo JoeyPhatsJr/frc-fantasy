@@ -4,12 +4,15 @@ import { useState } from 'react';
 import type { SectionProps } from '@/components/admin/RoundAdmin';
 import { ScoringForm } from '@/components/admin/ScoringForm';
 import { usePending } from '@/components/admin/usePending';
+import { PoolFilterFields, samePoolFilter } from '@/components/PoolFilterFields';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { ArrowDown, ArrowUp, ChevronDown, Plus, X } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { moveItem, shuffled } from '@/lib/draft';
+import { MAX_SEASON_ROSTER } from '@/lib/season/calendar';
+import { DEFAULT_POOL_FILTER, type PoolFilter, poolFilterSchema } from '@/lib/season/poolFilter';
 import { parseTeamInput } from '@/lib/teams';
 
 /** The summary of a <details> styled as a secondary button, matching the dashboard's. */
@@ -27,16 +30,49 @@ export function RoundSetup({ detail, busy, run, api, playerNames }: SectionProps
   const [order, setOrder] = useState<string[]>(round.draftOrder);
   const [rosterSize, setRosterSize] = useState(round.rosterSize);
   const [teamInput, setTeamInput] = useState('');
+  const savedFilter = round.poolFilter ?? DEFAULT_POOL_FILTER;
+  const [filter, setFilter] = useState<PoolFilter>(savedFilter);
   const { pending, go } = usePending(run);
 
+  const season = round.kind === 'season' && round.seasonYear !== null;
+  // Spec §5.5: the pool filter is editable only while the round has no picks and the draft hasn't started.
+  const filterLocked = locked || round.draftStartedAt !== null;
+  const filterValid = poolFilterSchema.safeParse(filter).success;
+  const maxRoster = round.kind === 'season' ? MAX_SEASON_ROSTER : 10;
   const notDrafting = detail.players.filter((p) => !order.includes(p.id));
-  const maxAllowed = order.length === 0 ? 10 : Math.min(10, Math.floor(detail.pool.length / order.length));
+  const maxAllowed =
+    order.length === 0 ? maxRoster : Math.min(maxRoster, Math.floor(detail.pool.length / order.length));
   const tooBig = order.length > 0 && rosterSize > maxAllowed;
   const changed = rosterSize !== round.rosterSize || order.join(',') !== round.draftOrder.join(',');
   const manualTeams = detail.pool.filter((t) => t.manual);
 
   return (
     <div className="space-y-8">
+      {season && round.seasonYear !== null ? (
+        <div className="space-y-3">
+          <h3 className={SUBHEAD}>Team pool</h3>
+          {detail.poolEmptyMessage ? <Alert tone="info">{detail.poolEmptyMessage}</Alert> : null}
+          {filterLocked ? <Alert tone="info">Undo all picks to change the team pool.</Alert> : null}
+          <PoolFilterFields year={round.seasonYear} value={filter} onChange={setFilter} disabled={filterLocked} />
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={busy || filterLocked || !filterValid || samePoolFilter(filter, savedFilter)}
+            busy={pending === 'pool-filter'}
+            onClick={() =>
+              go(
+                'pool-filter',
+                () => api(`/rounds/${round.id}`, { method: 'PATCH', body: { poolFilter: filter } }),
+                'Team pool saved.',
+              )
+            }
+          >
+            Save team pool
+          </Button>
+          <p className="text-[13px] text-fg-muted tabular-nums">{detail.pool.length} teams in the pool.</p>
+        </div>
+      ) : null}
+
       <div className="space-y-3">
         <h3 className={SUBHEAD}>Draft order and roster size</h3>
         {locked ? <Alert tone="info">Undo all picks to change the draft order or roster size.</Alert> : null}
@@ -111,7 +147,7 @@ export function RoundSetup({ detail, busy, run, api, playerNames }: SectionProps
             onChange={(e) => setRosterSize(Number(e.target.value))}
             className="w-28"
           >
-            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+            {Array.from({ length: maxRoster }, (_, i) => i + 1).map((n) => (
               <option key={n} value={n}>
                 {n}
               </option>
@@ -148,13 +184,15 @@ export function RoundSetup({ detail, busy, run, api, playerNames }: SectionProps
       </div>
 
       <div className="space-y-3">
-        <h3 className={SUBHEAD}>Team pool</h3>
+        <h3 className={SUBHEAD}>{season ? 'Teams added by hand' : 'Team pool'}</h3>
         {detail.poolStale ? (
           <Alert tone="warning">Couldn&apos;t reach The Blue Alliance; the team list may be out of date.</Alert>
         ) : null}
         <p className="text-sm text-fg-muted">
-          {detail.pool.length - manualTeams.length} teams from The Blue Alliance, {manualTeams.length} added by hand.
-          Offseason team lists are often incomplete until event day; add missing teams here.
+          {detail.pool.length - manualTeams.length} teams from The Blue Alliance, {manualTeams.length} added by hand.{' '}
+          {season
+            ? 'Add a team the filter misses, or one TBA hasn’t listed yet.'
+            : 'Offseason team lists are often incomplete until event day; add missing teams here.'}
         </p>
         <form
           className="flex items-end gap-2"

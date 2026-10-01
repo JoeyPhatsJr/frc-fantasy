@@ -4,6 +4,7 @@ import type { RoundRow } from '@/lib/db/types';
 import { draftPhase } from '@/lib/draft/live';
 import { loadPool } from '@/lib/rounds/pool';
 import { roundStatus, shouldNudgeFinalize } from '@/lib/rounds/status';
+import { MAX_SEASON_ROSTER } from '@/lib/season/calendar';
 
 /** Everything the round admin page needs, in one response. */
 export async function roundDetail(round: RoundRow, now: Date): Promise<AdminRoundDetail> {
@@ -50,7 +51,11 @@ export async function roundDetail(round: RoundRow, now: Date): Promise<AdminRoun
       points: a.points,
       reason: a.reason,
     })),
-    maxRosterSize: drafters === 0 ? null : Math.min(10, Math.floor(pool.teams.length / drafters)),
+    poolEmptyMessage: pool.emptyMessage,
+    maxRosterSize:
+      drafters === 0
+        ? null
+        : Math.min(round.kind === 'season' ? MAX_SEASON_ROSTER : 10, Math.floor(pool.teams.length / drafters)),
     manualResults: manualRows ? manualRows.map(({ roundId: _roundId, ...r }) => r) : null,
   };
 }

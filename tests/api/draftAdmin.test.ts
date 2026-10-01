@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mocks, resetDraftMocks } from '../helpers/draftMocks';
+import { mocks, resetDraftMocks, TBA_TEAMS } from '../helpers/draftMocks';
 
 vi.mock('@/lib/db', async () => (await import('../helpers/draftMocks')).dbModule);
 vi.mock('@/lib/tba/client', async () => (await import('../helpers/draftMocks')).tbaModule);
@@ -120,6 +120,33 @@ describe('draft start / pause / resume', () => {
     await mocks.repo.addExtraTeam(round.id, 'frc4');
     expect((await control(manual, 'start')).status).toBe(200);
     expect(mocks.getTba).not.toHaveBeenCalled();
+  });
+
+  it('refuses an unpublished season pool with the TBA message, and checks P × R ≤ T (SP2 §5.5)', async () => {
+    const s = await seedLiveDraft(mocks.repo);
+    const round = await mocks.repo.createRound({
+      leagueId: s.league.id, eventKey: null, kind: 'season', seasonYear: 2027, eventName: '2027 Season',
+      startDate: '2027-01-01', endDate: '2027-12-31', timezone: 'America/New_York', scoring: s.round.scoring,
+    });
+    await mocks.repo.updateRound(round.id, { draftOrder: [s.joey.id, s.mom.id], rosterSize: 5, draftMode: 'live', pickSeconds: 60 });
+    mocks.user = s.joeyUser;
+    const season = { ...s, round };
+    let page0: unknown[] = [];
+    mocks.getTba.mockImplementation(async (path: string) => ({
+      data: path === '/teams/2027/0/simple' ? page0 : [],
+      fetchedAt: '2026-10-23T22:00:00.000Z',
+      stale: false,
+    }));
+    const empty = await control(season, 'start');
+    expect(empty.status).toBe(409);
+    expect((await readJson(empty)).error).toBe("TBA hasn't published 2027 teams yet — usually by January.");
+
+    page0 = TBA_TEAMS; // 2 players × 5 > 8 teams
+    expect((await readJson(await control(season, 'start'))).error).toBe(
+      'With 2 players and 8 teams, roster size can be at most 4',
+    );
+    await mocks.repo.updateRound(round.id, { rosterSize: 4 });
+    expect((await control(season, 'start')).status).toBe(200);
   });
 
   it('refuses to start a finalized round (review M10)', async () => {

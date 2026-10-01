@@ -83,6 +83,8 @@ export type AdminRoundDetail = {
   pool: PoolTeam[];
   /** True when TBA couldn't be reached and the pool may be out of date. */
   poolStale: boolean;
+  /** Season rounds: why the pool is empty when TBA hasn't published the year's teams (spec §5.5); else null. */
+  poolEmptyMessage: string | null;
   picks: { pickNumber: number; playerId: string; teamKey: string }[];
   adjustments: {
     id: string;
@@ -91,7 +93,7 @@ export type AdminRoundDetail = {
     points: number;
     reason: string;
   }[];
-  /** Largest roster size the pool allows for the current draft order, capped at 10. null with no drafters. */
+  /** Largest roster size the pool allows for the current draft order, capped at 10 (15 for season rounds). null with no drafters. */
   maxRosterSize: number | null;
   /** Typed-in results (spec §5.3). null unless the round is a manual event. */
   manualResults: ManualResult[] | null;
