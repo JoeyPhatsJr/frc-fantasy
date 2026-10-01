@@ -9,6 +9,8 @@ import {
 } from '@/lib/api/http';
 import { requireLeagueRole } from '@/lib/auth/roles';
 import { getRepo } from '@/lib/db';
+import { advance } from '@/lib/draft/advance';
+import { ring } from '@/lib/realtime/doorbell';
 import { loadPool } from '@/lib/rounds/pool';
 import { TEAM_KEY_RE } from '@/lib/teams';
 
@@ -37,6 +39,17 @@ export async function DELETE(_req: Request, ctx: Ctx): Promise<Response> {
     if (n === null || picks.length === 0 || n !== picks.length - 1) {
       throw new HttpError(409, 'Only the last pick can be undone — refresh');
     }
+    if (round.draftMode === 'live' && round.draftStartedAt) {
+      const undone = picks[picks.length - 1];
+      if (!(await repo.undoPickAtomic(round.id, n))) {
+        throw new HttpError(409, 'Only the last pick can be undone — refresh');
+      }
+      // v2 §7.3: otherwise advance() would re-pick the same team and the undo would do nothing.
+      if (undone.auto) await repo.setAutodraft(round.id, undone.playerId, false);
+      await advance(round.id, new Date());
+      await ring(round.id);
+      return noContent();
+    }
     await repo.deletePick(round.id, n);
     return noContent();
   });
@@ -61,6 +74,7 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
 
     const saved =
       existing.teamKey === teamKey ? existing : await repo.updatePickTeam(round.id, n, teamKey);
+    if (round.draftMode === 'live' && saved !== existing) await ring(round.id);
     return json({
       pick: { pickNumber: saved.pickNumber, playerId: saved.playerId, teamKey: saved.teamKey },
     });
