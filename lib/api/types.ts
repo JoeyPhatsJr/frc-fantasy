@@ -2,6 +2,7 @@ import type { DraftMode, LeagueRole, PickSeconds, RoundKind, Visibility } from '
 import type { DraftPhase } from '@/lib/draft/live';
 import type { RoundStatus } from '@/lib/rounds/status';
 import type { ScoringConfig } from '@/lib/scoring/config';
+import type { ManualResult } from '@/lib/scoring/types';
 import type { PoolFilter } from '@/lib/season/poolFilter';
 import type { PoolTeam } from '@/lib/teams';
 
@@ -90,6 +91,8 @@ export type AdminRoundDetail = {
   }[];
   /** Largest roster size the pool allows for the current draft order, capped at 10. null with no drafters. */
   maxRosterSize: number | null;
+  /** Typed-in results (spec §5.3). null unless the round is a manual event. */
+  manualResults: ManualResult[] | null;
 };
 
 /** GET /admin/events/{eventKey}: a look-up only, so the commissioner can check the event before adding it. */

@@ -20,6 +20,7 @@ import * as adjustmentsRoute from '@/app/api/l/[slug]/admin/rounds/[id]/adjustme
 import * as pickRoute from '@/app/api/l/[slug]/admin/rounds/[id]/picks/[pickNumber]/route';
 import * as picksRoute from '@/app/api/l/[slug]/admin/rounds/[id]/picks/route';
 import * as refreshRoute from '@/app/api/l/[slug]/admin/rounds/[id]/refresh/route';
+import * as resultRoute from '@/app/api/l/[slug]/admin/rounds/[id]/results/[teamKey]/route';
 import * as roundRoute from '@/app/api/l/[slug]/admin/rounds/[id]/route';
 import * as teamRoute from '@/app/api/l/[slug]/admin/rounds/[id]/teams/[teamKey]/route';
 import * as teamsRoute from '@/app/api/l/[slug]/admin/rounds/[id]/teams/route';
@@ -63,6 +64,7 @@ const MODULES: Record<string, RouteModule> = {
   'rounds/[id]/picks': picksRoute,
   'rounds/[id]/picks/[pickNumber]': pickRoute,
   'rounds/[id]/refresh': refreshRoute,
+  'rounds/[id]/results/[teamKey]': resultRoute,
   'rounds/[id]/teams': teamsRoute,
   'rounds/[id]/teams/[teamKey]': teamRoute,
   state: stateRoute,
@@ -101,6 +103,10 @@ const CASES: Case[] = [
   { route: 'rounds/[id]/picks/[pickNumber]', method: 'PATCH', params: (s) => ({ ...roundOf(s), pickNumber: '0' }), body: () => ({ teamKey: 'frc254' }) },
   { route: 'rounds/[id]/picks/[pickNumber]', method: 'DELETE', params: (s) => ({ ...roundOf(s), pickNumber: '0' }) },
   { route: 'rounds/[id]/refresh', method: 'POST', params: roundOf },
+  // The seeded round is a TBA round, so a commissioner gets 409 here. That still isn't 401/403,
+  // so a handler that lost its role check would fail this matrix.
+  { route: 'rounds/[id]/results/[teamKey]', method: 'PUT', params: (s) => ({ ...roundOf(s), teamKey: 'frc341' }), body: () => ({ qualWins: 1 }) },
+  { route: 'rounds/[id]/results/[teamKey]', method: 'DELETE', params: (s) => ({ ...roundOf(s), teamKey: 'frc341' }) },
   { route: 'rounds/[id]/teams', method: 'POST', params: roundOf, body: () => ({ teamNumber: '254' }) },
   { route: 'rounds/[id]/teams/[teamKey]', method: 'DELETE', params: (s) => ({ ...roundOf(s), teamKey: 'frc9999' }) },
   { route: 'state', method: 'GET', params: slugOf },

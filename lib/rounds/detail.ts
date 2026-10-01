@@ -8,11 +8,12 @@ import { roundStatus, shouldNudgeFinalize } from '@/lib/rounds/status';
 /** Everything the round admin page needs, in one response. */
 export async function roundDetail(round: RoundRow, now: Date): Promise<AdminRoundDetail> {
   const repo = getRepo();
-  const [players, picks, adjustments, pool] = await Promise.all([
+  const [players, picks, adjustments, pool, manualRows] = await Promise.all([
     repo.listPlayers(round.leagueId),
     repo.listPicks(round.id),
     repo.listAdjustments(round.id),
     loadPool(round, now),
+    round.kind === 'manual' ? repo.listManualResults(round.id) : Promise.resolve(null),
   ]);
   const drafters = round.draftOrder.length;
   return {
@@ -50,5 +51,6 @@ export async function roundDetail(round: RoundRow, now: Date): Promise<AdminRoun
       reason: a.reason,
     })),
     maxRosterSize: drafters === 0 ? null : Math.min(10, Math.floor(pool.teams.length / drafters)),
+    manualResults: manualRows ? manualRows.map(({ roundId: _roundId, ...r }) => r) : null,
   };
 }

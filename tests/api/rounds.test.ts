@@ -173,6 +173,7 @@ describe('GET /admin/rounds/{id}', () => {
     expect(body.picks).toEqual([{ pickNumber: 0, playerId: mom.id, teamKey: 'frc1' }]);
     expect(body.adjustments).toHaveLength(1);
     expect(body.maxRosterSize).toBe(3); // 7 teams / 2 players
+    expect(body.manualResults).toBeNull(); // only manual rounds have typed-in results
   });
 
   it('a manual round reports its kind and builds its pool from added teams only, without asking TBA', async () => {
@@ -187,7 +188,23 @@ describe('GET /admin/rounds/{id}', () => {
     expect(body.round).toMatchObject({ kind: 'manual', eventKey: null, seasonYear: null, poolFilter: null });
     expect(body.pool.map((t: { teamKey: string }) => t.teamKey)).toEqual(['frc9999']);
     expect(body.poolStale).toBe(false);
+    expect(body.manualResults).toEqual([]);
     expect(h.getTba).not.toHaveBeenCalled();
+  });
+
+  it("a manual round's detail includes its typed-in results, without the round id", async () => {
+    const round = await repo.createRound({
+      leagueId: league.id, eventKey: null, kind: 'manual', eventName: 'Garage Games',
+      startDate: '2026-11-07', endDate: '2026-11-07', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    await repo.addExtraTeam(round.id, 'frc9999');
+    const result = {
+      teamKey: 'frc9999', qualWins: 3, qualLosses: 1, qualTies: 0, rankingPoints: null, qualRank: 2,
+      allianceRole: 'pick1' as const, playoffWins: 1, eventResult: null, awardTypes: [9],
+    };
+    await repo.upsertManualResult({ roundId: round.id, ...result });
+    const body = await readJson(await getRound(request('GET', '/x', {}), at(round)));
+    expect(body.manualResults).toEqual([result]);
   });
 
   it("answers 404 when league A's commissioner asks for league B's round", async () => {
