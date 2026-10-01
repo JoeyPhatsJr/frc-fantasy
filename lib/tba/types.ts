@@ -4,6 +4,9 @@ export type TeamSimple = {
   key: string;
   team_number: number;
   nickname?: string | null;
+  city?: string | null;
+  state_prov?: string | null;
+  country?: string | null;
 };
 
 export type MatchAlliance = {
@@ -88,3 +91,6 @@ export type EventSimple = {
   country?: string | null;
   district?: { key: string; abbreviation: string; display_name?: string } | null;
 };
+
+/** /districts/{year} */
+export type DistrictSimple = { key: string; abbreviation: string; display_name: string; year: number };
