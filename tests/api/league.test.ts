@@ -211,7 +211,7 @@ describe('GET /admin/state', () => {
     const body = JSON.parse(text);
     expect(body.league).toEqual({
       slug: league.slug, name: 'Habich Fam', homeTeamNumber: 5181, defaultScoring: DEFAULT_SCORING,
-      inviteCode: league.inviteCode, visibility: 'link',
+      inviteCode: league.inviteCode, visibility: 'link', format: 'event',
     });
     expect(body.me).toBe(commissioner.id);
     expect(body.players).toEqual([

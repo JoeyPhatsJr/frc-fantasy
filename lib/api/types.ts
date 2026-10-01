@@ -1,4 +1,4 @@
-import type { DraftMode, LeagueRole, PickSeconds, RoundKind, Visibility } from '@/lib/db/types';
+import type { DraftMode, LeagueFormat, LeagueRole, PickSeconds, RoundKind, Visibility } from '@/lib/db/types';
 import type { DraftPhase } from '@/lib/draft/live';
 import type { RoundStatus } from '@/lib/rounds/status';
 import type { ScoringConfig } from '@/lib/scoring/config';
@@ -15,6 +15,7 @@ export type AdminLeague = {
   defaultScoring: ScoringConfig;
   inviteCode: string;
   visibility: Visibility;
+  format: LeagueFormat;
 };
 
 export type AdminPlayer = {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AddManualRoundForm, type ManualRoundInput } from '@/components/admin/AddManualRoundForm';
 import { AddRoundForm, EventRow, RenameLeague } from '@/components/admin/DashboardParts';
 import { AdminGate } from '@/components/admin/AdminGate';
 import { DangerZone } from '@/components/admin/DangerZone';
@@ -41,6 +42,7 @@ function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminAp
   /** Which action is running (it shows the spinner); every other control is disabled meanwhile. */
   const [pending, setPending] = useState<string | null>(null);
   const busy = pending !== null;
+  const [addKind, setAddKind] = useState<'tba' | 'manual'>('tba');
 
   /** Counts reloads, so a slow background poll can't overwrite the fresher state a change just loaded. */
   const latestReload = useRef(0);
@@ -201,26 +203,60 @@ function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminAp
               </li>
             ))}
           </ul>
-          <AddRoundForm
-            busy={busy}
-            checking={pending === 'check-round'}
-            saving={pending === 'add-round'}
-            onCheck={lookUpEvent}
-            onAdd={(eventKey) =>
-              run('add-round', async () => {
-                const out = await api<{ round: { eventName: string; startDate: string; endDate: string } }>(
-                  '/rounds',
-                  { method: 'POST', body: { eventKey } },
-                );
-                setNotice(
-                  `Added ${out.round.eventName} (${formatDateRange(out.round.startDate, out.round.endDate)}). Wrong event? Delete it above.`,
-                );
-              })
-            }
-          />
-          <p className="text-[13px] leading-[18px] text-fg-muted">
-            The event key is the last part of the event&apos;s address on thebluealliance.com, such as 2026parr.
-          </p>
+          {state.league.format === 'event' ? (
+            <div className="space-y-3">
+              <div role="group" aria-label="Kind of round to add" className="flex gap-2">
+                {(['tba', 'manual'] as const).map((kind) => (
+                  <Button
+                    key={kind}
+                    type="button"
+                    size="sm"
+                    variant={addKind === kind ? 'primary' : 'secondary'}
+                    aria-pressed={addKind === kind}
+                    onClick={() => setAddKind(kind)}
+                  >
+                    {kind === 'tba' ? 'TBA event' : 'Manual event'}
+                  </Button>
+                ))}
+              </div>
+              {addKind === 'tba' ? (
+                <>
+                  <AddRoundForm
+                    busy={busy}
+                    checking={pending === 'check-round'}
+                    saving={pending === 'add-round'}
+                    onCheck={lookUpEvent}
+                    onAdd={(eventKey) =>
+                      run('add-round', async () => {
+                        const out = await api<{ round: { eventName: string; startDate: string; endDate: string } }>(
+                          '/rounds',
+                          { method: 'POST', body: { eventKey } },
+                        );
+                        setNotice(
+                          `Added ${out.round.eventName} (${formatDateRange(out.round.startDate, out.round.endDate)}). Wrong event? Delete it above.`,
+                        );
+                      })
+                    }
+                  />
+                  <p className="text-[13px] leading-[18px] text-fg-muted">
+                    The event key is the last part of the event&apos;s address on thebluealliance.com, such as 2026parr.
+                  </p>
+                </>
+              ) : (
+                <AddManualRoundForm
+                  busy={busy}
+                  saving={pending === 'add-manual'}
+                  onAdd={(input: ManualRoundInput) =>
+                    run(
+                      'add-manual',
+                      () => api('/rounds', { method: 'POST', body: { kind: 'manual', ...input } }),
+                      `Added ${input.name}. Add its teams under Manage → Setup.`,
+                    )
+                  }
+                />
+              )}
+            </div>
+          ) : null}
         </Card>
       </section>
 

@@ -6,6 +6,7 @@ import { AdjustmentEditor } from '@/components/admin/AdjustmentEditor';
 import { AdminGate } from '@/components/admin/AdminGate';
 import { DraftEntry } from '@/components/admin/DraftEntry';
 import { LiveDraftControls } from '@/components/admin/LiveDraftControls';
+import { ManualResultsEditor } from '@/components/admin/ManualResultsEditor';
 import { DETAILS_SUMMARY, RoundSetup } from '@/components/admin/RoundSetup';
 import { usePending } from '@/components/admin/usePending';
 import { usePolling } from '@/components/admin/usePolling';
@@ -167,6 +168,14 @@ function RoundManager({ slug, roundId, api }: { slug: string; roundId: string; a
         </Card>
       </section>
 
+      {round.kind === 'manual' ? (
+        <section>
+          <Card title="Results">
+            <ManualResultsEditor {...section} />
+          </Card>
+        </section>
+      ) : null}
+
       <section>
         <Card title="Adjustments">
           <AdjustmentEditor {...section} />
@@ -176,27 +185,29 @@ function RoundManager({ slug, roundId, api }: { slug: string; roundId: string; a
       <section>
         <Card title="Data and status" className="space-y-3">
           <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              busy={pending === 'refresh'}
-              disabled={busy}
-              onClick={() =>
-                go('refresh', async () => {
-                  const out = await api<{ fetchedAt: string | null; stale: boolean }>(`/rounds/${round.id}/refresh`, {
-                    method: 'POST',
-                  });
-                  setNotice(
-                    out.stale
-                      ? `Couldn't reach The Blue Alliance. Showing data from ${agoLabel(out.fetchedAt, new Date())}.`
-                      : `Refreshed from The Blue Alliance (${agoLabel(out.fetchedAt, new Date())}).`,
-                  );
-                })
-              }
-            >
-              {pending === 'refresh' ? null : <RefreshCw className="size-4 shrink-0" />}
-              Refresh from TBA
-            </Button>
+            {round.kind === 'tba' ? (
+              <Button
+                type="button"
+                variant="secondary"
+                busy={pending === 'refresh'}
+                disabled={busy}
+                onClick={() =>
+                  go('refresh', async () => {
+                    const out = await api<{ fetchedAt: string | null; stale: boolean }>(`/rounds/${round.id}/refresh`, {
+                      method: 'POST',
+                    });
+                    setNotice(
+                      out.stale
+                        ? `Couldn't reach The Blue Alliance. Showing data from ${agoLabel(out.fetchedAt, new Date())}.`
+                        : `Refreshed from The Blue Alliance (${agoLabel(out.fetchedAt, new Date())}).`,
+                    );
+                  })
+                }
+              >
+                {pending === 'refresh' ? null : <RefreshCw className="size-4 shrink-0" />}
+                Refresh from TBA
+              </Button>
+            ) : null}
             {round.finalizedAt ? (
               <Button
                 type="button"
@@ -232,8 +243,9 @@ function RoundManager({ slug, roundId, api }: { slug: string; roundId: string; a
             )}
           </div>
           <p className="text-xs text-fg-muted">
-            Refresh is limited to once every 15 seconds. Marking final only changes the badge and slows down
-            checks for new data; scores are always computed from The Blue Alliance.
+            {round.kind === 'tba'
+              ? 'Refresh is limited to once every 15 seconds. Marking final only changes the badge and slows down checks for new data; scores are always computed from The Blue Alliance.'
+              : 'Marking final only changes the badge.'}
           </p>
         </Card>
       </section>

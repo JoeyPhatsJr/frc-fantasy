@@ -37,6 +37,7 @@ function toAdminLeague(l: LeagueRow): AdminLeague {
     defaultScoring: l.defaultScoring,
     inviteCode: l.inviteCode,
     visibility: l.visibility,
+    format: l.format,
   };
 }
 
