@@ -12,7 +12,7 @@ const bodySchema = z.object({ email: z.email(), name: z.string().max(40).optiona
 
 /**
  * E2E only (spec §8.1, §9): signs a Playwright browser in as a Supabase admin-created user,
- * without Google or Discord. 404 everywhere else.
+ * without going through the email + password form. 404 everywhere else.
  */
 export async function POST(req: Request): Promise<Response> {
   if (!testLoginAllowed(req, { E2E_AUTH_SECRET: process.env.E2E_AUTH_SECRET, VERCEL: process.env.VERCEL })) {

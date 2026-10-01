@@ -8,7 +8,7 @@ Design specs: v1 `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md`, v2 (
 
 ## How it works
 
-- **Sign in** with Google or Discord. Every player has an account.
+- **Sign in** with an email and password. Every player has an account.
 - **League page** `/l/<slug>`: leaderboards, rosters, every point explained. Each league is either
   visible to anyone with the link, or to members only. Players join with an invite code
   (`/join/<code>`).
@@ -24,7 +24,7 @@ cp .env.example .env.local   # then fill in the values below
 npm run dev                  # http://localhost:3000
 ```
 
-Then sign in with Google or Discord (one-time setup below).
+Then create an account with an email and password (one-time setup below).
 
 | Variable | Where it comes from |
 |---|---|
@@ -41,29 +41,21 @@ them in order.
 
 ## One-time sign-in setup
 
-About 30 minutes, across three consoles. Do it once per Supabase project.
+About 5 minutes, in the Supabase dashboard. Do it once per Supabase project. Sign-in is email + password;
+no emails are ever sent. (Google/Discord sign-in code exists but is switched off.)
 
-1. **Google.** In Supabase → Authentication → Providers → Google, copy the **Callback URL**
-   (`https://<project-ref>.supabase.co/auth/v1/callback`). At console.cloud.google.com create a project
-   "FRC Fantasy". APIs & Services → OAuth consent screen → External, app name "FRC Fantasy", scopes
-   `email`, `profile`, `openid`, and set the publishing status to **In production** (otherwise only
-   listed test users can sign in). Then Credentials → Create credentials → OAuth client ID → Web
-   application, with the Supabase callback URL as the authorized redirect URI. Keep the Client ID and
-   secret.
-2. **Discord.** At discord.com/developers/applications create a New Application "FRC Fantasy". OAuth2 →
-   Redirects → Add Redirect: the same Supabase callback URL. Copy the Client ID, and Reset Secret to get
-   the secret.
-3. **Supabase.** Authentication → Providers: enable **Google** and **Discord**, pasting each Client ID and
-   secret. Authentication → Sign In / Providers: leave **anonymous sign-ins off**. Authentication → URL
-   Configuration: Site URL `https://frc-fantasy-6yo3.vercel.app`; Redirect URLs
-   `https://frc-fantasy-6yo3.vercel.app/**` and `http://localhost:3000/**`.
-4. **Env vars.** Project Settings → API gives the Project URL and the anon / publishable key. Put them
+1. **Email provider.** Authentication → Sign In / Providers → Email: enabled, **Confirm email OFF**,
+   minimum password length **8**. Leave **anonymous sign-ins off**.
+2. **Site URL.** Authentication → URL Configuration: Site URL `https://frc-fantasy-6yo3.vercel.app`.
+3. **Env vars.** Project Settings → API gives the Project URL and the anon / publishable key. Put them
    in `.env.local` as `NEXT_PUBLIC_SUPABASE_URL` (equal to `SUPABASE_URL`) and
    `NEXT_PUBLIC_SUPABASE_ANON_KEY`, plus `CRON_SECRET` and `E2E_AUTH_SECRET` (each from
-   `openssl rand -base64 32`). Add the first three to Vercel too (see the deploy checklist).
+   `openssl rand -base64 32`); remove `CREATE_LEAGUE_PASSCODE`. Also set `NEXT_PUBLIC_SUPABASE_URL`,
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `CRON_SECRET` in Vercel (Production and Preview) **before merging
+   SP1**, or every request will fail. Never put `E2E_AUTH_SECRET` on Vercel.
 
-Check it: `npm run dev`, press **Continue with Google**, and you should land back on `/` signed in. Sign
-out from `/me/settings` and try **Continue with Discord**.
+Check it: `npm run dev`, create an account with an email and password, and you should land back on `/`
+signed in. Sign out from `/me/settings` and sign back in.
 
 ## Checks
 
@@ -81,6 +73,7 @@ npx tsx --env-file=.env.local scripts/db-smoke.ts   # talks to the real database
 | `scripts/capture-fixture.ts <eventKey>` | Downloads an event's TBA data into `tests/fixtures/` |
 | `scripts/seed-demo.ts <owner-user-id> [site-url]` | Creates a demo league that replays Ramp Riot 2025, owned by that user (find your id in Supabase → Authentication → Users; sign in once first). Note: creates a NEW league each run |
 | `scripts/db-smoke.ts` | Checks the real database matches the code |
+| `scripts/reset-password.ts <email> <new-password>` | Resets a forgotten password (no emails are sent), then you give the player the new one |
 
 Run them with `npx tsx --env-file=.env.local scripts/<name>.ts ...`. For example, the demo league:
 `npx tsx --env-file=.env.local scripts/seed-demo.ts <your-user-id>`.
