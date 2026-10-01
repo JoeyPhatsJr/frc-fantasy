@@ -7,6 +7,8 @@ export class HttpError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    /** A machine-readable reason the browser can switch on (for example the live-draft 409s). */
+    public readonly code?: string,
   ) {
     super(message);
     this.name = 'HttpError';
@@ -47,7 +49,9 @@ export async function handle(fn: () => Promise<Response>): Promise<Response> {
   try {
     return await fn();
   } catch (err) {
-    if (err instanceof HttpError) return jsonError(err.status, err.message);
+    if (err instanceof HttpError) {
+      return json(err.code ? { error: err.message, code: err.code } : { error: err.message }, err.status);
+    }
     if (err instanceof UniqueViolation) {
       return jsonError(409, CONSTRAINT_MESSAGES[err.constraint] ?? 'That already exists');
     }
