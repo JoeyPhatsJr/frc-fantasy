@@ -116,14 +116,14 @@ describe('theme boot script', () => {
     expect(boot('dark', true)).toBe('dark');
   });
 
-  it('falls back to the device setting when nothing valid is saved', () => {
+  it('is light by default, even when the device prefers dark', () => {
     expect(boot(null, true)).toBe('light');
-    expect(boot(null, false)).toBe('dark');
-    expect(boot('purple', true)).toBe('light');
+    expect(boot(null, false)).toBe('light');
+    expect(boot('purple', false)).toBe('light');
   });
 
-  it('still picks a theme when storage is blocked', () => {
-    expect(boot(null, true, true)).toBe('light');
+  it('still picks light when storage is blocked', () => {
+    expect(boot(null, false, true)).toBe('light');
   });
 });
 

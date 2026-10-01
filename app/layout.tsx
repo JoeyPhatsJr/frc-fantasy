@@ -57,9 +57,14 @@ async function loadHeaderUser(): Promise<HeaderUser> {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const headerUser = await loadHeaderUser();
   return (
-    // data-theme is set by the boot script before React hydrates, so the attribute legitimately
-    // differs from the server markup.
-    <html lang="en" className={`${barlowCondensed.variable} ${barlow.variable}`} suppressHydrationWarning>
+    // Light by default. The boot script swaps in a saved choice before React hydrates, so the
+    // attribute can legitimately differ from the server markup.
+    <html
+      lang="en"
+      data-theme="light"
+      className={`${barlowCondensed.variable} ${barlow.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>

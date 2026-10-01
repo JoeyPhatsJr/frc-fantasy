@@ -5,10 +5,11 @@
  * variable into utilities: bg-primary, text-fg-muted, font-display,
  * rounded-card, ... Components use these, never raw hex.
  *
- * Dark is the default theme. <html data-theme="light"> swaps in the light
- * values below; an inline script in app/layout.tsx sets the attribute before
- * first paint. Colour utilities read these variables at runtime (var(--color-…)),
- * so redefining them per theme recolours everything.
+ * The @theme block holds the dark values; <html data-theme="light"> swaps in the
+ * light values below. Light is what visitors see by default: the server renders
+ * data-theme="light", and an inline script in app/layout.tsx swaps in a saved
+ * choice before first paint. Colour utilities read these variables at runtime
+ * (var(--color-…)), so redefining them per theme recolours everything.
  *
  * Text-vs-fill rule: a colour used as a FILL behind white text and the same
  * hue used as TEXT on a dark surface cannot both reach 4.5:1, so some hues

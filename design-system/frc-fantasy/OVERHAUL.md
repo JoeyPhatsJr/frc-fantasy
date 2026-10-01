@@ -2,7 +2,8 @@
 
 Supersedes BRIEF.md where they conflict. Behaviour, API, copy strings asserted by tests, and the
 component prop names stay as they are; this is a visual + navigation overhaul. Direction chosen by
-Joey: **app shell + visual richness, dark-first with a light toggle.**
+Joey: **app shell + visual richness, dark-first with a light toggle.** (Since 2026-09-30 the app is
+**light by default, with a dark toggle**; see Theme switching below.)
 
 ## Where the look comes from
 
@@ -46,7 +47,8 @@ Radii: cards 14px (`--radius-card`), bumper plates 6px (`--radius-plate`), pills
 dark (use `surface-2` and borders for elevation); the light theme keeps `--shadow-card`.
 
 Theme switching: `<html data-theme="dark|light">`, set before hydration by an inline script that reads
-`localStorage['frcf:theme']` and falls back to `prefers-color-scheme`. A sun/moon `ThemeToggle` in the
+`localStorage['frcf:theme']` and otherwise uses **light** (changed 2026-09-30: light by default, dark
+is a toggle; the device setting is no longer followed). The server also renders `data-theme="light"`. A sun/moon `ThemeToggle` in the
 header (client component). `color-scheme` set accordingly so native controls match.
 
 ## Type
