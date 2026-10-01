@@ -7,8 +7,10 @@ import {
   onClockPlayer,
   pausedRemainingMs,
   picksUntilTurn,
+  parseTimestamp,
   remainingMs,
   resumeDeadline,
+  resumeRemainingMs,
   totalPicks,
 } from '@/lib/draft/live';
 
@@ -74,6 +76,13 @@ describe('deadlines (§7.1, §7.2)', () => {
     expect(resumeDeadline(90, null, T0)).toBe(iso(T0 + 90_000));
     expect(resumeDeadline(null, 42_000, T0)).toBeNull();
   });
+  it('the time a paused player gets on resume, for the paused banner (review M2)', () => {
+    expect(resumeRemainingMs(60, 42_000)).toBe(42_000);
+    expect(resumeRemainingMs(60, 3_000)).toBe(10_000);
+    expect(resumeRemainingMs(60, 0)).toBe(10_000);
+    expect(resumeRemainingMs(90, null)).toBe(90_000);
+    expect(resumeRemainingMs(null, 42_000)).toBeNull();
+  });
 });
 
 describe('chooseAutoPick (§7.4)', () => {
@@ -104,5 +113,26 @@ describe('clock sync (§7.5)', () => {
     expect(remainingMs(iso(T0 + 30_000), offset, T0 + fast)).toBe(30_000);
     expect(remainingMs(iso(T0 - 1), offset, T0 + fast)).toBe(0);
     expect(remainingMs(null, offset, T0)).toBeNull();
+  });
+});
+
+// Postgres sends timestamptz as microseconds with a +00:00 offset; the memory repo sends ms + Z (review M14).
+describe('Postgres timestamps (microseconds, +00:00)', () => {
+  const pg = '2026-10-23T23:15:42.123456+00:00';
+  const ms = Date.UTC(2026, 9, 23, 23, 15, 42, 123);
+
+  it('parses to the millisecond, dropping the extra digits', () => {
+    expect(parseTimestamp(pg)).toBe(ms);
+    expect(parseTimestamp('2026-10-23T23:15:42+00:00')).toBe(Date.UTC(2026, 9, 23, 23, 15, 42));
+    expect(parseTimestamp('2026-10-23T19:15:42.5-04:00')).toBe(ms - 123 + 500);
+    expect(parseTimestamp('2026-10-23T23:15:42.123Z')).toBe(ms);
+  });
+
+  it('drives the countdown, pause, and clock offset', () => {
+    expect(remainingMs(pg, 0, ms - 30_000)).toBe(30_000);
+    expect(remainingMs(pg, 1_000, ms - 30_000)).toBe(29_000);
+    expect(pausedRemainingMs(pg, ms - 4_000)).toBe(4_000);
+    // Request sent at 0, answered at 200: the server read its clock at local 100.
+    expect(clockOffset(pg, 0, 200)).toBe(ms - 100);
   });
 });

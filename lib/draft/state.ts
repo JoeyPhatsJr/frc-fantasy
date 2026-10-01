@@ -1,6 +1,6 @@
 import { getRepo } from '@/lib/db';
 import type { DraftMode, PickSeconds, PlayerRow, RoundRow } from '@/lib/db/types';
-import { draftPhase, onClockPlayer, totalPicks, type DraftPhase } from '@/lib/draft/live';
+import { draftPhase, onClockPlayer, resumeRemainingMs, totalPicks, type DraftPhase } from '@/lib/draft/live';
 
 export type DraftState = {
   phase: DraftPhase;
@@ -12,7 +12,7 @@ export type DraftState = {
   deadline: string | null;
   serverNow: string;
   pickSeconds: PickSeconds | null;
-  /** Time left when paused (null = full timer on resume, or no timer). */
+  /** While paused: the time the on-clock player gets on resume, 10 s floor included (null = no timer). */
   pausedRemainingMs: number | null;
   order: { playerId: string; name: string }[];
   rosterSize: number;
@@ -43,10 +43,7 @@ export async function loadDraftState(round: RoundRow, viewer: PlayerRow | null, 
     deadline: phase === 'live' ? round.pickDeadline : null,
     serverNow: now.toISOString(),
     pickSeconds: round.pickSeconds,
-    pausedRemainingMs:
-      phase !== 'paused'
-        ? null
-        : (round.pausedRemainingMs ?? (round.pickSeconds === null ? null : round.pickSeconds * 1000)),
+    pausedRemainingMs: phase === 'paused' ? resumeRemainingMs(round.pickSeconds, round.pausedRemainingMs) : null,
     order: round.draftOrder.map((id) => ({ playerId: id, name: nameOf(id) })),
     rosterSize: round.rosterSize,
     picks: picks.map((p) => ({ pickNumber: p.pickNumber, playerId: p.playerId, teamKey: p.teamKey, auto: p.auto })),

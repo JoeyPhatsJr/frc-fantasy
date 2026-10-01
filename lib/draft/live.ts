@@ -39,6 +39,15 @@ export function picksUntilTurn(round: Size, pickCount: number, playerId: string)
 
 const iso = (ms: number) => new Date(ms).toISOString();
 
+/**
+ * Epoch ms for a server timestamp. Postgres sends microseconds and a +00:00 offset
+ * ("2026-10-23T23:15:42.123456+00:00"); the extra digits are dropped first, because ECMAScript only
+ * promises to parse milliseconds and older iPhone Safari is stricter than Node about it.
+ */
+export function parseTimestamp(ts: string): number {
+  return Date.parse(ts.replace(/(\.\d{3})\d+/, '$1'));
+}
+
 /** The deadline after a pick. `picksAfter` counts the picks made including the one just made. */
 export function nextDeadline(
   pickSeconds: PickSeconds | null,
@@ -53,7 +62,16 @@ export function nextDeadline(
 /** Time left on the clock when pausing; never negative. */
 export function pausedRemainingMs(pickDeadline: string | null, nowMs: number): number | null {
   if (!pickDeadline) return null;
-  return Math.max(0, Date.parse(pickDeadline) - nowMs);
+  return Math.max(0, parseTimestamp(pickDeadline) - nowMs);
+}
+
+/**
+ * The time on the clock right after resume: a saved remainder gets at least RESUME_FLOOR_MS; a cleared
+ * remainder (null, e.g. after an undo while paused) gets the full pick timer; no timer gives null.
+ */
+export function resumeRemainingMs(pickSeconds: PickSeconds | null, remaining: number | null): number | null {
+  if (pickSeconds === null) return null;
+  return remaining === null ? pickSeconds * 1000 : Math.max(remaining, RESUME_FLOOR_MS);
 }
 
 /**
@@ -66,9 +84,8 @@ export function resumeDeadline(
   remaining: number | null,
   nowMs: number,
 ): string | null {
-  if (pickSeconds === null) return null;
-  const ms = remaining === null ? pickSeconds * 1000 : Math.max(remaining, RESUME_FLOOR_MS);
-  return iso(nowMs + ms);
+  const ms = resumeRemainingMs(pickSeconds, remaining);
+  return ms === null ? null : iso(nowMs + ms);
 }
 
 function teamSortParts(teamKey: string): [number, string] {
@@ -98,10 +115,10 @@ export function chooseAutoPick(
 /** Spec §7.5: offset = serverNow − (receivedAt − rtt/2), in ms. Add it to Date.now() to get server time. */
 export function clockOffset(serverNow: string, sentAtMs: number, receivedAtMs: number): number {
   const rtt = receivedAtMs - sentAtMs;
-  return Date.parse(serverNow) - (receivedAtMs - rtt / 2);
+  return parseTimestamp(serverNow) - (receivedAtMs - rtt / 2);
 }
 
 export function remainingMs(deadline: string | null, offsetMs: number, localNowMs: number): number | null {
   if (!deadline) return null;
-  return Math.max(0, Date.parse(deadline) - (localNowMs + offsetMs));
+  return Math.max(0, parseTimestamp(deadline) - (localNowMs + offsetMs));
 }

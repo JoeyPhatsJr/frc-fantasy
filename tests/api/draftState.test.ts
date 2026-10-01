@@ -50,6 +50,13 @@ describe('GET draft/state (§7.3)', () => {
     expect(s).toMatchObject({ phase: 'paused', deadline: null, pausedRemainingMs: 60_000 });
   });
 
+  it('paused with under 10 s left shows the 10 s the player gets on resume (review M2)', async () => {
+    const { league, round } = await seedLiveDraft(mocks.repo, { start: true });
+    await mocks.repo.draftControl(round.id, 'pause');
+    await mocks.repo.updateRound(round.id, { pausedRemainingMs: 3_000 });
+    expect(await readJson(await call(league.slug, round.id))).toMatchObject({ phase: 'paused', pausedRemainingMs: 10_000 });
+  });
+
   it('403s a non-member of a members-only league', async () => {
     const { league, round, strangerUser } = await seedLiveDraft(mocks.repo);
     await mocks.repo.updateLeague(league.id, { visibility: 'members' });

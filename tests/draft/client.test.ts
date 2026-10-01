@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createRefetcher, formatClock, pollIntervalMs, shouldTick, titleFrame } from '@/lib/draft/client';
+import { DraftApiError } from '@/lib/draft/api';
+import { createPoolLoader, createRefetcher, formatClock, loadFailure, pollIntervalMs, shouldTick, titleFrame } from '@/lib/draft/client';
 
 /** Manual timers + clock, so the test decides when time passes. */
 function fakeTime() {
@@ -87,6 +88,105 @@ describe('createRefetcher (§7.5)', () => {
   });
 });
 
+describe('createRefetcher.wake: the tab is visible again (review M3, §7.5 "immediately")', () => {
+  it('fetches right away, skipping the 250 ms debounce', async () => {
+    const t = fakeTime();
+    const fetch = vi.fn(async () => {});
+    const r = createRefetcher({ fetch, ...t });
+    r.wake();
+    await t.advance(0);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('cuts short a debounced ring that is already waiting', async () => {
+    const t = fakeTime();
+    const fetch = vi.fn(async () => {});
+    const r = createRefetcher({ fetch, ...t });
+    r.ring(); // e.g. the poller's own visibility listener ran first
+    r.wake();
+    await t.advance(0);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await t.advance(5000);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('still keeps the 1.5 s gap between fetches', async () => {
+    const t = fakeTime();
+    const fetch = vi.fn(async () => {});
+    const r = createRefetcher({ fetch, ...t });
+    r.wake();
+    await t.advance(500);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    r.wake();
+    await t.advance(999);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await t.advance(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('during an in-flight fetch, schedules one follow-up', async () => {
+    const t = fakeTime();
+    let release: () => void = () => {};
+    const fetch = vi.fn(() => new Promise<void>((res) => (release = res)));
+    const r = createRefetcher({ fetch, ...t });
+    r.wake();
+    await t.advance(0);
+    r.wake();
+    r.wake();
+    release();
+    await t.advance(5000);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('createPoolLoader (review I3)', () => {
+  it('loads once; later calls do nothing', async () => {
+    const pool = [{ teamKey: 'frc1' }];
+    const fetch = vi.fn(async () => pool);
+    const onLoaded = vi.fn();
+    const loader = createPoolLoader({ fetch, onLoaded });
+    await loader.ensure();
+    await loader.ensure();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(onLoaded).toHaveBeenCalledWith(pool);
+  });
+
+  it('a failed fetch leaves the pool unloaded, and the next call tries again', async () => {
+    const fetch = vi.fn().mockRejectedValueOnce(new Error('503')).mockResolvedValueOnce([{ teamKey: 'frc1' }]);
+    const onLoaded = vi.fn();
+    const loader = createPoolLoader({ fetch, onLoaded });
+    await loader.ensure();
+    expect(onLoaded).not.toHaveBeenCalled();
+    await loader.ensure();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(onLoaded).toHaveBeenCalledWith([{ teamKey: 'frc1' }]);
+  });
+
+  it('never runs two fetches at once', async () => {
+    let release: (v: unknown[]) => void = () => {};
+    const fetch = vi.fn(() => new Promise<unknown[]>((res) => (release = res)));
+    const loader = createPoolLoader({ fetch, onLoaded: () => {} });
+    const first = loader.ensure();
+    void loader.ensure();
+    release([]);
+    await first;
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('loadFailure: what a failed state load shows (review M4)', () => {
+  it('a 5xx or a network error mid-draft shows "Reconnecting…"', () => {
+    expect(loadFailure(new DraftApiError(500, 'Something went wrong'))).toEqual({ message: 'Something went wrong', reconnecting: true });
+    expect(loadFailure(new DraftApiError(503, 'The league database is asleep'))).toEqual({
+      message: 'The league database is asleep', reconnecting: true,
+    });
+    expect(loadFailure(new TypeError('Failed to fetch'))).toEqual({ message: null, reconnecting: true });
+  });
+  it('a 4xx is a real answer (private league, deleted round), not a connection problem', () => {
+    expect(loadFailure(new DraftApiError(403, 'This league is private'))).toEqual({ message: 'This league is private', reconnecting: false });
+  });
+});
+
 describe('timing helpers', () => {
   it('polls every 3 s without Realtime and every 15 s with it', () => {
     expect(pollIntervalMs(false)).toBe(3000);
@@ -105,6 +205,14 @@ describe('timing helpers', () => {
     expect(shouldTick({ ...base, localNowMs: 200_000, deadline: null })).toBe(false);
     // Phone clock 60 s slow: the server offset makes it tick on time anyway.
     expect(shouldTick({ ...base, localNowMs: 40_500, offsetMs: 60_000 })).toBe(true);
+  });
+
+  it('ticks on time for a Postgres deadline with microseconds and +00:00 (review M14)', () => {
+    const deadline = '2026-10-23T23:15:42.123456+00:00';
+    const at = Date.UTC(2026, 9, 23, 23, 15, 42, 123);
+    const base = { phase: 'live' as const, deadline, isMember: true, offsetMs: 0, lastTickAtMs: null };
+    expect(shouldTick({ ...base, localNowMs: at + 499 })).toBe(false);
+    expect(shouldTick({ ...base, localNowMs: at + 500 })).toBe(true);
   });
 
   it('formats the clock and flashes the title', () => {
