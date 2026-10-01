@@ -183,4 +183,55 @@ describe('loadMePage', () => {
     ]);
     expect(h.getTba).not.toHaveBeenCalled();
   });
+
+  it("season picks: the team's event today becomes a row; a team with nothing in the next 7 days has none (SP2)", async () => {
+    await repo.createProfile({ id: 'u1', displayName: 'Joey', avatarUrl: null });
+    const league = await repo.createLeague({ slug: 'season-abc234', name: 'Season', defaultScoring: defaultScoring(), format: 'season' });
+    const me = await repo.createMember({ leagueId: league.id, userId: 'u1', name: 'Joey', role: 'commissioner' });
+    const round = await repo.createRound({
+      leagueId: league.id, eventKey: null, kind: 'season', seasonYear: 2027, eventName: '2027 Season',
+      startDate: '2027-02-26', endDate: '2027-04-18', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    await repo.updateRound(round.id, { draftOrder: [me.id], rosterSize: 2 });
+    await repo.insertPick({ roundId: round.id, pickNumber: 0, playerId: me.id, teamKey: 'frc341' });
+    await repo.insertPick({ roundId: round.id, pickNumber: 1, playerId: me.id, teamKey: 'frc5181' });
+    const byPath: Record<string, unknown> = {
+      '/team/frc341/events/2027/simple': [
+        { key: '2027paca', name: 'Greater Pittsburgh', event_type: 0, start_date: '2027-03-05', end_date: '2027-03-07' },
+      ],
+      '/team/frc5181/events/2027/simple': [
+        { key: '2027mrcmp', name: 'FMA Championship', event_type: 2, start_date: '2027-04-08', end_date: '2027-04-10' },
+      ],
+      '/event/2027paca/matches/simple': [match({ num: 14, red: ['frc341'], blue: ['frc1'] })],
+    };
+    h.getTba.mockImplementation(async (path: string) => ({ data: byPath[path] ?? null, fetchedAt: null, stale: false }));
+
+    const page = await loadMePage('u1', new Date('2027-03-06T15:00:00Z'));
+    expect(page.teams).toEqual([
+      { teamKey: 'frc341', leagueName: 'Season', eventName: '2027 Season', label: 'Q14 · up next', status: 'live' },
+    ]);
+  });
+
+  it('season pick whose next event is within 7 days shows "Next: event · date"', async () => {
+    await repo.createProfile({ id: 'u1', displayName: 'Joey', avatarUrl: null });
+    const league = await repo.createLeague({ slug: 'season-abc234', name: 'Season', defaultScoring: defaultScoring(), format: 'season' });
+    const me = await repo.createMember({ leagueId: league.id, userId: 'u1', name: 'Joey', role: 'commissioner' });
+    const round = await repo.createRound({
+      leagueId: league.id, eventKey: null, kind: 'season', seasonYear: 2027, eventName: '2027 Season',
+      startDate: '2027-02-26', endDate: '2027-04-18', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    await repo.updateRound(round.id, { draftOrder: [me.id], rosterSize: 1 });
+    await repo.insertPick({ roundId: round.id, pickNumber: 0, playerId: me.id, teamKey: 'frc5181' });
+    h.getTba.mockImplementation(async (path: string) => ({
+      data: path === '/team/frc5181/events/2027/simple'
+        ? [{ key: '2027mrcmp', name: 'FMA Championship', event_type: 2, start_date: '2027-04-08', end_date: '2027-04-10' }]
+        : null,
+      fetchedAt: null, stale: false,
+    }));
+
+    const page = await loadMePage('u1', new Date('2027-04-03T15:00:00Z'));
+    expect(page.teams).toEqual([
+      { teamKey: 'frc5181', leagueName: 'Season', eventName: 'FMA Championship', label: 'Next: FMA Championship · Apr 8, 2027', status: 'upcoming' },
+    ]);
+  });
 });

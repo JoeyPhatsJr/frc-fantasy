@@ -1,6 +1,8 @@
 import { getRepo } from '@/lib/db';
 import { addDays, cacheWindowFor, localDate } from '@/lib/rounds/status';
+import { formatDateRange } from '@/lib/format';
 import { hasResult, winnerOf } from '@/lib/scoring/matches';
+import { pickEventForMe } from '@/lib/season/current';
 import { getTba } from '@/lib/tba/client';
 import type { MatchSimple } from '@/lib/tba/types';
 import { loadLeaguePage } from '@/lib/views/league';
@@ -130,20 +132,35 @@ export async function loadMePage(userId: string, now: Date): Promise<MePage> {
       const myTeams = view.picks.filter((p) => p.playerId === player.id).map((p) => p.teamKey);
       if (myTeams.length === 0) continue;
       // One event's schedule failing (TBA or tba_cache) degrades only its own rows, not the Me page.
-      // Manual and season rounds have no TBA event, so no schedule.
-      let schedule: MatchSimple[] | null = null;
-      const eventKey = view.round.kind === 'tba' ? view.round.eventKey : null;
-      if (eventKey) {
+      // Manual rounds have no TBA event, so no schedule. Season rounds look up each team's own event today.
+      for (const teamKey of myTeams) {
+        let at: Awaited<ReturnType<typeof pickEventForMe>> = null;
         try {
-          const matches = await getTba<MatchSimple[]>(`/event/${eventKey}/matches/simple`, {
-            windowMs: cacheWindowFor(view.round, now),
-          });
-          schedule = Array.isArray(matches.data) ? matches.data : null;
+          at = view.round.kind === 'manual' ? null : await pickEventForMe(view.round, teamKey, now);
         } catch (err) {
           console.error(err);
         }
-      }
-      for (const teamKey of myTeams) {
+        if (view.round.kind !== 'manual' && !at) continue; // season team with nothing in the next 7 days (or lookup failed)
+        if (at?.kind === 'next') {
+          teams.push({
+            teamKey,
+            leagueName: league.name,
+            eventName: at.name,
+            label: `Next: ${at.name} · ${formatDateRange(at.startDate, at.startDate)}`,
+            status: 'upcoming',
+          });
+          continue;
+        }
+        let schedule: MatchSimple[] | null = null;
+        if (at) {
+          try {
+            const windowMs = at.eventKey === view.round.eventKey ? cacheWindowFor(view.round, now) : 60_000; // a season team's event is happening now
+            const matches = await getTba<MatchSimple[]>(`/event/${at.eventKey}/matches/simple`, { windowMs });
+            schedule = Array.isArray(matches.data) ? matches.data : null;
+          } catch (err) {
+            console.error(err);
+          }
+        }
         teams.push({
           teamKey,
           leagueName: league.name,
