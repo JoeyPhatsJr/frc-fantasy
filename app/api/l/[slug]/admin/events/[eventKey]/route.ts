@@ -1,4 +1,5 @@
-import { handle, HttpError, json, requireCommissioner } from '@/lib/api/http';
+import { handle, HttpError, json } from '@/lib/api/http';
+import { requireLeagueRole } from '@/lib/auth/roles';
 import type { EventLookup } from '@/lib/api/types';
 import { getRepo } from '@/lib/db';
 import { DEFAULT_WINDOW_MS } from '@/lib/rounds/status';
@@ -17,10 +18,10 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
  * Looks an event up on TBA without adding it (spec §5.4: "shows event name/dates for confirmation").
  * "Not found" is a normal answer (200), because a new event often isn't on TBA until a few days before.
  */
-export async function GET(req: Request, ctx: Ctx): Promise<Response> {
+export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug, eventKey: rawKey } = await ctx.params;
-    const league = await requireCommissioner(req, slug);
+    const { league } = await requireLeagueRole(slug, 'commissioner');
     const eventKey = normalizeEventKey(rawKey);
     if (!eventKey) throw new HttpError(400, 'Event keys look like 2025parr');
 

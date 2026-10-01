@@ -4,9 +4,9 @@ import {
   HttpError,
   json,
   parseBody,
-  requireCommissioner,
   requireRound,
 } from '@/lib/api/http';
+import { requireLeagueRole } from '@/lib/auth/roles';
 import { getRepo } from '@/lib/db';
 import { loadPool } from '@/lib/rounds/pool';
 import { pickerFor } from '@/lib/scoring/round';
@@ -28,7 +28,7 @@ const bodySchema = z.object({
 export async function POST(req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug, id } = await ctx.params;
-    const league = await requireCommissioner(req, slug);
+    const { league } = await requireLeagueRole(slug, 'commissioner');
     const round = await requireRound(league, id);
     const { expectedPickNumber, teamKey } = await parseBody(req, bodySchema);
     const repo = getRepo();

@@ -1,10 +1,13 @@
 import type {
   AdjustmentRow,
   CacheRow,
+  LeagueRole,
   LeagueRow,
   PickRow,
   PlayerRow,
+  ProfileRow,
   RoundRow,
+  Visibility,
 } from '@/lib/db/types';
 import type { ScoringConfig } from '@/lib/scoring/config';
 
@@ -27,14 +30,18 @@ export class DbUnavailableError extends Error {
 export type NewLeague = {
   slug: string;
   name: string;
-  adminTokenHash: string;
   defaultScoring: ScoringConfig;
+  createdBy?: string | null;
+  visibility?: Visibility;
+  /** v1 only. v2 leagues leave it out. */
+  adminTokenHash?: string | null;
 };
 export type LeaguePatch = {
   name?: string;
   homeTeamNumber?: number;
   defaultScoring?: ScoringConfig;
-  adminTokenHash?: string;
+  adminTokenHash?: string | null;
+  visibility?: Visibility;
 };
 export type NewRound = {
   leagueId: string;
@@ -66,16 +73,38 @@ export type AdjustmentPatch = {
   reason?: string;
 };
 
+export type NewProfile = { id: string; displayName: string; avatarUrl: string | null };
+export type ProfilePatch = { displayName?: string; frcTeam?: number | null };
+export type NewMember = { leagueId: string; userId: string; name: string; role: LeagueRole };
+export type PlayerPatch = { name?: string; role?: LeagueRole; userId?: null };
+export type MemberLeague = { league: LeagueRow; player: PlayerRow };
+
 export interface Repo {
   createLeague(input: NewLeague): Promise<LeagueRow>;
   getLeagueBySlug(slug: string): Promise<LeagueRow | null>;
   updateLeague(id: string, patch: LeaguePatch): Promise<LeagueRow>;
   deleteLeague(id: string): Promise<void>;
+  getLeagueByInviteCode(code: string): Promise<LeagueRow | null>;
+  /** New random code; retries up to 3 times if it collides. */
+  resetInviteCode(leagueId: string): Promise<LeagueRow>;
+  countLeaguesCreatedBy(userId: string): Promise<number>;
+  /** Oldest league first. */
+  listLeaguesForUser(userId: string): Promise<MemberLeague[]>;
 
   listPlayers(leagueId: string): Promise<PlayerRow[]>; // oldest first
   createPlayer(leagueId: string, name: string): Promise<PlayerRow>;
   renamePlayer(id: string, name: string): Promise<PlayerRow>;
   deletePlayer(id: string): Promise<void>;
+  createMember(input: NewMember): Promise<PlayerRow>;
+  getMemberByUser(leagueId: string, userId: string): Promise<PlayerRow | null>;
+  updatePlayer(id: string, patch: PlayerPatch): Promise<PlayerRow>;
+
+  getProfile(id: string): Promise<ProfileRow | null>;
+  /** Returns the existing row unchanged if the profile already exists. */
+  createProfile(input: NewProfile): Promise<ProfileRow>;
+  updateProfile(id: string, patch: ProfilePatch): Promise<ProfileRow>;
+  /** Deletes the Supabase Auth user. The profile cascades; players.user_id and leagues.created_by become null. */
+  deleteUser(id: string): Promise<void>;
 
   listRounds(leagueId: string): Promise<RoundRow[]>; // by start date, then creation time
   getRound(id: string): Promise<RoundRow | null>;

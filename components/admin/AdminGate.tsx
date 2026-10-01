@@ -1,7 +1,9 @@
 'use client';
 
+import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { useAdmin } from '@/components/admin/useAdmin';
+import { SignInForm } from '@/components/SignInForm';
+import { useAdmin, type AdminSession } from '@/components/admin/useAdmin';
 import { Alert } from '@/components/ui/Alert';
 import { Button, buttonClass } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -19,9 +21,18 @@ export const INPUT = `${FIELD_BASE} min-w-0`;
 
 const TITLE = 'break-words font-display text-[22px] font-bold leading-[26px] text-fg';
 
-export function AdminGate({ slug, children }: { slug: string; children: (api: AdminApi) => ReactNode }) {
-  const session = useAdmin(slug);
-
+export function AdminGateView({
+  slug,
+  next,
+  session,
+  children,
+}: {
+  slug: string;
+  /** Where sign-in should return to: the admin page the visitor opened. */
+  next: string;
+  session: AdminSession;
+  children: (api: AdminApi) => ReactNode;
+}) {
   if (session.status === 'checking') {
     return (
       <main id="main">
@@ -30,19 +41,29 @@ export function AdminGate({ slug, children }: { slug: string; children: (api: Ad
             aria-hidden="true"
             className="size-5 shrink-0 rounded-full border-2 border-primary border-r-transparent motion-safe:animate-spin"
           />
-          Checking your admin link…
+          Checking your account…
         </p>
       </main>
     );
   }
-  if (session.status === 'invalid') {
+  if (session.status === 'signed_out') {
     return (
       <main id="main">
         <Card className="space-y-3">
-          <h1 className={TITLE}>This admin link is invalid</h1>
+          <h1 className={TITLE}>Sign in to manage this league</h1>
+          <p className="text-[15px] text-fg-muted">Commissioners sign in with the account they made the league with.</p>
+          <SignInForm next={next} />
+        </Card>
+      </main>
+    );
+  }
+  if (session.status === 'forbidden') {
+    return (
+      <main id="main">
+        <Card className="space-y-3">
+          <h1 className={TITLE}>You&apos;re not a commissioner of this league</h1>
           <p className="text-[15px] text-fg-muted">
-            Open the commissioner link from your group chat on this device. If it still doesn&apos;t work, the link
-            may have been replaced; ask whoever runs the league for the new one.
+            Ask a commissioner to make you one from the league&apos;s Members section.
           </p>
           <Button href={`/l/${slug}`} variant="secondary">
             View standings
@@ -66,4 +87,14 @@ export function AdminGate({ slug, children }: { slug: string; children: (api: Ad
     );
   }
   return <>{children(session.api)}</>;
+}
+
+export function AdminGate({ slug, children }: { slug: string; children: (api: AdminApi) => ReactNode }) {
+  const session = useAdmin(slug);
+  const pathname = usePathname();
+  return (
+    <AdminGateView slug={slug} next={pathname ?? `/l/${slug}/admin`} session={session}>
+      {children}
+    </AdminGateView>
+  );
 }

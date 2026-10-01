@@ -1,3 +1,4 @@
+import type { LeagueRole, Visibility } from '@/lib/db/types';
 import type { RoundStatus } from '@/lib/rounds/status';
 import type { ScoringConfig } from '@/lib/scoring/config';
 import type { PoolTeam } from '@/lib/teams';
@@ -9,13 +10,18 @@ export type AdminLeague = {
   name: string;
   homeTeamNumber: number;
   defaultScoring: ScoringConfig;
+  inviteCode: string;
+  visibility: Visibility;
 };
 
 export type AdminPlayer = {
   id: string;
   name: string;
-  /** True when the player has picks or adjustments, or is in any draft order. Such players can't be removed. */
+  /** True when the player has picks or adjustments, or is in any draft order. Removing them unlinks instead of deleting. */
   inUse: boolean;
+  role: LeagueRole;
+  /** False for a former member ("Mom (left)"). */
+  linked: boolean;
 };
 
 export type AdminRoundSummary = {
@@ -33,6 +39,8 @@ export type AdminState = {
   league: AdminLeague;
   players: AdminPlayer[];
   rounds: AdminRoundSummary[];
+  /** The viewer's own player id, for "(you)". */
+  me: string;
 };
 
 export type AdminRoundDetail = {
@@ -80,3 +88,14 @@ export type EventLookup =
       /** True when this league already has a round for the event (adding it again would answer 409). */
       alreadyInLeague: boolean;
     };
+
+/** GET /api/invites/{code}: what the /join page shows before joining (spec §4.6). */
+export type InvitePreview = {
+  slug: string;
+  name: string;
+  /** The first commissioner who still has an account. */
+  commissioner: string | null;
+  memberCount: number;
+  full: boolean;
+  alreadyMember: boolean;
+};

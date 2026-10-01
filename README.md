@@ -4,13 +4,15 @@ A fantasy draft league for FIRST Robotics Competition events, for family and fri
 players take turns drafting the FRC teams competing there. Teams earn points from their real results on
 The Blue Alliance. Each event is a round; rounds add up to season standings.
 
-Design spec: `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md`.
+Design specs: v1 `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md`, v2 (accounts) `docs/superpowers/specs/2026-09-30-frc-fantasy-v2-design.md`.
 
 ## How it works
 
-- **Public link** `/l/<slug>`: the group-chat link. Leaderboards, rosters, every point explained.
-- **Admin link** `/l/<slug>/admin#k=<token>`: the commissioner's link. Shown once when the league is
-  created. Keep it private; anyone with it can change the league.
+- **Sign in** with an email and password. Every player has an account.
+- **League page** `/l/<slug>`: leaderboards, rosters, every point explained. Each league is either
+  visible to anyone with the link, or to members only. Players join with an invite code
+  (`/join/<code>`).
+- **Admin page** `/l/<slug>/admin`: for commissioners only (see Commissioners below).
 - Scores are never stored. They are recomputed from The Blue Alliance data every time a page loads, using
   the round's scoring table, the picks, and any manual adjustments.
 
@@ -18,18 +20,42 @@ Design spec: `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md`.
 
 ```bash
 npm install
-cp .env.example .env.local   # then fill in the four values below
+cp .env.example .env.local   # then fill in the values below
 npm run dev                  # http://localhost:3000
 ```
+
+Then create an account with an email and password (one-time setup below).
 
 | Variable | Where it comes from |
 |---|---|
 | `TBA_API_KEY` | thebluealliance.com/account → Read API Keys |
 | `SUPABASE_URL` | Supabase dashboard → Project Settings → API → Project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Same page → service_role key. Server only. Never in the browser. |
-| `CREATE_LEAGUE_PASSCODE` | Anything you like. Needed to create a league on the home page. |
+| `NEXT_PUBLIC_SUPABASE_URL` | Same value as `SUPABASE_URL`. Sign-in runs in the browser. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Same page → anon / publishable key. Public by design; RLS has no policies, so it can't touch our tables. |
+| `CRON_SECRET` | 32+ random characters (`openssl rand -base64 32`). Used by the scheduled jobs. |
+| `E2E_AUTH_SECRET` | Another random string. Local only, never on Vercel: lets Playwright sign in through `/api/test/login`. |
 
-Database setup, once: paste `supabase/migrations/0001_init.sql` into the Supabase SQL Editor and run it.
+Database setup, once: paste the files in `supabase/migrations/` into the Supabase SQL Editor and run
+them in order.
+
+## One-time sign-in setup
+
+About 5 minutes, in the Supabase dashboard. Do it once per Supabase project. Sign-in is email + password;
+no emails are ever sent. (Google/Discord sign-in code exists but is switched off.)
+
+1. **Email provider.** Authentication → Sign In / Providers → Email: enabled, **Confirm email OFF**,
+   minimum password length **8**. Leave **anonymous sign-ins off**.
+2. **Site URL.** Authentication → URL Configuration: Site URL `https://frc-fantasy-6yo3.vercel.app`.
+3. **Env vars.** Project Settings → API gives the Project URL and the anon / publishable key. Put them
+   in `.env.local` as `NEXT_PUBLIC_SUPABASE_URL` (equal to `SUPABASE_URL`) and
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, plus `CRON_SECRET` and `E2E_AUTH_SECRET` (each from
+   `openssl rand -base64 32`); remove `CREATE_LEAGUE_PASSCODE`. Also set `NEXT_PUBLIC_SUPABASE_URL`,
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `CRON_SECRET` in Vercel (Production and Preview) **before merging
+   SP1**, or every request will fail. Never put `E2E_AUTH_SECRET` on Vercel.
+
+Check it: `npm run dev`, create an account with an email and password, and you should land back on `/`
+signed in. Sign out from `/me/settings` and sign back in.
 
 ## Checks
 
@@ -45,12 +71,15 @@ npx tsx --env-file=.env.local scripts/db-smoke.ts   # talks to the real database
 | Script | What it does |
 |---|---|
 | `scripts/capture-fixture.ts <eventKey>` | Downloads an event's TBA data into `tests/fixtures/` |
-| `scripts/seed-demo.ts [site-url]` | Creates a demo league that replays Ramp Riot 2025. Note: creates a NEW league each run |
+| `scripts/seed-demo.ts <owner-user-id> [site-url]` | Creates a demo league that replays Ramp Riot 2025, owned by that user (find your id in Supabase → Authentication → Users; sign in once first). Note: creates a NEW league each run |
 | `scripts/db-smoke.ts` | Checks the real database matches the code |
-| `scripts/rotate-admin-token.ts <slug> [site-url]` | Makes a new admin link when the old one is lost |
+| `scripts/reset-password.ts <email> <new-password>` | Resets a forgotten password (no emails are sent), then you give the player the new one |
 
 Run them with `npx tsx --env-file=.env.local scripts/<name>.ts ...`. For example, the demo league:
-`npx tsx --env-file=.env.local scripts/seed-demo.ts`.
+`npx tsx --env-file=.env.local scripts/seed-demo.ts <your-user-id>`.
+
+The one-time v1 cleanup (deleting the old pre-accounts leagues) was run on 2026-09-30; its script has
+been removed.
 
 ## Live site
 
@@ -66,13 +95,10 @@ the generated token reference; `OVERHAUL.md` wins where they disagree.
 The theme is remembered per device in `localStorage['frcf:theme']` and follows the system setting
 until you flip the sun/moon toggle in the header.
 
-## Lost the admin link?
+## Commissioners
 
-```bash
-npx tsx --env-file=.env.local scripts/rotate-admin-token.ts <slug> https://<your-app>.vercel.app
-```
-
-It prints a new admin link. The old one stops working.
+The person who creates a league is its commissioner. A commissioner can make other members
+commissioners from Admin → Members. A league always keeps at least one commissioner.
 
 ## Deploy checklist
 
@@ -85,14 +111,17 @@ Skip any item that is already done.
 2. **Deploy to Vercel.**
    - [x] At `https://vercel.com/new`, import the `frc-fantasy` repo. Framework preset: Next.js. Leave build
      settings alone.
-   - [x] Under Environment Variables, add `TBA_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and
-     `CREATE_LEAGUE_PASSCODE` (same values as `.env.local`).
+   - [x] Under Environment Variables, add `TBA_API_KEY`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY`
+     (same values as `.env.local`).
+   - [ ] For accounts (Production and Preview), also add `NEXT_PUBLIC_SUPABASE_URL`,
+     `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `CRON_SECRET`. Never add `E2E_AUTH_SECRET`.
    - [x] Press Deploy. Expect a green build and a URL like `https://frc-fantasy-xxxx.vercel.app`.
    - [x] Open the URL. Expect the home page.
-3. **Create the real league on production.**
-   - [x] On the production home page, create the league (for example "Habich Fam") with the passcode.
-   - [x] Save the admin link in a password manager or private note. Copy the public link too.
-   - [ ] In the admin page, add the family as players and add round `2025parr` for the replay.
+3. **Create the real league on production.** (The v1 league was removed in the 2026-09-30 cleanup.)
+   - [ ] Sign in on the production home page and create the league (for example "Habich Fam").
+   - [ ] Copy the invite link from Admin → Members and send it to the family. Each person signs in and
+     joins with it; nobody can be added by name any more.
+   - [ ] In the admin page, add round `2025parr` for the replay.
 4. **Prove nothing is cached by Next.js (spec section 9.2).**
    - [x] Open the public round page for `2025parr` on your phone. Note a player's total.
    - [x] On your laptop, in the round admin, add a player adjustment of +100 with the reason "cache test".
@@ -106,7 +135,7 @@ Skip any item that is already done.
 1. **Wake the database.** Supabase free projects pause after about a week idle. Open the Supabase
    dashboard; if the project says "Paused", press "Restore project" and wait a minute. Do this the day
    before.
-2. Open the public link on your phone and confirm it loads.
+2. Open the league link on your phone, **check you can sign in on your phone**, and confirm it loads.
 3. Check the event exists on The Blue Alliance and note its key (for Ramp Riot 2026, probably `2026parr`).
 4. Add the round in the admin page and look at its team pool. Offseason lists are often incomplete: add
    missing teams by hand.

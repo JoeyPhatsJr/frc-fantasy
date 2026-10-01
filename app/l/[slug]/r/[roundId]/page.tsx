@@ -6,12 +6,14 @@ import { AutoRefresh } from '@/components/AutoRefresh';
 import { DraftBoard } from '@/components/DraftBoard';
 import { Freshness } from '@/components/Freshness';
 import { Leaderboard } from '@/components/Leaderboard';
+import { PrivateLeague } from '@/components/PrivateLeague';
 import { RosterList } from '@/components/RosterList';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ChevronLeft, ExternalLink, Info } from '@/components/ui/icons';
+import { leagueAccess } from '@/lib/auth/roles';
 import { formatDateRange, tbaEventUrl } from '@/lib/format';
 import { loadRoundPage } from '@/lib/views/round';
 
@@ -31,6 +33,12 @@ function Note({ children }: { children: ReactNode }) {
 
 export default async function RoundPage({ params }: Props) {
   const { slug, roundId } = await params;
+  const access = await leagueAccess(slug);
+  if (!access) notFound();
+  if (!access.canView) {
+    return <PrivateLeague signedIn={access.user !== null} next={`/l/${slug}/r/${roundId}`} />;
+  }
+
   const now = new Date();
   const page = await loadRoundPage(slug, roundId, now);
   if (!page) notFound();

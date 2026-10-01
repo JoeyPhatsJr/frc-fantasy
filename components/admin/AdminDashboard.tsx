@@ -1,8 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AddForm, AddRoundForm, EventRow, PlayerRow, RenameLeague } from '@/components/admin/DashboardParts';
+import { AddRoundForm, EventRow, RenameLeague } from '@/components/admin/DashboardParts';
 import { AdminGate } from '@/components/admin/AdminGate';
+import { DangerZone } from '@/components/admin/DangerZone';
+import { MembersCard } from '@/components/admin/MembersCard';
 import { ScoringForm } from '@/components/admin/ScoringForm';
 import { usePolling } from '@/components/admin/usePolling';
 import { CopyButton } from '@/components/CopyButton';
@@ -15,14 +17,27 @@ import type { AdminApi } from '@/lib/admin/client';
 import type { AdminState, EventLookup } from '@/lib/api/types';
 import { formatDateRange } from '@/lib/format';
 
-export function AdminDashboard({ slug }: { slug: string }) {
-  return <AdminGate slug={slug}>{(api) => <Dashboard slug={slug} api={api} />}</AdminGate>;
+/** Members-only leagues have no public page, so the shortcuts don't call it one. */
+export function leagueLinkLabels(visibility: 'link' | 'members'): { view: string; copy: string } {
+  return visibility === 'link'
+    ? { view: 'View public page', copy: 'Copy public link' }
+    : { view: 'View league page', copy: 'Copy league link' };
 }
 
-function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
+export const FIRST_ROUND_FAILED = "Your league is ready, but the first round couldn't be added. Add it under Rounds below.";
+
+/** firstRoundFailed: /leagues/new made the league but couldn't add the prefilled event (?round_error=1). */
+export function AdminDashboard({ slug, firstRoundFailed = false }: { slug: string; firstRoundFailed?: boolean }) {
+  return (
+    <AdminGate slug={slug}>{(api) => <Dashboard slug={slug} api={api} firstRoundFailed={firstRoundFailed} />}</AdminGate>
+  );
+}
+
+function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminApi; firstRoundFailed: boolean }) {
   const [state, setState] = useState<AdminState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [roundWarning, setRoundWarning] = useState(firstRoundFailed);
   /** Which action is running (it shows the spinner); every other control is disabled meanwhile. */
   const [pending, setPending] = useState<string | null>(null);
   const busy = pending !== null;
@@ -51,6 +66,7 @@ function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
       setPending(key);
       setError(null);
       setNotice(null);
+      setRoundWarning(false);
       let ok = false;
       try {
         await action();
@@ -99,7 +115,8 @@ function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
     );
   }
 
-  const publicLink = typeof window === 'undefined' ? '' : `${window.location.origin}/l/${slug}`;
+  const leagueLink = typeof window === 'undefined' ? '' : `${window.location.origin}/l/${slug}`;
+  const labels = leagueLinkLabels(state.league.visibility);
 
   return (
     <main id="main" className="space-y-6">
@@ -107,11 +124,12 @@ function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
       <h1 className="sr-only">Commissioner dashboard for {state.league.name}</h1>
       <div className="flex flex-wrap items-center gap-2">
         <Button href={`/l/${slug}`} variant="secondary">
-          View public page
+          {labels.view}
         </Button>
-        <CopyButton text={publicLink} label="Copy public link" />
+        <CopyButton text={leagueLink} label={labels.copy} />
       </div>
 
+      {roundWarning ? <Alert tone="warning">{FIRST_ROUND_FAILED}</Alert> : null}
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {notice ? <Alert tone="success">{notice}</Alert> : null}
 
@@ -124,34 +142,18 @@ function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
       />
 
       <section>
-        <Card title="Players" className="space-y-3">
-          {state.players.length === 0 ? <p className="text-[15px] text-fg-muted">No players yet.</p> : null}
-          <ul className="divide-y divide-border">
-            {state.players.map((player) => (
-              <PlayerRow
-                key={`${player.id}:${player.name}`}
-                player={player}
-                busy={busy}
-                pending={
-                  pending === `rename:${player.id}` ? 'rename' : pending === `remove:${player.id}` ? 'remove' : null
-                }
-                onRename={(name) =>
-                  run(`rename:${player.id}`, () => api(`/players/${player.id}`, { method: 'PATCH', body: { name } }))
-                }
-                onRemove={() => run(`remove:${player.id}`, () => api(`/players/${player.id}`, { method: 'DELETE' }))}
-              />
-            ))}
-          </ul>
-          <AddForm
-            label="Add a player"
-            placeholder="Name"
-            maxLength={40}
-            button="Add player"
-            busy={busy}
-            saving={pending === 'add-player'}
-            onAdd={(name) => run('add-player', () => api('/players', { method: 'POST', body: { name } }))}
-          />
-        </Card>
+        <MembersCard
+          inviteLink={typeof window === 'undefined' ? '' : `${window.location.origin}/join/${state.league.inviteCode}`}
+          league={state.league}
+          players={state.players}
+          me={state.me}
+          busy={busy}
+          pending={pending}
+          onReset={() => run('reset', () => api('/invite', { method: 'POST' }), 'New invite code made. The old one no longer works.')}
+          onVisibility={(visibility) => run('visibility', () => api('/league', { method: 'PATCH', body: { visibility } }))}
+          onRole={(id, role) => run(`role:${id}`, () => api(`/players/${id}`, { method: 'PATCH', body: { role } }))}
+          onRemove={(p) => run(`remove:${p.id}`, () => api(`/players/${p.id}`, { method: 'DELETE' }), `${p.name} was removed.`)}
+        />
       </section>
 
       <section>
@@ -244,6 +246,19 @@ function Dashboard({ slug, api }: { slug: string; api: AdminApi }) {
             </div>
           </details>
         </Card>
+      </section>
+
+      <section>
+        <DangerZone
+          leagueName={state.league.name}
+          busy={busy}
+          onDelete={(confirmName) =>
+            run('delete-league', async () => {
+              await api('/league', { method: 'DELETE', body: { confirmName } });
+              window.location.assign('/leagues');
+            })
+          }
+        />
       </section>
     </main>
   );

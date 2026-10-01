@@ -1,13 +1,14 @@
-import { handle, json, requireCommissioner } from '@/lib/api/http';
+import { handle, json } from '@/lib/api/http';
+import { requireLeagueRole } from '@/lib/auth/roles';
 
 export const dynamic = 'force-dynamic';
 
 type Ctx = { params: Promise<{ slug: string }> };
 
-export async function GET(req: Request, ctx: Ctx): Promise<Response> {
+export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug } = await ctx.params;
-    await requireCommissioner(req, slug);
+    await requireLeagueRole(slug, 'commissioner');
     return json({ ok: true });
   });
 }

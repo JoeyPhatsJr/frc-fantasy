@@ -1,8 +1,12 @@
 import type { Metadata, Viewport } from 'next';
 import { Barlow, Barlow_Condensed } from 'next/font/google';
 import Link from 'next/link';
+import { SkipLink } from '@/components/SkipLink';
+import { AppTabBar } from '@/components/AppTabBar';
+import { HeaderAccount, type HeaderUser } from '@/components/HeaderAccount';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { ExternalLink } from '@/components/ui/icons';
+import { getUser } from '@/lib/auth/session';
+import { getRepo } from '@/lib/db';
 import { THEME_BOOT_SCRIPT } from '@/lib/theme';
 import './globals.css';
 
@@ -26,7 +30,16 @@ export const metadata: Metadata = {
 };
 
 // viewport-fit=cover turns on env(safe-area-inset-*) so the bottom tab bar clears the iPhone home indicator.
-export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' };
+// themeColor tints the mobile browser chrome; the values are the header surface (--color-surface) per theme.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#16243a' },
+  ],
+};
 
 /** Hex-nut mark: gold hexagon with a blue bore. Decorative. */
 function Mark() {
@@ -38,15 +51,34 @@ function Mark() {
   );
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+async function loadHeaderUser(): Promise<HeaderUser> {
+  try {
+    const user = await getUser();
+    if (!user) return null;
+    const profile = await getRepo().getProfile(user.id);
+    return { displayName: profile?.displayName ?? 'Player', avatarUrl: profile?.avatarUrl ?? null };
+  } catch (err) {
+    console.error(err); // a sleeping database or missing env var: render signed-out rather than a blank page
+    return null;
+  }
+}
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const headerUser = await loadHeaderUser();
   return (
-    // data-theme is set by the boot script before React hydrates, so the attribute legitimately
-    // differs from the server markup.
-    <html lang="en" className={`${barlowCondensed.variable} ${barlow.variable}`} suppressHydrationWarning>
+    // Light by default. The boot script swaps in a saved choice before React hydrates, so the
+    // attribute can legitimately differ from the server markup.
+    <html
+      lang="en"
+      data-theme="light"
+      className={`${barlowCondensed.variable} ${barlow.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>
       <body className="flex min-h-dvh flex-col bg-bg font-body text-fg">
+        <SkipLink />
         <header className="sticky top-0 z-30 border-b border-border bg-surface">
           <div className="mx-auto flex h-14 w-full max-w-2xl items-center justify-between gap-3 px-4 md:max-w-3xl">
             <Link
@@ -58,22 +90,37 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 FRC FANTASY
               </span>
             </Link>
-            <ThemeToggle />
+            <div className="flex items-center gap-1">
+              <ThemeToggle />
+              <HeaderAccount user={headerUser} />
+            </div>
           </div>
         </header>
 
-        <div className="mx-auto w-full max-w-2xl flex-1 px-4 py-6 pb-24 md:max-w-3xl md:pb-8">{children}</div>
+        {/* Signed in, the footer clears the fixed bottom tab bar on phones; signed out there is no tab
+            bar (league pages' TabBar pads <body> itself, see globals.css), so no extra space. */}
+        <div
+          className={`mx-auto w-full max-w-2xl flex-1 px-4 py-6 md:max-w-3xl md:pb-8 ${headerUser ? 'pb-24' : 'pb-10'}`}
+        >
+          {children}
+        </div>
+        {headerUser ? <AppTabBar /> : null}
 
-        <footer className="mx-auto w-full max-w-2xl px-4 pb-6 text-center md:max-w-3xl">
-          <a
-            href="https://www.thebluealliance.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-sm text-fg-muted underline-offset-4 motion-safe:transition-colors duration-200 hover:text-fg hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            Scores from The Blue Alliance
-            <ExternalLink className="size-3.5" />
-          </a>
+        <footer
+          className={`mx-auto w-full max-w-2xl px-4 text-center md:max-w-3xl md:pb-6 ${headerUser ? 'pb-24' : 'pb-6'}`}
+        >
+          <p className="py-3 text-sm leading-6 text-fg-muted">
+            Made by students on FRC Team 5181.{' '}
+            <a
+              href="https://www.thebluealliance.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block cursor-pointer rounded-sm py-3 underline decoration-fg-muted/40 underline-offset-4 hover:text-fg hover:decoration-current focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Data from The Blue Alliance<span className="sr-only"> (opens in a new tab)</span>
+            </a>
+            . Not affiliated with FIRST.
+          </p>
         </footer>
       </body>
     </html>

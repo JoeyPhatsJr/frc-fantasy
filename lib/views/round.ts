@@ -1,5 +1,6 @@
 import { isUuid } from '@/lib/api/http';
 import { getRepo } from '@/lib/db';
+import { withPublicNames } from '@/lib/leagues/names';
 import type { AdjustmentRow, PickRow, PlayerRow, RoundRow } from '@/lib/db/types';
 import { cacheWindowFor, roundStatus, type RoundStatus } from '@/lib/rounds/status';
 import { scoreEvent } from '@/lib/scoring/engine';
@@ -37,7 +38,7 @@ export type RoundView = {
 export type RoundPage = {
   league: { slug: string; name: string };
   view: RoundView;
-  /** Every player in the league: id -> name. */
+  /** Every player in the league: id -> name ("Mom (left)" for former members). */
   playerNames: Record<string, string>;
 };
 
@@ -119,11 +120,12 @@ export async function loadRoundPage(slug: string, roundId: string, now: Date): P
   const round = await repo.getRound(roundId);
   if (!round || round.leagueId !== league.id) return null;
 
-  const [allPlayers, picks, adjustments] = await Promise.all([
+  const [rows, picks, adjustments] = await Promise.all([
     repo.listPlayers(league.id),
     repo.listPicks(round.id),
     repo.listAdjustments(round.id),
   ]);
+  const allPlayers = withPublicNames(rows);
   return {
     league: { slug: league.slug, name: league.name },
     view: await buildRoundView(round, allPlayers, picks, adjustments, now),

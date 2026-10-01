@@ -1,8 +1,10 @@
 import { z } from 'zod';
 import { handle, HttpError, json, parseBody } from '@/lib/api/http';
-import { generateAdminToken, hashToken, makeSlug, safeEqual } from '@/lib/auth/commissioner';
+import { makeSlug } from '@/lib/auth/commissioner';
+import { requireUser } from '@/lib/auth/session';
 import { getRepo } from '@/lib/db';
 import { UniqueViolation } from '@/lib/db/repo';
+import { MAX_LEAGUES_PER_USER } from '@/lib/leagues/membership';
 import { defaultScoring } from '@/lib/scoring/config';
 
 export const dynamic = 'force-dynamic';
@@ -13,29 +15,50 @@ const bodySchema = z.object({
     .trim()
     .min(1, 'League name is required')
     .max(80, 'League name must be 80 characters or fewer'),
-  passcode: z.string('Passcode is required').max(200, 'Passcode is too long'),
+  visibility: z.enum(['link', 'members'], 'visibility must be link or members').optional(),
 });
 
+/** Create a league (spec §4.4). The creator becomes its first commissioner. */
 export async function POST(req: Request): Promise<Response> {
   return handle(async () => {
+    const user = await requireUser();
     const body = await parseBody(req, bodySchema);
-    const expected = process.env.CREATE_LEAGUE_PASSCODE;
-    if (!expected || !safeEqual(body.passcode, expected)) throw new HttpError(403, 'Wrong passcode');
+    const repo = getRepo();
 
-    const adminToken = generateAdminToken();
+    if ((await repo.countLeaguesCreatedBy(user.id)) >= MAX_LEAGUES_PER_USER) {
+      throw new HttpError(409, `You've reached the ${MAX_LEAGUES_PER_USER}-league limit`);
+    }
+    const profile = await repo.getProfile(user.id);
+    const myName = profile?.displayName ?? 'Player';
+
     for (let attempt = 0; attempt < 5; attempt++) {
+      let league;
       try {
-        const league = await getRepo().createLeague({
+        league = await repo.createLeague({
           slug: makeSlug(body.name),
           name: body.name,
-          adminTokenHash: hashToken(adminToken),
           defaultScoring: defaultScoring(),
+          createdBy: user.id,
+          visibility: body.visibility ?? 'link',
         });
-        return json({ slug: league.slug, adminToken }, 201);
       } catch (err) {
-        if (err instanceof UniqueViolation && err.constraint === 'leagues_slug_key') continue;
+        // A clash on the random slug or the random invite code: try again with new ones.
+        if (err instanceof UniqueViolation && ['leagues_slug_key', 'leagues_invite_code_key'].includes(err.constraint)) {
+          continue;
+        }
         throw err;
       }
+      try {
+        await repo.createMember({ leagueId: league.id, userId: user.id, name: myName, role: 'commissioner' });
+      } catch (err) {
+        // No commissioner-less leagues left behind. A failed rollback is logged, never allowed to
+        // replace the error that actually happened.
+        await repo.deleteLeague(league.id).catch((rollbackErr: unknown) => {
+          console.error(`League rollback failed for ${league.id}`, rollbackErr);
+        });
+        throw err;
+      }
+      return json({ slug: league.slug, inviteCode: league.inviteCode }, 201);
     }
     throw new HttpError(500, 'Could not make a unique link. Try again.');
   });

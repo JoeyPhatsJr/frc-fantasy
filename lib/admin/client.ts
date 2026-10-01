@@ -12,22 +12,6 @@ export class ApiError extends Error {
 
 export type AdminApi = <T>(path: string, init?: { method?: string; body?: unknown }) => Promise<T>;
 
-export function storageKey(slug: string): string {
-  return `frcf:admin:${slug}`;
-}
-
-const TOKEN_RE = /^[A-Za-z0-9_-]{20,200}$/;
-
-/** Reads the commissioner token from a URL fragment like "#k=abc". */
-export function tokenFromHash(hash: string): string | null {
-  const token = new URLSearchParams(hash.replace(/^#/, '')).get('k');
-  return token && TOKEN_RE.test(token) ? token : null;
-}
-
-export function adminLinkFor(origin: string, slug: string, token: string): string {
-  return `${origin.replace(/\/+$/, '')}/l/${slug}/admin#k=${token}`;
-}
-
 async function send<T>(
   url: string,
   init: { method?: string; body?: unknown; headers?: Record<string, string> },
@@ -43,6 +27,7 @@ async function send<T>(
       headers,
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
       cache: 'no-store',
+      credentials: 'same-origin',
     });
   } catch {
     throw new ApiError(0, "Couldn't reach the server. Check your connection.");
@@ -67,23 +52,32 @@ async function send<T>(
 }
 
 export function createLeague(
-  name: string,
-  passcode: string,
+  input: { name: string; visibility?: 'link' | 'members' },
   fetchImpl: typeof fetch = fetch,
-): Promise<{ slug: string; adminToken: string }> {
-  return send('/api/leagues', { method: 'POST', body: { name, passcode } }, fetchImpl);
+): Promise<{ slug: string; inviteCode: string }> {
+  return send('/api/leagues', { method: 'POST', body: input }, fetchImpl);
 }
 
+/** Calls /api/l/{slug}/admin/*. The browser sends the Supabase session cookie; there is no token any more. */
 export function adminFetch<T>(
   slug: string,
-  token: string,
   path: string,
   init: { method?: string; body?: unknown } = {},
   fetchImpl: typeof fetch = fetch,
 ): Promise<T> {
-  return send<T>(
-    `/api/l/${encodeURIComponent(slug)}/admin${path}`,
-    { ...init, headers: { 'x-commissioner-key': token } },
-    fetchImpl,
-  );
+  return send<T>(`/api/l/${encodeURIComponent(slug)}/admin${path}`, init, fetchImpl);
+}
+
+/** A member renames themselves in one league (PATCH /api/l/{slug}/me). */
+export function renameMe(
+  slug: string,
+  name: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ player: { id: string; name: string } }> {
+  return send(`/api/l/${encodeURIComponent(slug)}/me`, { method: 'PATCH', body: { name } }, fetchImpl);
+}
+
+/** A member leaves a league (POST /api/l/{slug}/me/leave). The last commissioner gets a 409. */
+export function leaveLeague(slug: string, fetchImpl: typeof fetch = fetch): Promise<{ result: 'deleted' | 'unlinked' }> {
+  return send(`/api/l/${encodeURIComponent(slug)}/me/leave`, { method: 'POST' }, fetchImpl);
 }

@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { handle, HttpError, json, parseBody, requireCommissioner } from '@/lib/api/http';
+import { handle, HttpError, json, parseBody } from '@/lib/api/http';
+import { requireLeagueRole } from '@/lib/auth/roles';
 import { getRepo } from '@/lib/db';
 import { DEFAULT_WINDOW_MS } from '@/lib/rounds/status';
 import { getTba } from '@/lib/tba/client';
@@ -20,7 +21,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export async function POST(req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug } = await ctx.params;
-    const league = await requireCommissioner(req, slug);
+    const { league } = await requireLeagueRole(slug, 'commissioner');
     const body = await parseBody(req, bodySchema);
     const eventKey = normalizeEventKey(body.eventKey);
     if (!eventKey) throw new HttpError(400, 'Event keys look like 2025parr');

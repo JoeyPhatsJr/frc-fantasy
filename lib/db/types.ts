@@ -1,16 +1,39 @@
 import type { ScoringConfig } from '@/lib/scoring/config';
 
+export type Visibility = 'link' | 'members';
+export type LeagueRole = 'commissioner' | 'player';
+
 export type LeagueRow = {
   id: string;
   slug: string;
   name: string;
-  adminTokenHash: string;
+  /** v1 only; null for every v2 league. Column dropped in 0006. */
+  adminTokenHash: string | null;
   homeTeamNumber: number;
   defaultScoring: ScoringConfig;
+  inviteCode: string;
+  visibility: Visibility;
+  createdBy: string | null;
   createdAt: string;
 };
 
-export type PlayerRow = { id: string; leagueId: string; name: string; createdAt: string };
+export type PlayerRow = {
+  id: string;
+  leagueId: string;
+  name: string;
+  /** null = an unlinked former member ("Mom (left)"), or a name-only row made by tests/scripts. */
+  userId: string | null;
+  role: LeagueRole;
+  createdAt: string;
+};
+
+export type ProfileRow = {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+  frcTeam: number | null;
+  createdAt: string;
+};
 
 export type RoundRow = {
   id: string;

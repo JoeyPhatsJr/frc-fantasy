@@ -81,6 +81,13 @@ describe('Badge', () => {
   });
 });
 
+describe('touch-action', () => {
+  it('Button and Input opt into touch-manipulation (no double-tap-zoom delay)', () => {
+    expect(render(h(Button, {}, 'Go'))).toContain('touch-manipulation');
+    expect(render(h(Input, { label: 'x' }))).toContain('touch-manipulation');
+  });
+});
+
 describe('Input', () => {
   it('renders a visible label bound to the input', () => {
     const html = render(h(Input, { label: 'League name', id: 'league-name' }));

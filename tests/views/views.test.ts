@@ -6,6 +6,7 @@ const h = vi.hoisted(() => ({
   scoreThrowsOnce: false,
 }));
 vi.mock('@/lib/db', () => ({ getRepo: () => h.repo }));
+vi.mock('@/lib/auth/session', async () => (await import('../helpers/auth')).fakeSession);
 vi.mock('@/lib/tba/client', () => ({ getTba: (...args: unknown[]) => h.getTba(...args) }));
 // Real scoring, except a test can make the first call blow up (the engine is tolerant, so it is hard to trip).
 vi.mock('@/lib/scoring/engine', async (importOriginal) => {
@@ -29,6 +30,7 @@ import type { EventData } from '@/lib/tba/types';
 import { loadLeaguePage } from '@/lib/views/league';
 import { cleanEventData, loadRoundPage } from '@/lib/views/round';
 import { seedLeague } from '../helpers/api';
+import { makeUser, setUser } from '../helpers/auth';
 import { emptyEvent, match, rankRow, rankings } from '../helpers/builders';
 import { createMemoryRepo } from '../helpers/memoryRepo';
 
@@ -67,6 +69,7 @@ function tba(events: Record<string, EventData>, opts: { stale?: boolean; fetched
 
 let repo: Repo;
 let league: LeagueRow;
+let commissioner: PlayerRow;
 let mom: PlayerRow;
 let dad: PlayerRow;
 let joey: PlayerRow;
@@ -79,13 +82,20 @@ async function newRound(eventKey: string, startDate: string) {
   });
 }
 
+/** A linked member (a signed-up account), like every v2 player. */
+async function member(name: string): Promise<PlayerRow> {
+  const user = await makeUser(repo, name);
+  return repo.createMember({ leagueId: league.id, userId: user.id, name, role: 'player' });
+}
+
 beforeEach(async () => {
+  setUser(null);
   repo = createMemoryRepo();
   h.repo = repo;
-  ({ league } = await seedLeague(repo));
-  mom = await repo.createPlayer(league.id, 'Mom');
-  dad = await repo.createPlayer(league.id, 'Dad');
-  joey = await repo.createPlayer(league.id, 'Joey');
+  ({ league, commissioner } = await seedLeague(repo));
+  mom = await member('Mom');
+  dad = await member('Dad');
+  joey = await member('Joey');
   round = await newRound('2025parr', '2025-10-25');
   round = await repo.updateRound(round.id, { draftOrder: [mom.id, dad.id], rosterSize: 1 });
   await repo.insertPick({ roundId: round.id, pickNumber: 0, playerId: mom.id, teamKey: 'frc1' });
@@ -114,12 +124,20 @@ describe('loadRoundPage', () => {
 
   it('names every league player, including ones not in this round', async () => {
     const page = (await loadRoundPage(league.slug, round.id, NOW))!;
-    expect(page.playerNames).toEqual({ [mom.id]: 'Mom', [dad.id]: 'Dad', [joey.id]: 'Joey' });
+    expect(page.playerNames).toEqual({ [commissioner.id]: 'Commish', [mom.id]: 'Mom', [dad.id]: 'Dad', [joey.id]: 'Joey' });
+  });
+
+  it('marks unlinked former members "(left)" in scores and player names (spec §4.3)', async () => {
+    await repo.updatePlayer(mom.id, { userId: null });
+    const page = (await loadRoundPage(league.slug, round.id, NOW))!;
+    expect(page.view.scores.map((s) => s.name)).toEqual(['Mom (left)', 'Dad']);
+    expect(page.playerNames[mom.id]).toBe('Mom (left)');
+    expect(page.playerNames[dad.id]).toBe('Dad');
   });
 
   it('never exposes the admin token hash', async () => {
     const page = (await loadRoundPage(league.slug, round.id, NOW))!;
-    expect(JSON.stringify(page)).not.toContain(league.adminTokenHash);
+    expect(JSON.stringify(page)).not.toContain('adminTokenHash');
   });
 
   it('uses the round cache window when calling TBA', async () => {
@@ -175,7 +193,7 @@ describe('loadRoundPage', () => {
     expect(await loadRoundPage(league.slug, 'not-a-uuid', NOW)).toBeNull();
     expect(await loadRoundPage(league.slug, '3f2b8c1e-5d4a-4e6f-9a7b-0c1d2e3f4a5b', NOW)).toBeNull();
     expect(await loadRoundPage('no-such-league', round.id, NOW)).toBeNull();
-    const other = await seedLeague(repo, { slug: 'other-league-bbbbbb' });
+    const other = await seedLeague(repo, { slug: 'other-league-bbbbbb', signIn: false });
     expect(await loadRoundPage(other.league.slug, round.id, NOW)).toBeNull();
   });
 });
@@ -244,8 +262,17 @@ describe('loadLeaguePage', () => {
       { playerId: mom.id, name: 'Mom', total: 28, rank: 1, perRound: [28, 0] },
       { playerId: dad.id, name: 'Dad', total: 12, rank: 2, perRound: [12, 0] },
       { playerId: joey.id, name: 'Joey', total: 12, rank: 2, perRound: [0, 12] },
+      { playerId: commissioner.id, name: 'Commish', total: 0, rank: 4, perRound: [0, 0] },
     ]);
     expect(page.anyLive).toBe(false);
+  });
+
+  it('marks unlinked former members "(left)" in season standings and round scores (spec §4.3)', async () => {
+    await repo.updatePlayer(dad.id, { userId: null });
+    const page = (await loadLeaguePage(league.slug, NOW))!;
+    expect(page.standings.find((s) => s.playerId === dad.id)!.name).toBe('Dad (left)');
+    expect(page.standings.find((s) => s.playerId === mom.id)!.name).toBe('Mom');
+    expect(page.rounds[0].scores.find((s) => s.playerId === dad.id)!.name).toBe('Dad (left)');
   });
 
   it('knows when a round is live', async () => {
@@ -288,10 +315,10 @@ describe('loadLeaguePage', () => {
     expect(page.fetchedAt).toBe('2026-09-30T21:00:00.000Z');
   });
 
-  it('works for a league with no rounds or players', async () => {
+  it('works for a league with no rounds', async () => {
     const empty = await seedLeague(repo, { slug: 'empty-league-cccccc', name: 'Empty' });
     const page = (await loadLeaguePage(empty.league.slug, NOW))!;
-    expect(page).toMatchObject({ standings: [], rounds: [], anyLive: false, fetchedAt: null, stale: false });
+    expect(page).toMatchObject({ standings: [expect.objectContaining({ name: 'Commish', total: 0, rank: 1 })], rounds: [], anyLive: false, fetchedAt: null, stale: false });
     expect(h.getTba).not.toHaveBeenCalled();
   });
 

@@ -135,3 +135,113 @@ describe('memory repo', () => {
     expect(await repo.getCache('/other')).toBeNull();
   });
 });
+
+describe('v2 league and player fields (SP1)', () => {
+  it('gives every new league an invite code, link visibility, and no admin token', async () => {
+    const repo = createMemoryRepo();
+    const league = await repo.createLeague({ slug: 'fam-abc234', name: 'Fam', defaultScoring: defaultScoring() });
+    expect(league.inviteCode).toMatch(/^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$/);
+    expect(league.visibility).toBe('link');
+    expect(league.createdBy).toBeNull();
+    expect(league.adminTokenHash).toBeNull();
+  });
+
+  it('keeps visibility and createdBy when given', async () => {
+    const repo = createMemoryRepo();
+    const league = await repo.createLeague({
+      slug: 'fam-abc234', name: 'Fam', defaultScoring: defaultScoring(),
+      visibility: 'members', createdBy: '3f2b8c1e-5d4a-4e6f-9a7b-0c1d2e3f4a5b',
+    });
+    expect(league.visibility).toBe('members');
+    expect(league.createdBy).toBe('3f2b8c1e-5d4a-4e6f-9a7b-0c1d2e3f4a5b');
+  });
+
+  it('makes name-only players unlinked plain players', async () => {
+    const repo = createMemoryRepo();
+    const league = await repo.createLeague({ slug: 'fam-abc234', name: 'Fam', defaultScoring: defaultScoring() });
+    const mom = await repo.createPlayer(league.id, 'Mom');
+    expect(mom.userId).toBeNull();
+    expect(mom.role).toBe('player');
+  });
+});
+
+describe('profiles and members (SP1)', () => {
+  const USER = '3f2b8c1e-5d4a-4e6f-9a7b-0c1d2e3f4a5b';
+  const OTHER = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
+
+  async function setup() {
+    const repo = createMemoryRepo();
+    const profile = await repo.createProfile({ id: USER, displayName: 'Joey', avatarUrl: null });
+    const league = await repo.createLeague({
+      slug: 'fam-abc234', name: 'Fam', defaultScoring: defaultScoring(), createdBy: USER,
+    });
+    return { repo, profile, league };
+  }
+
+  it('creates a profile once and returns the existing one on a repeat', async () => {
+    const { repo } = await setup();
+    const again = await repo.createProfile({ id: USER, displayName: 'Changed', avatarUrl: 'x' });
+    expect(again.displayName).toBe('Joey');
+    expect((await repo.getProfile(USER))!.frcTeam).toBeNull();
+    expect(await repo.getProfile(OTHER)).toBeNull();
+  });
+
+  it('updates display name and FRC team', async () => {
+    const { repo } = await setup();
+    const saved = await repo.updateProfile(USER, { displayName: 'Joey H', frcTeam: 5181 });
+    expect(saved).toMatchObject({ displayName: 'Joey H', frcTeam: 5181 });
+    expect((await repo.updateProfile(USER, { frcTeam: null })).frcTeam).toBeNull();
+  });
+
+  it('creates a member, finds it by user, and lists the user’s leagues', async () => {
+    const { repo, league } = await setup();
+    const me = await repo.createMember({ leagueId: league.id, userId: USER, name: 'Joey', role: 'commissioner' });
+    expect(me).toMatchObject({ userId: USER, role: 'commissioner', name: 'Joey' });
+    expect((await repo.getMemberByUser(league.id, USER))!.id).toBe(me.id);
+    expect(await repo.getMemberByUser(league.id, OTHER)).toBeNull();
+    const mine = await repo.listLeaguesForUser(USER);
+    expect(mine.map((m) => [m.league.slug, m.player.id])).toEqual([['fam-abc234', me.id]]);
+  });
+
+  it('refuses a second membership for the same user in one league', async () => {
+    const { repo, league } = await setup();
+    await repo.createMember({ leagueId: league.id, userId: USER, name: 'Joey', role: 'player' });
+    await expect(
+      repo.createMember({ leagueId: league.id, userId: USER, name: 'Joey 2', role: 'player' }),
+    ).rejects.toMatchObject({ constraint: 'players_league_user' });
+  });
+
+  it('updates a player’s name, role, and unlinks them', async () => {
+    const { repo, league } = await setup();
+    const me = await repo.createMember({ leagueId: league.id, userId: USER, name: 'Joey', role: 'player' });
+    expect((await repo.updatePlayer(me.id, { role: 'commissioner' })).role).toBe('commissioner');
+    expect((await repo.updatePlayer(me.id, { name: 'J' })).name).toBe('J');
+    const unlinked = await repo.updatePlayer(me.id, { userId: null });
+    expect(unlinked.userId).toBeNull();
+    expect(await repo.listLeaguesForUser(USER)).toEqual([]);
+  });
+
+  it('finds a league by invite code and resets it to a different code', async () => {
+    const { repo, league } = await setup();
+    expect((await repo.getLeagueByInviteCode(league.inviteCode))!.id).toBe(league.id);
+    const reset = await repo.resetInviteCode(league.id);
+    expect(reset.inviteCode).not.toBe(league.inviteCode);
+    expect(await repo.getLeagueByInviteCode(league.inviteCode)).toBeNull();
+  });
+
+  it('counts leagues created by a user', async () => {
+    const { repo } = await setup();
+    await repo.createLeague({ slug: 'two-abc234', name: 'Two', defaultScoring: defaultScoring(), createdBy: USER });
+    expect(await repo.countLeaguesCreatedBy(USER)).toBe(2);
+    expect(await repo.countLeaguesCreatedBy(OTHER)).toBe(0);
+  });
+
+  it('deleting a user removes the profile and unlinks their rows', async () => {
+    const { repo, league } = await setup();
+    const me = await repo.createMember({ leagueId: league.id, userId: USER, name: 'Joey', role: 'commissioner' });
+    await repo.deleteUser(USER);
+    expect(await repo.getProfile(USER)).toBeNull();
+    expect((await repo.listPlayers(league.id)).find((p) => p.id === me.id)!.userId).toBeNull();
+    expect((await repo.getLeagueBySlug('fam-abc234'))!.createdBy).toBeNull();
+  });
+});

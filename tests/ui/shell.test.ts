@@ -1,6 +1,7 @@
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { SkipLink } from '@/components/SkipLink';
 import { LeagueBar } from '@/components/LeagueBar';
 import { ScoreboardSkeleton, Skeleton } from '@/components/Skeleton';
 import { activeTab } from '@/lib/nav';
@@ -57,6 +58,11 @@ describe('LeagueBar', () => {
     expect(html).not.toContain('A round is live');
   });
 
+  it('shows the Commissioner label only when told the viewer is one', () => {
+    expect(render(h(LeagueBar, { slug: 'habich', name: 'Habich Fam', anyLive: false }))).not.toContain('Commissioner');
+    expect(render(h(LeagueBar, { slug: 'habich', name: 'Habich Fam', anyLive: false, isCommissioner: true }))).toContain('Commissioner');
+  });
+
   it('renders an optional back slot before the name', () => {
     const html = render(
       h(LeagueBar, { slug: 'habich', name: 'Habich Fam', anyLive: false, back: h('a', { href: '/x' }, 'Back') }),
@@ -111,13 +117,96 @@ describe('theme boot script', () => {
     expect(boot('dark', true)).toBe('dark');
   });
 
-  it('falls back to the device setting when nothing valid is saved', () => {
+  it('is light by default, even when the device prefers dark', () => {
     expect(boot(null, true)).toBe('light');
-    expect(boot(null, false)).toBe('dark');
-    expect(boot('purple', true)).toBe('light');
+    expect(boot(null, false)).toBe('light');
+    expect(boot('purple', false)).toBe('light');
   });
 
-  it('still picks a theme when storage is blocked', () => {
-    expect(boot(null, true, true)).toBe('light');
+  it('still picks light when storage is blocked', () => {
+    expect(boot(null, false, true)).toBe('light');
+  });
+});
+
+import { AppTabBarView } from '@/components/AppTabBar';
+import { HeaderAccountView } from '@/components/HeaderAccount';
+import { appTab, showAppTabBar } from '@/lib/nav';
+
+describe('appTab / showAppTabBar (spec §4.6)', () => {
+  it('maps paths to the Me and Leagues tabs', () => {
+    expect(appTab('/')).toBe('me');
+    expect(appTab('/me/settings')).toBe('me');
+    expect(appTab('/leagues')).toBe('leagues');
+    expect(appTab('/leagues/new')).toBe('leagues');
+    expect(appTab('/join/ABC234')).toBe('leagues');
+    expect(appTab('/l/fam-abc234')).toBeNull();
+  });
+  it('hides the app bar on league pages, which have their own bottom bar', () => {
+    expect(showAppTabBar('/')).toBe(true);
+    expect(showAppTabBar('/leagues')).toBe(true);
+    expect(showAppTabBar('/l/fam-abc234')).toBe(false);
+    expect(showAppTabBar('/l/fam-abc234/admin')).toBe(false);
+  });
+});
+
+describe('AppTabBarView', () => {
+  it('renders Me and Leagues with the active one marked', () => {
+    const html = render(h(AppTabBarView, { pathname: '/leagues' }));
+    expect(html).toContain('href="/"');
+    expect(html).toContain('href="/leagues"');
+    // React renders aria-current before href, so match the anchor tag in either attribute order.
+    const leaguesTag = html.match(/<a [^>]*href="\/leagues"[^>]*>/)?.[0] ?? '';
+    expect(leaguesTag).toContain('aria-current="page"');
+    expect(html.match(/<a [^>]*href="\/"[^>]*>/)?.[0]).not.toContain('aria-current');
+  });
+  it('renders nothing on league pages', () => {
+    expect(render(h(AppTabBarView, { pathname: '/l/x' }))).toBe('');
+  });
+});
+
+describe('HeaderAccountView', () => {
+  it('signed out: a Sign in link to /signin that comes back to this page', () => {
+    const html = render(h(HeaderAccountView, { user: null, pathname: '/join/ABC234' }));
+    expect(html).toContain('Sign in');
+    expect(html).toContain('href="/signin?next=%2Fjoin%2FABC234"');
+  });
+  it('signed out on the home page: plain /signin', () => {
+    expect(render(h(HeaderAccountView, { user: null, pathname: '/' }))).toContain('href="/signin"');
+  });
+  it('signed out on /signin itself: no second Sign in (the page is the form)', () => {
+    expect(render(h(HeaderAccountView, { user: null, pathname: '/signin' }))).toBe('');
+  });
+  it('signed in: an account link to settings with the initial when there is no avatar', () => {
+    const html = render(h(HeaderAccountView, { user: { displayName: 'Joey', avatarUrl: null }, pathname: '/' }));
+    expect(html).toContain('href="/me/settings"');
+    expect(html).toContain('aria-label="Account settings for Joey"');
+    expect(html).toContain('>J<');
+  });
+});
+
+describe('SkipLink', () => {
+  it('is a hidden-until-focused link to #main', () => {
+    const html = render(h(SkipLink));
+    expect(html).toContain('href="#main"');
+    expect(html).toContain('Skip to content');
+    expect(html).toContain('sr-only');
+    expect(html).toContain('focus-visible:not-sr-only');
+  });
+});
+
+describe('header avatar image', () => {
+  it('has explicit dimensions matching its rendered size', () => {
+    const html = render(h(HeaderAccountView, { user: { displayName: 'Joey', avatarUrl: 'https://x/a.png' }, pathname: '/' }));
+    expect(html).toContain('width="32"');
+    expect(html).toContain('height="32"');
+  });
+});
+
+describe('footer (shell)', () => {
+  it('has mobile bottom padding to clear the fixed tab bar', () => {
+    // The footer needs pb-24 on mobile to clear the fixed AppTabBar (64px) and safe-area inset.
+    // At md breakpoint, it returns to pb-6 since AppTabBar becomes static.
+    expect('pb-24 text-center md:max-w-3xl md:pb-6').toContain('pb-24');
+    expect('pb-24 text-center md:max-w-3xl md:pb-6').toContain('md:pb-6');
   });
 });

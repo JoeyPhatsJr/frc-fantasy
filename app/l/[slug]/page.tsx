@@ -4,9 +4,12 @@ import { AutoRefresh } from '@/components/AutoRefresh';
 import { DateBlock } from '@/components/DateBlock';
 import { Freshness } from '@/components/Freshness';
 import { Leaderboard } from '@/components/Leaderboard';
+import { LeagueMeCard } from '@/components/LeagueMeCard';
+import { PrivateLeague } from '@/components/PrivateLeague';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { leagueAccess } from '@/lib/auth/roles';
 import { formatDateRange } from '@/lib/format';
 import { loadLeaguePage } from '@/lib/views/league';
 
@@ -17,6 +20,10 @@ type Props = { params: Promise<{ slug: string }> };
 
 export default async function LeaguePage({ params }: Props) {
   const { slug } = await params;
+  const access = await leagueAccess(slug);
+  if (!access) notFound();
+  if (!access.canView) return <PrivateLeague signedIn={access.user !== null} next={`/l/${slug}`} />;
+
   const now = new Date();
   const page = await loadLeaguePage(slug, now);
   if (!page) notFound();
@@ -74,7 +81,7 @@ export default async function LeaguePage({ params }: Props) {
               total: s.total,
               detail: s.perRound.length > 1 ? s.perRound.join(' ') : undefined,
             }))}
-            emptyText="No players yet. The commissioner adds them."
+            emptyText="No players yet — people join with the league's invite code."
           />
           {rounds.length > 1 ? (
             <p className="mt-3 text-[13px] leading-[18px] text-fg-muted">
@@ -116,6 +123,13 @@ export default async function LeaguePage({ params }: Props) {
           )}
         </Card>
       </section>
+
+      {/* Signed-in members only: rename yourself here, or leave (spec §4.3). */}
+      {access.player ? (
+        <section>
+          <LeagueMeCard slug={league.slug} leagueName={league.name} name={access.player.name} />
+        </section>
+      ) : null}
     </main>
   );
 }

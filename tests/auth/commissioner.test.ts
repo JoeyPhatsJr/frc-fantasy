@@ -1,42 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  generateAdminToken,
-  hashToken,
-  makeSlug,
-  safeEqual,
-  SLUG_RE,
-  verifyToken,
-} from '@/lib/auth/commissioner';
-
-describe('admin tokens (§4)', () => {
-  it('generates 32 random bytes as base64url', () => {
-    const token = generateAdminToken();
-    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(Buffer.from(token, 'base64url')).toHaveLength(32);
-    expect(generateAdminToken()).not.toBe(token);
-  });
-
-  it('hashes with SHA-256 as hex', () => {
-    expect(hashToken('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
-  });
-
-  it('verifies the right token and rejects everything else', () => {
-    const token = generateAdminToken();
-    const hash = hashToken(token);
-    expect(verifyToken(token, hash)).toBe(true);
-    expect(verifyToken(`${token}x`, hash)).toBe(false);
-    expect(verifyToken(generateAdminToken(), hash)).toBe(false);
-    expect(verifyToken('', hash)).toBe(false);
-    expect(verifyToken(hash, hash)).toBe(false); // the hash itself is not the token
-  });
-
-  it('rejects absurdly long tokens and broken stored hashes without throwing', () => {
-    const token = generateAdminToken();
-    expect(verifyToken('x'.repeat(10_000), hashToken(token))).toBe(false);
-    expect(verifyToken(token, 'not-hex')).toBe(false);
-    expect(verifyToken(token, '')).toBe(false);
-  });
-});
+import { makeSlug, safeEqual, SLUG_RE } from '@/lib/auth/commissioner';
 
 describe('safeEqual', () => {
   it('compares strings of any length', () => {

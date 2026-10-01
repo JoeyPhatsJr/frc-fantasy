@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { generateInviteCode } from '@/lib/leagues/inviteCode';
 import { UniqueViolation, type Repo } from '@/lib/db/repo';
 import type {
   AdjustmentRow,
@@ -6,6 +7,7 @@ import type {
   LeagueRow,
   PickRow,
   PlayerRow,
+  ProfileRow,
   RoundRow,
 } from '@/lib/db/types';
 
@@ -13,6 +15,7 @@ import type {
 export function createMemoryRepo(): Repo {
   let leagues: LeagueRow[] = [];
   let players: PlayerRow[] = [];
+  let profiles: ProfileRow[] = [];
   let rounds: RoundRow[] = [];
   let extraTeams: { roundId: string; teamKey: string }[] = [];
   let picks: PickRow[] = [];
@@ -42,7 +45,18 @@ export function createMemoryRepo(): Repo {
   return {
     async createLeague(input) {
       if (leagues.some((l) => l.slug === input.slug)) throw new UniqueViolation('leagues_slug_key');
-      const row: LeagueRow = { id: randomUUID(), homeTeamNumber: 5181, createdAt: stamp(), ...copy(input) };
+      const row: LeagueRow = {
+        id: randomUUID(),
+        slug: input.slug,
+        name: input.name,
+        defaultScoring: copy(input.defaultScoring),
+        adminTokenHash: input.adminTokenHash ?? null,
+        homeTeamNumber: 5181,
+        inviteCode: generateInviteCode(),
+        visibility: input.visibility ?? 'link',
+        createdBy: input.createdBy ?? null,
+        createdAt: stamp(),
+      };
       leagues.push(row);
       return copy(row);
     },
@@ -59,6 +73,31 @@ export function createMemoryRepo(): Repo {
       players = players.filter((p) => p.leagueId !== id);
       leagues = leagues.filter((l) => l.id !== id);
     },
+    async getLeagueByInviteCode(code) {
+      return copy(leagues.find((l) => l.inviteCode === code) ?? null);
+    },
+    async resetInviteCode(leagueId) {
+      const row = find(leagues, leagueId, 'league');
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const code = generateInviteCode();
+        if (code !== row.inviteCode && !leagues.some((l) => l.inviteCode === code)) {
+          row.inviteCode = code;
+          return copy(row);
+        }
+      }
+      throw new UniqueViolation('leagues_invite_code_key');
+    },
+    async countLeaguesCreatedBy(userId) {
+      return leagues.filter((l) => l.createdBy === userId).length;
+    },
+    async listLeaguesForUser(userId) {
+      return copy(
+        players
+          .filter((p) => p.userId === userId)
+          .map((player) => ({ league: find(leagues, player.leagueId, 'league'), player }))
+          .sort((a, b) => a.league.createdAt.localeCompare(b.league.createdAt)),
+      );
+    },
 
     async listPlayers(leagueId) {
       return copy(players.filter((p) => p.leagueId === leagueId));
@@ -67,7 +106,7 @@ export function createMemoryRepo(): Repo {
       if (players.some((p) => p.leagueId === leagueId && p.name.toLowerCase() === name.toLowerCase())) {
         throw new UniqueViolation('players_league_name_ci');
       }
-      const row: PlayerRow = { id: randomUUID(), leagueId, name, createdAt: stamp() };
+      const row: PlayerRow = { id: randomUUID(), leagueId, name, userId: null, role: 'player', createdAt: stamp() };
       players.push(row);
       return copy(row);
     },
@@ -84,6 +123,53 @@ export function createMemoryRepo(): Repo {
       players = players.filter((p) => p.id !== id);
       picks = picks.filter((p) => p.playerId !== id);
       adjustments = adjustments.filter((a) => a.playerId !== id);
+    },
+
+    async createMember(input) {
+      if (players.some((p) => p.leagueId === input.leagueId && p.userId === input.userId)) {
+        throw new UniqueViolation('players_league_user');
+      }
+      if (players.some((p) => p.leagueId === input.leagueId && p.name.toLowerCase() === input.name.toLowerCase())) {
+        throw new UniqueViolation('players_league_name_ci');
+      }
+      const row: PlayerRow = { id: randomUUID(), createdAt: stamp(), ...input };
+      players.push(row);
+      return copy(row);
+    },
+    async getMemberByUser(leagueId, userId) {
+      return copy(players.find((p) => p.leagueId === leagueId && p.userId === userId) ?? null);
+    },
+    async updatePlayer(id, patch) {
+      const row = find(players, id, 'player');
+      if (patch.name !== undefined) {
+        const clash = players.some(
+          (p) => p.id !== id && p.leagueId === row.leagueId && p.name.toLowerCase() === patch.name!.toLowerCase(),
+        );
+        if (clash) throw new UniqueViolation('players_league_name_ci');
+      }
+      Object.assign(row, defined(copy(patch)));
+      return copy(row);
+    },
+
+    async getProfile(id) {
+      return copy(profiles.find((p) => p.id === id) ?? null);
+    },
+    async createProfile(input) {
+      const existing = profiles.find((p) => p.id === input.id);
+      if (existing) return copy(existing);
+      const row: ProfileRow = { ...input, frcTeam: null, createdAt: stamp() };
+      profiles.push(row);
+      return copy(row);
+    },
+    async updateProfile(id, patch) {
+      const row = find(profiles, id, 'profile');
+      Object.assign(row, defined(copy(patch)));
+      return copy(row);
+    },
+    async deleteUser(id) {
+      profiles = profiles.filter((p) => p.id !== id);
+      for (const p of players) if (p.userId === id) p.userId = null;
+      for (const l of leagues) if (l.createdBy === id) l.createdBy = null;
     },
 
     async listRounds(leagueId) {

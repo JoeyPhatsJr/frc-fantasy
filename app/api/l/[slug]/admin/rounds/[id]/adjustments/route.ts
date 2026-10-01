@@ -13,9 +13,9 @@ import {
   HttpError,
   json,
   parseBody,
-  requireCommissioner,
   requireRound,
 } from '@/lib/api/http';
+import { requireLeagueRole } from '@/lib/auth/roles';
 import { getRepo } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -32,7 +32,7 @@ const bodySchema = z.strictObject({
 export async function POST(req: Request, ctx: Ctx): Promise<Response> {
   return handle(async () => {
     const { slug, id } = await ctx.params;
-    const league = await requireCommissioner(req, slug);
+    const { league } = await requireLeagueRole(slug, 'commissioner');
     const round = await requireRound(league, id);
     const body = await parseBody(req, bodySchema);
 

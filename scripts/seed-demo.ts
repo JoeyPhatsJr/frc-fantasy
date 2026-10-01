@@ -1,9 +1,9 @@
 // Creates a demo league that replays Ramp Riot 2025, with a finished draft.
-// Usage: npx tsx --env-file=.env.local scripts/seed-demo.ts [site-url]
+// Usage: npx tsx --env-file=.env.local scripts/seed-demo.ts <owner-user-id> [site-url]
+// <owner-user-id>: your id from Supabase → Authentication → Users (sign in to the app once first).
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { generateAdminToken, hashToken, makeSlug } from '@/lib/auth/commissioner';
-import { adminLink } from '@/lib/auth/rotate';
+import { makeSlug } from '@/lib/auth/commissioner';
 import { createSupabaseClient, createSupabaseRepo } from '@/lib/db/supabaseRepo';
 import { defaultScoring } from '@/lib/scoring/config';
 import { pickerFor } from '@/lib/scoring/round';
@@ -16,21 +16,27 @@ function fixture<T>(name: string): T {
 }
 
 async function main() {
-  const origin = (process.argv[2] ?? 'http://localhost:3000').replace(/\/+$/, '');
+  const ownerId = process.argv[2];
+  if (!ownerId) throw new Error('Pass your user id: scripts/seed-demo.ts <owner-user-id> [site-url]');
+  const origin = (process.argv[3] ?? 'http://localhost:3000').replace(/\/+$/, '');
   const repo = createSupabaseRepo(createSupabaseClient());
+  const owner = await repo.getProfile(ownerId);
+  if (!owner) throw new Error(`No profile for ${ownerId}. Sign in to the app once, then re-run.`);
   const event = fixture<TbaEvent>('event');
   const pool = mergePool(fixture<TeamSimple[]>('teams'), []);
 
-  const token = generateAdminToken();
   const league = await repo.createLeague({
     slug: makeSlug('Demo Fam'),
     name: 'Demo Fam',
-    adminTokenHash: hashToken(token),
     defaultScoring: defaultScoring(),
+    createdBy: owner.id,
   });
 
-  const players = [];
-  for (const name of ['Joey', 'Mom', 'Dad', 'A Very Long Player Name To Test Wrapping']) {
+  const players = [
+    await repo.createMember({ leagueId: league.id, userId: owner.id, name: owner.displayName, role: 'commissioner' }),
+  ];
+  // Name-only rows stand in for family members (they show as "left" until real people join).
+  for (const name of ['Mom', 'Dad', 'A Very Long Player Name To Test Wrapping']) {
     players.push(await repo.createPlayer(league.id, name));
   }
 
@@ -66,7 +72,7 @@ async function main() {
 
   console.log(`Public link: ${origin}/l/${league.slug}`);
   console.log(`Round page:  ${origin}/l/${league.slug}/r/${round.id}`);
-  console.log(`Admin link:  ${adminLink(origin, league.slug, token)}`);
+  console.log(`Invite code: ${league.inviteCode}`);
 }
 
 main().catch((err) => {
