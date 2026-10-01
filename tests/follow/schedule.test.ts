@@ -82,11 +82,11 @@ describe('followSyncJob', () => {
     expect((await repo.getLeagueBySlug(league.slug))!.followsSyncedAt).toBe(NOW.toISOString());
   });
 
-  it('runs in the daily cron, after team-stats', () => {
+  it('runs in the daily cron, before team-stats (final review I5)', () => {
     const names = DAILY_JOBS.map((j) => j.name);
     expect(DAILY_JOBS).toContain(followSyncJob);
-    expect(names.indexOf('follow-sync')).toBeGreaterThan(names.indexOf('team-stats'));
-    expect(names.indexOf('team-stats')).toBeGreaterThanOrEqual(0);
+    expect(names.indexOf('follow-sync')).toBeLessThan(names.indexOf('team-stats'));
+    expect(names.indexOf('follow-sync')).toBeGreaterThanOrEqual(0);
   });
 
   it('stops when the deadline has passed', async () => {

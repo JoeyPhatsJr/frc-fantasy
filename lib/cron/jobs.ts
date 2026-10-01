@@ -10,10 +10,13 @@ export type DailyJob = { name: string; run(now: Date, deadline: number): Promise
 export type JobResult = { name: string; ok: boolean; skipped: boolean; error?: string; ms: number };
 
 /**
- * Everything /api/cron/daily does, in order. SP3 adds team-stats; SP2 appends follow-a-team sync
- * and season-round date refresh. Order matters only for who gets the time budget first.
+ * Everything /api/cron/daily does, in order. Order matters only for who gets the time budget first:
+ * the cheap, bounded jobs (follow-a-team sync: one TBA list per follow; season-round dates: one per
+ * year) run before team-stats, which may use the whole budget during build season (final review I5).
  */
 export const DAILY_JOBS: DailyJob[] = [
+  followSyncJob,
+  seasonDatesJob,
   {
     name: 'team-stats',
     async run(now, deadline) {
@@ -25,8 +28,6 @@ export const DAILY_JOBS: DailyJob[] = [
       );
     },
   },
-  followSyncJob,
-  seasonDatesJob,
 ];
 
 export async function runDailyJobs(
