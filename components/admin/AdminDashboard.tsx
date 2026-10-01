@@ -18,7 +18,7 @@ import { ChevronDown, Trash2 } from '@/components/ui/icons';
 import type { AdminApi } from '@/lib/admin/client';
 import type { AdminState, EventLookup } from '@/lib/api/types';
 import { autoAddedNote } from '@/lib/follow/input';
-import { formatDateRange } from '@/lib/format';
+import { formatDateRange, roundKeyLine } from '@/lib/format';
 import { nextSeasonYear } from '@/lib/season/next';
 
 /** Members-only leagues have no public page, so the shortcuts don't call it one. */
@@ -175,7 +175,7 @@ function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminAp
                   title={round.eventName}
                   lines={[
                     formatDateRange(round.startDate, round.endDate),
-                    round.eventKey ?? (round.kind === 'manual' ? 'Manual event' : `${round.seasonYear} season`),
+                    roundKeyLine(round),
                     round.totalPicks === 0 ? 'Draft not set up' : `${round.pickCount} of ${round.totalPicks} picks`,
                     ...(round.autoAdded ? [autoAddedNote(state.league.follows)] : []),
                   ]}

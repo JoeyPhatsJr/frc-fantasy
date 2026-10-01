@@ -17,7 +17,7 @@ import { Card } from '@/components/ui/Card';
 import { Check, ChevronDown, ChevronLeft, RefreshCw, X } from '@/components/ui/icons';
 import type { AdminApi } from '@/lib/admin/client';
 import type { AdminRoundDetail } from '@/lib/api/types';
-import { agoLabel, formatDateRange } from '@/lib/format';
+import { agoLabel, formatDateRange, roundKeyLine } from '@/lib/format';
 
 export type SectionProps = {
   detail: AdminRoundDetail;
@@ -105,7 +105,7 @@ function RoundManager({ slug, roundId, api }: { slug: string; roundId: string; a
         <h1 className="break-words font-display text-[28px] font-bold leading-[30px] text-fg">{round.eventName}</h1>
         <div className="space-y-0.5">
           <p className="text-[15px] font-medium text-fg-muted">{formatDateRange(round.startDate, round.endDate)}</p>
-          <p className="break-words text-[13px] leading-[18px] text-fg-muted">{round.eventKey}</p>
+          <p className="break-words text-[13px] leading-[18px] text-fg-muted">{roundKeyLine(round)}</p>
         </div>
         <div>
           <StatusBadge status={detail.status} />
