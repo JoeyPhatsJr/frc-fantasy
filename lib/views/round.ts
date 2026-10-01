@@ -2,12 +2,10 @@ import { isUuid } from '@/lib/api/http';
 import { getRepo } from '@/lib/db';
 import { withPublicNames } from '@/lib/leagues/names';
 import type { AdjustmentRow, PickRow, PlayerRow, RoundRow } from '@/lib/db/types';
-import { cacheWindowFor, roundStatus, type RoundStatus } from '@/lib/rounds/status';
-import { scoreEvent } from '@/lib/scoring/engine';
+import { scoreSourceFor } from '@/lib/rounds/scoreSource';
+import { roundStatus, type RoundStatus } from '@/lib/rounds/status';
 import { roundPlayers, scoreRound } from '@/lib/scoring/round';
 import type { PlayerRoundScore, RpMethod } from '@/lib/scoring/types';
-import { getEventScores, type EventScoresResult } from '@/lib/scores/eventScores';
-import { eventInfo, NO_EVENT_DATA } from '@/lib/tba/clean';
 
 // Kept so existing imports (tests/views/views.test.ts) keep working.
 export { cleanEventData } from '@/lib/tba/clean';
@@ -23,7 +21,7 @@ export type RoundView = {
   teamNames: Record<string, string>;
   qualsComplete: boolean;
   rpMethod: RpMethod;
-  /** False until TBA has at least one match or ranking for the event. */
+  /** False until TBA has at least one match or ranking for the event (manual rounds: until a result is typed in). */
   hasEventData: boolean;
   hasRankings: boolean;
   fetchedAt: string | null;
@@ -44,31 +42,21 @@ export async function buildRoundView(
   adjustments: AdjustmentRow[],
   now: Date,
 ): Promise<RoundView> {
-  // Scores come through the derived event_scores cache (spec §5.6); failures degrade to empty + stale inside it.
-  // Manual and season rounds have no TBA event yet: they take the "no event data" path (Task 5 adds scoreSourceFor).
-  const event: EventScoresResult =
-    round.kind === 'tba' && round.eventKey
-      ? await getEventScores(round.eventKey, round.scoring, cacheWindowFor(round, now), { now })
-      : {
-          scores: scoreEvent(NO_EVENT_DATA, round.scoring),
-          info: eventInfo(NO_EVENT_DATA),
-          stale: false,
-          fetchedAt: null,
-        };
+  const source = await scoreSourceFor(round, now);
   const players = roundPlayers(allPlayers, round.draftOrder, adjustments);
   return {
     round,
     status: roundStatus(round, picks.length, now),
-    scores: scoreRound(event.scores.teams, picks, adjustments, players),
+    scores: scoreRound(source.teams, picks, adjustments, players),
     picks,
     adjustments,
-    teamNames: event.info.teamNames,
-    qualsComplete: event.scores.qualsComplete,
-    rpMethod: event.scores.rpMethod,
-    hasEventData: event.info.hasEventData,
-    hasRankings: event.info.hasRankings,
-    fetchedAt: event.fetchedAt,
-    stale: event.stale,
+    teamNames: source.teamNames,
+    qualsComplete: source.qualsComplete,
+    rpMethod: source.rpMethod,
+    hasEventData: source.hasEventData,
+    hasRankings: source.hasRankings,
+    fetchedAt: source.fetchedAt,
+    stale: source.stale,
   };
 }
 

@@ -10,12 +10,13 @@ export async function loadPool(
   round: RoundRow,
   now: Date,
 ): Promise<{ teams: PoolTeam[]; stale: boolean; tbaCount: number }> {
-  // Temporary guard: only TBA rounds have a team list to fetch (Task 5 replaces this function).
-  const eventKey = round.kind === 'tba' ? round.eventKey : null;
+  if (round.kind === 'manual' || !round.eventKey) {
+    // Manual events aren't on TBA: the pool is only what the commissioner typed in (spec §5.3).
+    const extras = await getRepo().listExtraTeams(round.id);
+    return { teams: mergePool(null, extras), stale: false, tbaCount: 0 };
+  }
   const [tba, extras] = await Promise.all([
-    eventKey
-      ? getTba<TeamSimple[]>(`/event/${eventKey}/teams/simple`, { windowMs: cacheWindowFor(round, now) })
-      : Promise.resolve({ data: null, fetchedAt: null, stale: false }),
+    getTba<TeamSimple[]>(`/event/${round.eventKey}/teams/simple`, { windowMs: cacheWindowFor(round, now) }),
     getRepo().listExtraTeams(round.id),
   ]);
   const tbaTeams = Array.isArray(tba.data) ? tba.data : null;

@@ -50,6 +50,7 @@ export default async function RoundPage({ params }: Props) {
   const { round } = view;
   const drafts = await memberLiveDrafts(slug, [view]);
   const draftInProgress = view.status === 'setup' || view.status === 'drafting';
+  const manual = round.kind === 'manual';
   const notStarted = !view.hasEventData;
   const oprPending = view.hasEventData && !view.qualsComplete;
   const rpMissing = view.hasRankings && view.rpMethod === 'none';
@@ -84,12 +85,14 @@ export default async function RoundPage({ params }: Props) {
             <ExternalLink className="size-4 shrink-0" />
           </Button>
         ) : null}
-        <Freshness fetchedAt={view.fetchedAt} stale={view.stale} now={now} />
+        {manual ? null : <Freshness fetchedAt={view.fetchedAt} stale={view.stale} now={now} />}
       </header>
 
       {notStarted || oprPending || rpMissing ? (
         <div className="space-y-2">
-          {notStarted ? <Alert tone="info">Event hasn&apos;t started</Alert> : null}
+          {notStarted ? (
+            <Alert tone="info">{manual ? 'No results entered yet' : 'Event hasn’t started'}</Alert>
+          ) : null}
           {oprPending ? <Note>OPR bonus: after quals</Note> : null}
           {rpMissing ? <Note>RP data unavailable for this event</Note> : null}
         </div>

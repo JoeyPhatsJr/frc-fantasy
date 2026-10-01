@@ -103,6 +103,25 @@ describe('draft start / pause / resume', () => {
     expect((await readJson(await control(big, 'start'))).error).toBe('Set the draft order before drafting');
   });
 
+  it('checks a manual round against its hand-added teams only (SP2 §5.3)', async () => {
+    const s = await seedLiveDraft(mocks.repo);
+    const round = await mocks.repo.createRound({
+      leagueId: s.league.id, eventKey: null, kind: 'manual', eventName: 'Garage Games',
+      startDate: '2025-10-25', endDate: '2025-10-25', timezone: 'America/New_York', scoring: s.round.scoring,
+    });
+    await mocks.repo.updateRound(round.id, { draftOrder: [s.joey.id, s.mom.id], rosterSize: 2, draftMode: 'live', pickSeconds: 60 });
+    for (const team of ['frc1', 'frc2', 'frc3']) await mocks.repo.addExtraTeam(round.id, team);
+    mocks.user = s.joeyUser;
+    const manual = { ...s, round };
+    const res = await control(manual, 'start'); // 2 players × 2 > 3 teams (TBA's 8 don't count)
+    expect(res.status).toBe(409);
+    expect((await readJson(res)).error).toBe('With 2 players and 3 teams, roster size can be at most 1');
+
+    await mocks.repo.addExtraTeam(round.id, 'frc4');
+    expect((await control(manual, 'start')).status).toBe(200);
+    expect(mocks.getTba).not.toHaveBeenCalled();
+  });
+
   it('refuses to start a finalized round (review M10)', async () => {
     const s = await seedLiveDraft(mocks.repo);
     await mocks.repo.updateRound(s.round.id, { finalizedAt: T0.toISOString() });

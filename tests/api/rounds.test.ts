@@ -443,3 +443,55 @@ describe('team pool endpoints', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('POST rounds: manual events (spec §5.3)', () => {
+  const manual = (body: unknown) => addRound(request('POST', '/x', { body }), params({ slug: league.slug }));
+
+  it('creates a manual round without asking TBA', async () => {
+    const res = await manual({ kind: 'manual', name: '  Garage Games ', startDate: '2026-11-07', endDate: '2026-11-08' });
+    expect(res.status).toBe(201);
+    const [round] = await repo.listRounds(league.id);
+    expect(round).toMatchObject({
+      kind: 'manual', eventKey: null, eventName: 'Garage Games',
+      startDate: '2026-11-07', endDate: '2026-11-08', timezone: 'America/New_York',
+    });
+    expect(round.scoring).toEqual(league.defaultScoring);
+    expect(h.getTba).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ kind: 'manual', name: '', startDate: '2026-11-07', endDate: '2026-11-07' }, 'Event name is required'],
+    [{ kind: 'manual', name: 'x'.repeat(81), startDate: '2026-11-07', endDate: '2026-11-07' }, 'Event name must be 80 characters or fewer'],
+    [{ kind: 'manual', name: 'G', startDate: '11/07/2026', endDate: '2026-11-07' }, 'Dates look like 2026-11-07'],
+    [{ kind: 'manual', name: 'G', startDate: '2026-02-30', endDate: '2026-03-01' }, 'Dates look like 2026-11-07'],
+    [{ kind: 'manual', name: 'G', startDate: '2026-11-08', endDate: '2026-11-07' }, 'The end date must be on or after the start date'],
+  ])('rejects %j', async (body, message) => {
+    const res = await manual(body);
+    expect(res.status).toBe(400);
+    expect((await readJson(res)).error).toBe(message);
+  });
+
+  it('rejects a kind it does not create, and adds no round', async () => {
+    const res = await manual({ kind: 'season', name: 'G', startDate: '2026-11-07', endDate: '2026-11-07' });
+    expect(res.status).toBe(400);
+    expect(await repo.listRounds(league.id)).toEqual([]);
+  });
+
+  it('still takes a v1 body with only an event key', async () => {
+    tbaAnswers({ '/event/2025parr': EVENT });
+    const res = await manual({ eventKey: '2025parr' });
+    expect(res.status).toBe(201);
+    expect((await repo.listRounds(league.id))[0]).toMatchObject({ kind: 'tba', eventKey: '2025parr' });
+  });
+
+  it('answers 409 in a season league (its rounds are created for it)', async () => {
+    const season = await seedLeague(repo, { slug: 'season-fam-abc234', format: 'season' });
+    setUser(season.user);
+    const res = await addRound(
+      request('POST', '/x', { body: { kind: 'manual', name: 'G', startDate: '2026-11-07', endDate: '2026-11-07' } }),
+      params({ slug: season.league.slug }),
+    );
+    expect(res.status).toBe(409);
+    expect((await readJson(res)).error).toBe('Season leagues add their season rounds automatically');
+  });
+});
