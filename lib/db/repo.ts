@@ -1,9 +1,11 @@
 import type {
   AdjustmentRow,
   CacheRow,
+  DraftMode,
   LeagueRole,
   LeagueRow,
   PickRow,
+  PickSeconds,
   PlayerRow,
   ProfileRow,
   RoundRow,
@@ -57,8 +59,11 @@ export type RoundPatch = {
   draftOrder?: string[];
   scoring?: ScoringConfig;
   finalizedAt?: string | null;
+  draftMode?: DraftMode;
+  pickSeconds?: PickSeconds | null;
+  pausedRemainingMs?: number | null;
 };
-export type NewPick = { roundId: string; pickNumber: number; playerId: string; teamKey: string };
+export type NewPick = { roundId: string; pickNumber: number; playerId: string; teamKey: string; auto?: boolean };
 export type NewAdjustment = {
   roundId: string;
   playerId: string | null;

@@ -11,8 +11,10 @@ import type {
   RoundRow,
 } from '@/lib/db/types';
 
-/** A Repo that lives in memory and enforces the same unique constraints as the real schema. */
-export function createMemoryRepo(): Repo {
+/** A Repo that lives in memory and enforces the same unique constraints as the real schema.
+ *  `now` is the "database clock" the live-draft functions use (Task 3); tests pass a fake one. */
+export function createMemoryRepo(opts: { now?: () => Date } = {}): Repo {
+  const dbNow = opts.now ?? (() => new Date());
   let leagues: LeagueRow[] = [];
   let players: PlayerRow[] = [];
   let profiles: ProfileRow[] = [];
@@ -191,6 +193,12 @@ export function createMemoryRepo(): Repo {
         rosterSize: 4,
         draftOrder: [],
         finalizedAt: null,
+        draftMode: 'commissioner',
+        pickSeconds: null,
+        draftStartedAt: null,
+        draftPausedAt: null,
+        pausedRemainingMs: null,
+        pickDeadline: null,
         createdAt: stamp(),
         ...copy(input),
       };
@@ -232,7 +240,7 @@ export function createMemoryRepo(): Repo {
         throw new UniqueViolation('picks_round_pick_number_key');
       }
       if (inRound.some((p) => p.teamKey === input.teamKey)) throw new UniqueViolation('picks_round_team_key');
-      const row: PickRow = { id: randomUUID(), createdAt: stamp(), ...input };
+      const row: PickRow = { id: randomUUID(), createdAt: stamp(), ...input, auto: input.auto ?? false };
       picks.push(row);
       return copy(row);
     },

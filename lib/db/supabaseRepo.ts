@@ -55,6 +55,12 @@ const toRound = (r: Raw): RoundRow => ({
   draftOrder: r.draft_order ?? [],
   scoring: r.scoring,
   finalizedAt: r.finalized_at,
+  draftMode: r.draft_mode ?? 'commissioner',
+  pickSeconds: r.pick_seconds ?? null,
+  draftStartedAt: r.draft_started_at ?? null,
+  draftPausedAt: r.draft_paused_at ?? null,
+  pausedRemainingMs: r.paused_remaining_ms ?? null,
+  pickDeadline: r.pick_deadline ?? null,
   createdAt: r.created_at,
 });
 const toPick = (r: Raw): PickRow => ({
@@ -63,6 +69,7 @@ const toPick = (r: Raw): PickRow => ({
   pickNumber: r.pick_number,
   playerId: r.player_id,
   teamKey: r.team_key,
+  auto: r.auto ?? false,
   createdAt: r.created_at,
 });
 const toAdjustment = (r: Raw): AdjustmentRow => ({
@@ -326,6 +333,9 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
               draft_order: patch.draftOrder,
               scoring: patch.scoring,
               finalized_at: patch.finalizedAt,
+              draft_mode: patch.draftMode,
+              pick_seconds: patch.pickSeconds,
+              paused_remaining_ms: patch.pausedRemainingMs,
             }),
           )
           .eq('id', id)
@@ -370,6 +380,7 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
             pick_number: input.pickNumber,
             player_id: input.playerId,
             team_key: input.teamKey,
+            auto: input.auto ?? false,
           })
           .select(),
       );

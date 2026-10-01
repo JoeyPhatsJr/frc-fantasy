@@ -35,6 +35,10 @@ export type ProfileRow = {
   createdAt: string;
 };
 
+export type PickSeconds = 30 | 60 | 90 | 120;
+export const PICK_SECONDS: readonly PickSeconds[] = [30, 60, 90, 120];
+export type DraftMode = 'commissioner' | 'live';
+
 export type RoundRow = {
   id: string;
   leagueId: string;
@@ -47,6 +51,16 @@ export type RoundRow = {
   draftOrder: string[];
   scoring: ScoringConfig;
   finalizedAt: string | null;
+  draftMode: DraftMode;
+  /** null = no pick timer. */
+  pickSeconds: PickSeconds | null;
+  draftStartedAt: string | null;
+  /** Non-null = paused. */
+  draftPausedAt: string | null;
+  /** Time left on the clock when paused; null = give the full timer on resume. */
+  pausedRemainingMs: number | null;
+  /** The current pick's deadline (database clock); null if no timer, paused, not started, or done. */
+  pickDeadline: string | null;
   createdAt: string;
 };
 
@@ -56,6 +70,8 @@ export type PickRow = {
   pickNumber: number;
   playerId: string;
   teamKey: string;
+  /** True when tick/advance made the pick. */
+  auto: boolean;
   createdAt: string;
 };
 
