@@ -9,7 +9,7 @@ vi.mock('@/lib/tba/client', () => ({ getTba: (...args: unknown[]) => h.getTba(..
 vi.mock('@/lib/auth/session', async () => (await import('../helpers/auth')).fakeSession);
 
 import { setUser } from '../helpers/auth';
-import { PATCH as patchRound } from '@/app/api/l/[slug]/admin/rounds/[id]/route';
+import { DELETE as deleteRound, PATCH as patchRound } from '@/app/api/l/[slug]/admin/rounds/[id]/route';
 import { GET as getDistricts } from '@/app/api/districts/[year]/route';
 import type { Repo } from '@/lib/db/repo';
 import type { LeagueRow, PlayerRow, RoundRow } from '@/lib/db/types';
@@ -131,6 +131,26 @@ describe('PATCH a season round', () => {
     const body = await readJson(await patch({ draftOrder: [me.id] }));
     expect(body.poolEmptyMessage).toBeNull();
     expect(body.maxRosterSize).toBe(15);
+  });
+});
+
+describe('DELETE a season round (final review I4)', () => {
+  const del = (r: RoundRow) => deleteRound(request('DELETE', '/x'), params({ slug: league.slug, id: r.id }));
+
+  it("refuses to delete a league's only season, which would leave it empty for good", async () => {
+    const res = await del(round);
+    expect(res.status).toBe(409);
+    expect((await readJson(res)).error).toBe('A full-season league needs its season. Delete the league instead.');
+    expect(await repo.listRounds(league.id)).toHaveLength(1);
+  });
+
+  it('allows deleting a season when another one is left', async () => {
+    const next = await repo.createRound({
+      leagueId: league.id, eventKey: null, kind: 'season', seasonYear: 2028, eventName: '2028 Season',
+      startDate: '2028-01-01', endDate: '2028-12-31', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    expect((await del(next)).status).toBe(204);
+    expect((await repo.listRounds(league.id)).map((r) => r.seasonYear)).toEqual([2027]);
   });
 });
 

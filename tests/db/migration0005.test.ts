@@ -37,4 +37,10 @@ describe('0005_formats.sql', () => {
       expect(drop, name).toBeLessThan(sql.indexOf(`add constraint ${name}`));
     }
   });
+
+  it('allows one season round per league per season year (final review C1)', () => {
+    expect(sql).toMatch(
+      /create unique index if not exists rounds_league_season_year\s+on rounds \(league_id, season_year\) where kind = 'season'/,
+    );
+  });
 });

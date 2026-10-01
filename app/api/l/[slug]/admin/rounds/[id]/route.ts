@@ -167,6 +167,14 @@ export async function DELETE(_req: Request, ctx: Ctx): Promise<Response> {
     const { league } = await requireLeagueRole(slug, 'commissioner');
     const round = await requireRound(league, id);
     const repo = getRepo();
+    if (round.kind === 'season') {
+      // Final review I4: season leagues can't add rounds, so deleting the last season would
+      // leave the league empty for good ("Start next season" needs a season to copy).
+      const seasons = (await repo.listRounds(league.id)).filter((r) => r.kind === 'season');
+      if (seasons.length <= 1) {
+        throw new HttpError(409, 'A full-season league needs its season. Delete the league instead.');
+      }
+    }
     if (round.autoAdded && round.eventKey) {
       // Spec §5.4: a deleted auto-added round must never come back on the next sync.
       await repo.addSkippedEvent(league.id, round.eventKey);

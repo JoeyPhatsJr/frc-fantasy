@@ -67,6 +67,20 @@ describe('round kinds', () => {
     );
   });
 
+  it('rejects a second season round for the same league and year (final review C1)', async () => {
+    const season = { eventKey: null, kind: 'season' as const, seasonYear: 2028, ...base };
+    await repo.createRound({ leagueId: league.id, ...season });
+    const dupe = repo.createRound({ leagueId: league.id, ...season });
+    await expect(dupe).rejects.toBeInstanceOf(UniqueViolation);
+    await expect(repo.createRound({ leagueId: league.id, ...season })).rejects.toMatchObject({
+      constraint: 'rounds_league_season_year',
+    });
+    // Another year in this league, and the same year in another league, are fine.
+    await repo.createRound({ leagueId: league.id, ...season, seasonYear: 2029 });
+    const other = await seedLeague(repo, { slug: 'other-fam-abc234' });
+    await repo.createRound({ leagueId: other.league.id, ...season });
+  });
+
   it('patches dates and pool filter', async () => {
     const round = await repo.createRound({ leagueId: league.id, eventKey: null, kind: 'season', seasonYear: 2027, ...base });
     const saved = await repo.updateRound(round.id, {

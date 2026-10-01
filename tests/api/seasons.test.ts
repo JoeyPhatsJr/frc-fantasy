@@ -66,6 +66,15 @@ describe('POST /admin/seasons', () => {
     expect((await repo.listRounds(league.id)).find((r) => r.seasonYear === 2028)!.draftOrder).toEqual([me.id]);
   });
 
+  it('two concurrent requests start the next season only once (final review C1)', async () => {
+    await repo.updateRound(season.id, { finalizedAt: '2027-05-01T00:00:00.000Z' });
+    const responses = await Promise.all([start(), start()]);
+    expect(responses.map((r) => r.status).sort()).toEqual([201, 409]);
+    const loser = responses.find((r) => r.status === 409)!;
+    expect((await readJson(loser)).error).toMatch(/already been started|final first/);
+    expect((await repo.listRounds(league.id)).filter((r) => r.seasonYear === 2028)).toHaveLength(1);
+  });
+
   it('is only for season leagues', async () => {
     const eventLeague = await seedLeague(repo, { slug: 'event-fam-abc234' });
     setUser(eventLeague.user);

@@ -21,6 +21,11 @@ alter table rounds add constraint rounds_kind_event_key check ((kind = 'tba') = 
 alter table rounds drop constraint if exists rounds_kind_season;
 alter table rounds add constraint rounds_kind_season    check ((kind = 'season') = (season_year is not null));
 
+-- One season round per league per season year (final review C1): concurrent
+-- "Start next season" requests can't both insert the same year.
+create unique index if not exists rounds_league_season_year
+  on rounds (league_id, season_year) where kind = 'season';
+
 -- v1's inline check (0001_init.sql:28) got Postgres's auto-generated name rounds_roster_size_check.
 -- Before applying to production, confirm the name:
 --   select conname from pg_constraint where conrelid = 'rounds'::regclass and contype = 'c';

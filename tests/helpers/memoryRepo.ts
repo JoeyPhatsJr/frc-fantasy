@@ -230,6 +230,13 @@ export function createMemoryRepo(opts: { now?: () => Date } = {}): Repo {
       ) {
         throw new UniqueViolation('rounds_league_event_key');
       }
+      // 0005's partial unique index: one season round per league per season year.
+      if (
+        kind === 'season' &&
+        rounds.some((r) => r.leagueId === input.leagueId && r.kind === 'season' && r.seasonYear === input.seasonYear)
+      ) {
+        throw new UniqueViolation('rounds_league_season_year');
+      }
       const row: RoundRow = {
         id: randomUUID(),
         rosterSize: 4,
