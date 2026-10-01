@@ -2,10 +2,9 @@ import { handle, HttpError, json, requireRound } from '@/lib/api/http';
 import { requireLeagueRole } from '@/lib/auth/roles';
 import { getRepo } from '@/lib/db';
 import type { DraftAction } from '@/lib/db/repo';
-import { advance } from '@/lib/draft/advance';
+import { afterDraftChange } from '@/lib/draft/afterChange';
 import { draftPhase } from '@/lib/draft/live';
 import { loadDraftState } from '@/lib/draft/state';
-import { ring } from '@/lib/realtime/doorbell';
 import { loadPool } from '@/lib/rounds/pool';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +27,7 @@ export async function POST(_req: Request, ctx: Ctx): Promise<Response> {
     const phase = draftPhase(round, picks.length);
 
     if (action === 'start') {
+      if (round.finalizedAt) throw new HttpError(409, 'This round is finalized');
       if (round.draftMode !== 'live') throw new HttpError(409, 'Switch this round to live draft first');
       if (round.draftStartedAt) throw new HttpError(409, 'The draft has already started');
       const P = round.draftOrder.length;
@@ -47,8 +47,7 @@ export async function POST(_req: Request, ctx: Ctx): Promise<Response> {
     if (!(await repo.draftControl(round.id, action as DraftAction))) {
       throw new HttpError(409, 'Draft changed in another tab — refresh');
     }
-    if (action !== 'pause') await advance(round.id, now);
-    await ring(round.id);
+    await afterDraftChange(round.id, now, { advance: action !== 'pause' });
     const fresh = (await repo.getRound(round.id))!;
     return json(await loadDraftState(fresh, player, new Date()));
   });

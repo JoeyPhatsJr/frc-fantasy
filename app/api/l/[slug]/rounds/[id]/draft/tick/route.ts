@@ -2,10 +2,9 @@ import { z } from 'zod';
 import { handle, json, parseBody, requireRound } from '@/lib/api/http';
 import { requireLeagueRole } from '@/lib/auth/roles';
 import { getRepo } from '@/lib/db';
-import { advance } from '@/lib/draft/advance';
+import { afterDraftChange } from '@/lib/draft/afterChange';
 import { chooseAutoPick, draftPhase, onClockPlayer } from '@/lib/draft/live';
 import { buildPoolEntries } from '@/lib/pool/entries';
-import { ring } from '@/lib/realtime/doorbell';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -51,10 +50,7 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
     const picked = await repo.makePickAtomic({
       roundId: round.id, pickNumber: expectedPickNumber, playerId, teamKey, requireDue: true, auto: true,
     });
-    if (picked) {
-      await advance(round.id, now);
-      await ring(round.id);
-    }
+    if (picked) await afterDraftChange(round.id, now);
     return json({ picked });
   });
 }

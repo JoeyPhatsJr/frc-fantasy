@@ -9,7 +9,7 @@ import {
 } from '@/lib/api/http';
 import { requireLeagueRole } from '@/lib/auth/roles';
 import { getRepo } from '@/lib/db';
-import { advance } from '@/lib/draft/advance';
+import { afterDraftChange } from '@/lib/draft/afterChange';
 import { ring } from '@/lib/realtime/doorbell';
 import { loadPool } from '@/lib/rounds/pool';
 import { TEAM_KEY_RE } from '@/lib/teams';
@@ -46,8 +46,7 @@ export async function DELETE(_req: Request, ctx: Ctx): Promise<Response> {
       }
       // v2 §7.3: otherwise advance() would re-pick the same team and the undo would do nothing.
       if (undone.auto) await repo.setAutodraft(round.id, undone.playerId, false);
-      await advance(round.id, new Date());
-      await ring(round.id);
+      await afterDraftChange(round.id, new Date());
       return noContent();
     }
     await repo.deletePick(round.id, n);

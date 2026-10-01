@@ -2,10 +2,9 @@ import { z } from 'zod';
 import { handle, HttpError, json, parseBody, requireRound } from '@/lib/api/http';
 import { requireLeagueRole } from '@/lib/auth/roles';
 import { getRepo } from '@/lib/db';
-import { advance } from '@/lib/draft/advance';
+import { afterDraftChange } from '@/lib/draft/afterChange';
 import { classifyFailedPick, draftError } from '@/lib/draft/errors';
 import { draftPhase, onClockPlayer } from '@/lib/draft/live';
-import { ring } from '@/lib/realtime/doorbell';
 import { loadPool } from '@/lib/rounds/pool';
 import { TEAM_KEY_RE } from '@/lib/teams';
 
@@ -47,8 +46,7 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
     });
     if (!ok) throw await classifyFailedPick(round.id, teamKey);
 
-    await advance(round.id, now);
-    await ring(round.id);
+    await afterDraftChange(round.id, now);
     return json({ pick: { pickNumber: expectedPickNumber, playerId: player.id, teamKey } }, 201);
   });
 }

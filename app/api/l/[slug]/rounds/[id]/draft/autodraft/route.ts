@@ -2,8 +2,7 @@ import { z } from 'zod';
 import { handle, json, parseBody, requireRound } from '@/lib/api/http';
 import { requireLeagueRole } from '@/lib/auth/roles';
 import { getRepo } from '@/lib/db';
-import { advance } from '@/lib/draft/advance';
-import { ring } from '@/lib/realtime/doorbell';
+import { afterDraftChange } from '@/lib/draft/afterChange';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -21,8 +20,7 @@ export async function PUT(req: Request, ctx: Ctx): Promise<Response> {
     const { on } = await parseBody(req, bodySchema);
 
     await getRepo().setAutodraft(round.id, player.id, on);
-    const picked = on ? await advance(round.id, new Date()) : 0;
-    await ring(round.id);
+    const picked = await afterDraftChange(round.id, new Date(), { advance: on });
     return json({ autodraft: on, picked });
   });
 }

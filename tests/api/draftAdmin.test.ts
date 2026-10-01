@@ -103,6 +103,17 @@ describe('draft start / pause / resume', () => {
     expect((await readJson(await control(big, 'start'))).error).toBe('Set the draft order before drafting');
   });
 
+  it('refuses to start a finalized round (review M10)', async () => {
+    const s = await seedLiveDraft(mocks.repo);
+    await mocks.repo.updateRound(s.round.id, { finalizedAt: T0.toISOString() });
+    mocks.user = s.joeyUser;
+    const res = await control(s, 'start');
+    expect(res.status).toBe(409);
+    expect((await readJson(res)).error).toBe('This round is finalized');
+    expect((await reload(s)).draftStartedAt).toBeNull();
+    expect(mocks.ring).not.toHaveBeenCalled();
+  });
+
   it('first picker on auto-draft: start picks for them at once (Review Focus 2)', async () => {
     const s = await seedLiveDraft(mocks.repo, { pickSeconds: null });
     await mocks.repo.setAutodraft(s.round.id, s.joey.id, true);
