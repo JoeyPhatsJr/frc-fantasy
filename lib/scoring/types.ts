@@ -13,7 +13,7 @@ export type Line = { category: CategoryId; label: string; quantity?: number; poi
 
 export type TeamScore = { teamKey: string; total: number; lines: Line[] };
 
-export type RpMethod = 'extra_stats' | 'sort_order_avg' | 'none';
+export type RpMethod = 'extra_stats' | 'sort_order_avg' | 'none' | 'manual';
 
 export type EventScores = {
   teams: Map<string, TeamScore>;
