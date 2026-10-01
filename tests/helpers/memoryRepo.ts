@@ -7,11 +7,13 @@ import type {
   AdjustmentRow,
   CacheMeta,
   CacheRow,
+  EventScoresRow,
   LeagueRow,
   PickRow,
   PlayerRow,
   ProfileRow,
   RoundRow,
+  TeamStatsRow,
 } from '@/lib/db/types';
 
 /** A Repo that lives in memory and enforces the same unique constraints as the real schema.
@@ -26,6 +28,8 @@ export function createMemoryRepo(opts: { now?: () => Date } = {}): Repo {
   let picks: PickRow[] = [];
   let adjustments: AdjustmentRow[] = [];
   const cache = new Map<string, CacheRow & { bodyHash: string | null }>();
+  const eventScores = new Map<string, EventScoresRow>();
+  const teamStats = new Map<string, TeamStatsRow>();
   const queues = new Map<string, string[]>(); // `${roundId}|${playerId}` -> team keys in order
   const autodraft = new Map<string, boolean>();
   const qk = (roundId: string, playerId: string) => `${roundId}|${playerId}`;
@@ -401,6 +405,28 @@ export function createMemoryRepo(opts: { now?: () => Date } = {}): Repo {
       return [...autodraft.entries()]
         .filter(([key, on]) => on && key.startsWith(`${roundId}|`))
         .map(([key]) => key.split('|')[1]);
+    },
+    async getEventScoresRow(eventKey, configHash) {
+      return copy(eventScores.get(`${eventKey}|${configHash}`) ?? null);
+    },
+    async upsertEventScoresRow(row) {
+      eventScores.set(`${row.eventKey}|${row.configHash}`, copy(row));
+    },
+    async clearEventScores() {
+      const n = eventScores.size;
+      eventScores.clear();
+      return n;
+    },
+    async getTeamStats(teamKeys, seasons, opts = {}) {
+      const out: TeamStatsRow[] = [];
+      for (const row of teamStats.values()) {
+        if (!teamKeys.includes(row.teamKey) || !seasons.includes(row.season)) continue;
+        out.push(opts.withHistory ? copy(row) : { ...copy(row), awards: [], events: [] });
+      }
+      return out;
+    },
+    async upsertTeamStats(rows) {
+      for (const row of rows) teamStats.set(`${row.teamKey}|${row.season}`, copy(row));
     },
     async rlsDisabledTables() {
       return [];
