@@ -1,34 +1,18 @@
 'use client';
 
 import { useState } from 'react';
-import { Badge } from '@/components/ui/Badge';
 import { BumperPlate } from '@/components/ui/BumperPlate';
 import { Button } from '@/components/ui/Button';
 import { Check, Plus } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { PoolFootnote, PoolStatCells } from '@/components/pool/PoolStats';
 import { filterSortPool, type PoolSort } from '@/lib/draft/poolView';
 import type { PoolEntry } from '@/lib/pool/entries';
 import { teamLabel } from '@/lib/teams';
 
 /** Season pools can have thousands of teams; search narrows them. */
 const SHOW_AT_MOST = 100;
-
-const FINISH: Record<NonNullable<PoolEntry['bestFinish']>, string> = {
-  winner: 'Winner',
-  finalist: 'Finalist',
-  captain: 'Captain',
-  picked: 'Picked',
-};
-
-function statsLine(e: PoolEntry): string {
-  const parts: string[] = [];
-  if (e.record) parts.push(e.record.join('-'));
-  if (e.bestFinish) parts.push(FINISH[e.bestFinish]);
-  if (e.opr !== null) parts.push(`OPR ${e.opr.toFixed(1)}`);
-  if (e.rank !== null) parts.push(`Rank ${e.rank}`);
-  return parts.length > 0 ? parts.join(' · ') : 'No stats yet';
-}
 
 type RowActions = {
   canDraft: boolean;
@@ -40,52 +24,56 @@ type RowActions = {
   onToggleQueue: (teamKey: string) => void;
 };
 
-/** One pool team: plate · name and stats · Proj (or New) · queue toggle · Draft. */
+/**
+ * One pool team. Line 1: plate · nickname (up to two lines) · queue toggle · Draft. Line 2: the stats
+ * (Proj or New · W-L-T · best finish · OPR / rank) across the full row width, so on a 360 px phone the
+ * nickname isn't squeezed by the numbers.
+ */
 function PoolRow({ entry: e, queued, ...a }: RowActions & { entry: PoolEntry; queued: boolean }) {
   const label = teamLabel(e.teamKey);
   return (
-    <li
-      className={`flex items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2 ${e.available ? '' : 'opacity-50'}`}
-    >
-      <BumperPlate number={label} size="md" />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[15px] font-semibold text-fg">{e.nickname ?? `Team ${label}`}</p>
-        <p className="truncate text-[13px] leading-[18px] text-fg-muted">{statsLine(e)}</p>
+    <li className={`space-y-1.5 rounded-xl border border-border bg-surface px-3 py-2 ${e.available ? '' : 'opacity-50'}`}>
+      <div className="flex items-center gap-3">
+        <div className="flex min-h-11 min-w-0 flex-1 items-center gap-3">
+          <BumperPlate number={label} size="md" />
+          <span className="line-clamp-2 min-w-0 break-words text-[15px] font-semibold leading-5 text-fg">
+            {e.nickname ?? `Team ${label}`}
+          </span>
+        </div>
+        {a.readOnly ? null : (
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label={queued ? `Remove ${label} from queue` : `Add ${label} to queue`}
+              aria-pressed={queued}
+              disabled={a.queueDisabled}
+              onClick={() => a.onToggleQueue(e.teamKey)}
+            >
+              {queued ? <Check className="size-5" /> : <Plus className="size-5" />}
+            </Button>
+            <Button size="sm" disabled={!a.canDraft || !e.available} onClick={() => a.onDraft(e)}>
+              {a.draftLabel}
+            </Button>
+          </div>
+        )}
       </div>
-      {e.proj === null ? (
-        <Badge tone="neutral">New</Badge>
-      ) : (
-        <span className="shrink-0 font-display text-[17px] font-bold text-fg tabular-nums">
-          Proj {e.proj.toFixed(1)}
-        </span>
-      )}
-      {a.readOnly ? null : (
-        <>
-          <Button
-            size="icon"
-            variant="ghost"
-            aria-label={queued ? `Remove ${label} from queue` : `Add ${label} to queue`}
-            aria-pressed={queued}
-            disabled={a.queueDisabled}
-            onClick={() => a.onToggleQueue(e.teamKey)}
-          >
-            {queued ? <Check className="size-5" /> : <Plus className="size-5" />}
-          </Button>
-          <Button size="sm" disabled={!a.canDraft || !e.available} onClick={() => a.onDraft(e)}>
-            {a.draftLabel}
-          </Button>
-        </>
-      )}
+      <PoolStatCells entry={e} />
     </li>
   );
 }
 
 export function PoolList({
+  slug: _slug,
+  roundId: _roundId,
   entries,
   taken,
   queued,
   ...actions
 }: RowActions & {
+  /** The league and round, for the team sheet a row opens (SP3 Task 16). */
+  slug: string;
+  roundId: string;
   entries: PoolEntry[];
   taken: Set<string>;
   queued: Set<string>;
@@ -132,7 +120,7 @@ export function PoolList({
           Showing {SHOW_AT_MOST} of {rows.length}. Search to find more.
         </p>
       ) : null}
-      <p className="text-[13px] text-fg-muted">Proj. uses standard scoring.</p>
+      <PoolFootnote />
     </div>
   );
 }
