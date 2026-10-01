@@ -37,7 +37,7 @@ Then create an account with an email and password (one-time setup below).
 | `E2E_AUTH_SECRET` | Another random string. Local only, never on Vercel: lets Playwright sign in through `/api/test/login`. |
 
 Database setup, once: paste the files in `supabase/migrations/` (`0001_init.sql`, `0002_accounts.sql`,
-`0003_live_draft.sql`) into the Supabase SQL Editor and run each one in order. Migration `0003` must be
+`0003_live_draft.sql`, `0004_team_stats.sql`) into the Supabase SQL Editor and run each one in order. Migration `0003` must be
 applied before deploying SP4 (the live draft room), or the draft pages will fail.
 
 ## Live drafts (v2)
@@ -97,12 +97,42 @@ npx tsx --env-file=.env.local scripts/db-smoke.ts   # talks to the real database
 | `scripts/seed-demo.ts <owner-user-id> [site-url]` | Creates a demo league that replays Ramp Riot 2025, owned by that user (find your id in Supabase → Authentication → Users; sign in once first). Note: creates a NEW league each run |
 | `scripts/db-smoke.ts` | Checks the real database matches the code |
 | `scripts/reset-password.ts <email> <new-password>` | Resets a forgotten password (no emails are sent), then you give the player the new one |
+| `scripts/build-team-stats.ts <season>` | Builds the draft-pool stats (`team_stats`) for one season from TBA, ~5 requests/s. Safe to stop and rerun. Run for the last two seasons before a draft |
+| `scripts/show-team-stats.ts <team> <season>` | Prints one team's stats rows and the projection a draft in that season shows |
+| `scripts/rebuild-event-scores.ts` | Empties the `event_scores` cache. **Run it on production after any change to `lib/scoring/*`** (cached rows hold the old code's scores) |
+| `scripts/backfill-body-hash.ts` | One-time, after migration 0004: fills `tba_cache.body_hash` for old rows |
 
 Run them with `npx tsx --env-file=.env.local scripts/<name>.ts ...`. For example, the demo league:
 `npx tsx --env-file=.env.local scripts/seed-demo.ts <your-user-id>`.
 
 The one-time v1 cleanup (deleting the old pre-accounts leagues) was run on 2026-09-30; its script has
 been removed.
+
+### SP3 morning sequence (team info)
+
+Migration `0004_team_stats.sql` is not applied yet. In this order:
+
+1. Paste `supabase/migrations/0004_team_stats.sql` into the Supabase SQL Editor and run it.
+2. `npx tsx --env-file=.env.local scripts/backfill-body-hash.ts`
+3. `npx tsx --env-file=.env.local scripts/build-team-stats.ts 2025`
+4. `npx tsx --env-file=.env.local scripts/build-team-stats.ts 2026`
+5. `npx tsx --env-file=.env.local scripts/show-team-stats.ts 5181 2026` (sanity check: 5181's rows and projection)
+
+Also set `CRON_SECRET` in Vercel (Production and Preview) **before merging SP3**: `vercel.json` adds a daily cron
+that fails without it.
+
+## Daily cron
+
+Vercel calls `GET /api/cron/daily` once a day (06:00 Eastern, `vercel.json`). It needs `CRON_SECRET` set in Vercel's
+environment variables; Vercel sends it as `Authorization: Bearer ...` automatically. Each run gets 50 seconds:
+
+- **team-stats** — re-scores this season's events from the last 8 days and refreshes those teams' `team_stats` rows.
+  If it runs out of time it says so in the log, and the next day's run continues with the teams it missed.
+
+To run it by hand (for example right after an event):
+`curl -H "Authorization: Bearer $CRON_SECRET" https://frc-fantasy-6yo3.vercel.app/api/cron/daily`
+Logs: Vercel dashboard -> the project -> Logs, filter by `/api/cron/daily`. The daily call also keeps the Supabase
+free-tier project from pausing.
 
 ## Live site
 

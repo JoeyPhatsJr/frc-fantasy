@@ -16,6 +16,7 @@ The design specs: v1 `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md` a
 - UI overhaul shipped (PR #3, 2026-09-30): shell with a light/dark toggle (since 2026-09-30: light by default, dark toggle), bumper plates, scoreboard leaderboards; brief in `design-system/frc-fantasy/OVERHAUL.md`. Its two cosmetic leftovers (draft banner wrapping at 360px, faint gold ring in light mode) were fixed 2026-09-30.
 - v2 SP1 (accounts & leagues) merged 2026-09-30; next SP4 live draft. v2 roadmap: see memory v2-league-formats-idea.
 - v2 SP4 (live draft room) is built on branch `v2-sp4-live-draft` (live/commissioner draft modes, atomic pick/undo/control SQL functions, Realtime doorbell + polling, `scripts/smoke-v2.ts`, Playwright E2E). Waiting for migration 0003 to be applied plus the real-DB smoke and E2E checks before merge.
+- v2 SP3 (team info) is built on branch `v2-sp3-team-info` (stacked on SP4): `event_scores` cache, `team_stats`, draft-pool stats, team sheet, daily cron. Waiting for migration 0004 + the stats build (`scripts/build-team-stats.ts` for 2025 and 2026); see the README morning sequence.
 
 ## Locked decisions (don't re-litigate)
 
@@ -25,8 +26,8 @@ The design specs: v1 `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md` a
 - **Scoring:** results-based (qual W/T, RP, rank tiers, alliance selection, playoff wins, winner/finalist, awards) plus an OPR bonus for the top 3 after quals. The config is copied into each round.
 - **Stats source:** TBA OPR. Statbotics is not used; it had no data for offseasons.
 - **Stack:** Next.js App Router plus TypeScript, Tailwind, Supabase Postgres (free tier, service-role key server-only, RLS on with no policies), zod, Vitest, deployed on Vercel Hobby (free).
-- **Caching:** Next.js caching is disabled (`force-dynamic`, `no-store`). The `tba_cache` table is the only cache.
-- **Scores are computed, never stored.** They're a pure function of TBA data, the round config, picks, and adjustments.
+- **Caching:** Next.js caching is disabled (`force-dynamic`, `no-store`). `tba_cache` is the only cache of *TBA data*; `event_scores` and `team_stats` are derived, rebuildable caches of *computed* values (truncate them any time; `scripts/rebuild-event-scores.ts`, `scripts/build-team-stats.ts`).
+- **Scores are computed, never stored.** They're a pure function of TBA data, the round config, picks, and adjustments. The derived caches above are the only exception, and they are rebuildable.
 - **Test data:** the Ramp Riot 2025 event (`2025parr`) is the fixture and replay test. Known quirks: 34 teams, no awards on TBA, Playoff Match 3 tied 156–156 (TBA later recorded blue as tiebreak winner), Alliance 2 had 4 picks, winner is Alliance 3, finalist is Alliance 4.
 - **Priority 2 (stretch, only if the core is done by Oct 19):** the "Add 5181's events" helper, "the ones that got away", drag-to-reorder. (Dark mode shipped in the UI overhaul, PR #3.)
 
