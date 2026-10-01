@@ -95,3 +95,63 @@ export async function buildSeasonStats(
   await deps.repo.upsertTeamStats(rows);
   return { events: events.length, teams: rows.length, skipped };
 }
+
+export async function teamSeasonEvents(teamKey: string, season: number, deps: StatsDeps): Promise<TbaEvent[]> {
+  const res = await getTba<unknown[]>(`/team/${teamKey}/events/${season}/simple`, { windowMs: 10 * MINUTE_MS }, tbaDeps(deps));
+  return (Array.isArray(res.data) ? res.data.filter(isEvent) : []).filter(countsForStats);
+}
+
+/**
+ * The daily cron's team_stats job (spec §6.2): re-score current-season events with any day in
+ * [today − 8, today], then rebuild the season row of every team at them. Stops at `deadline`;
+ * teams are taken least-recently-updated first, so the next run continues where this one stopped.
+ */
+export async function refreshRecentTeams(
+  season: number,
+  deps: StatsDeps,
+  deadline: number,
+): Promise<{ events: number; teams: number; remaining: number; complete: boolean }> {
+  const clock = deps.clock ?? Date.now;
+  const today = localDate(deps.now, 'America/New_York');
+  const recent = (await listSeasonEvents(season, deps)).filter(
+    (e) => e.start_date <= today && e.end_date >= addDays(today, -8),
+  );
+
+  // One load per event per run, shared by every team that played there.
+  const memo = new Map<string, Promise<TeamEventSummary[]>>();
+  const summariesFor = (event: TbaEvent) => {
+    let p = memo.get(event.key);
+    if (!p) {
+      p = loadEventSummaries(event, deps);
+      memo.set(event.key, p);
+    }
+    return p;
+  };
+
+  const teamSet = new Set<string>();
+  for (const event of recent) {
+    if (clock() >= deadline) return { events: recent.length, teams: 0, remaining: teamSet.size, complete: false };
+    for (const s of await summariesFor(event)) teamSet.add(s.teamKey);
+  }
+
+  const existing = await deps.repo.getTeamStats([...teamSet], [season]);
+  const updatedAt = new Map(existing.map((r) => [r.teamKey, r.updatedAt]));
+  // Never-updated teams sort first ('' < any ISO time), then the stalest.
+  const order = [...teamSet].sort(
+    (a, b) => (updatedAt.get(a) ?? '').localeCompare(updatedAt.get(b) ?? '') || a.localeCompare(b),
+  );
+
+  let done = 0;
+  for (const teamKey of order) {
+    if (clock() >= deadline) break;
+    const summaries: TeamEventSummary[] = [];
+    for (const event of await teamSeasonEvents(teamKey, season, deps)) {
+      summaries.push(...(await summariesFor(event)).filter((s) => s.teamKey === teamKey));
+    }
+    if (summaries.length > 0) {
+      await deps.repo.upsertTeamStats([aggregateTeamSeason(teamKey, season, summaries, deps.now.toISOString())]);
+    }
+    done += 1;
+  }
+  return { events: recent.length, teams: done, remaining: order.length - done, complete: done === order.length };
+}
