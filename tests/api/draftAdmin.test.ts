@@ -27,6 +27,14 @@ const patch = (s: Seeded, body: unknown) =>
 const reload = async (s: Seeded) => (await mocks.repo.getRound(s.round.id))!;
 
 describe('PATCH round draft settings (§7.3)', () => {
+  it('the admin round detail carries the draft settings and phase', async () => {
+    const s = await seedLiveDraft(mocks.repo, { mode: 'commissioner' });
+    mocks.user = s.joeyUser;
+    const body = await readJson(await patch(s, { draftMode: 'live', pickSeconds: 30 }));
+    expect(body.round).toMatchObject({ draftMode: 'live', pickSeconds: 30, draftStartedAt: null, draftPausedAt: null });
+    expect(body.draftPhase).toBe('setup');
+  });
+
   it('switches draft mode and timer before the draft starts', async () => {
     const s = await seedLiveDraft(mocks.repo, { mode: 'commissioner', pickSeconds: null });
     mocks.user = s.joeyUser;

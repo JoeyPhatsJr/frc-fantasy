@@ -6,7 +6,10 @@ import { bannerLines, DraftRoomBanner } from '@/components/draft/DraftRoomBanner
 import { DraftRosters } from '@/components/draft/DraftRosters';
 import { PoolList } from '@/components/draft/PoolList';
 import { QueueList } from '@/components/draft/QueueList';
+import { LiveDraftControls } from '@/components/admin/LiveDraftControls';
+import { LiveDraftBanner } from '@/components/draft/LiveDraftBanner';
 import { DraftBoard } from '@/components/DraftBoard';
+import type { AdminRoundDetail } from '@/lib/api/types';
 import type { DraftState } from '@/lib/draft/state';
 import type { PoolEntry } from '@/lib/pool/entries';
 
@@ -113,5 +116,36 @@ describe('DraftRosters and DraftBoard highlight', () => {
       playerNames: { joey: 'Joey', mom: 'Mom' }, teamNames: {}, highlightPick: 0,
     }));
     expect(html).toContain('data-newest="true"');
+  });
+});
+
+describe('LiveDraftBanner', () => {
+  it('links members to the draft room', () => {
+    const html = renderToStaticMarkup(h(LiveDraftBanner, { slug: 'fam', drafts: [{ roundId: 'r1', eventName: 'Ramp Riot', phase: 'live' }] }));
+    expect(html).toContain('href="/l/fam/r/r1/draft"');
+    expect(text(html)).toContain('Draft is live — join');
+    expect(renderToStaticMarkup(h(LiveDraftBanner, { slug: 'fam', drafts: [] }))).toBe('');
+  });
+});
+
+describe('LiveDraftControls', () => {
+  const detail = (over: Partial<AdminRoundDetail['round']>, draftPhase: AdminRoundDetail['draftPhase']) =>
+    ({
+      round: { id: 'r1', draftMode: 'live', pickSeconds: 60, draftStartedAt: null, draftPausedAt: null, ...over },
+      draftPhase,
+      picks: [],
+    }) as unknown as AdminRoundDetail;
+  const props = (d: AdminRoundDetail) => ({ detail: d, busy: false, run: async () => {}, api: (async () => ({})) as never, playerNames: {}, slug: 'fam' });
+
+  it('offers Start before the draft and Resume while paused', () => {
+    expect(text(renderToStaticMarkup(h(LiveDraftControls, props(detail({}, 'setup')))))).toContain('Start draft');
+    const paused = text(renderToStaticMarkup(h(LiveDraftControls, props(detail({ draftStartedAt: 'x', draftPausedAt: 'y' }, 'paused')))));
+    expect(paused).toContain('Resume');
+    expect(paused).not.toContain('Start draft');
+  });
+  it('hides the timer for commissioner-entered drafts', () => {
+    const t = text(renderToStaticMarkup(h(LiveDraftControls, props(detail({ draftMode: 'commissioner' }, 'setup')))));
+    expect(t).not.toContain('Pick timer');
+    expect(t).not.toContain('Start draft');
   });
 });

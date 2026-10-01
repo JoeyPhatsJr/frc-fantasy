@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { AdjustmentList } from '@/components/AdjustmentList';
 import { AutoRefresh } from '@/components/AutoRefresh';
+import { LiveDraftBanner } from '@/components/draft/LiveDraftBanner';
 import { DraftBoard } from '@/components/DraftBoard';
 import { Freshness } from '@/components/Freshness';
 import { Leaderboard } from '@/components/Leaderboard';
@@ -14,6 +15,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ChevronLeft, ExternalLink, Info } from '@/components/ui/icons';
 import { leagueAccess } from '@/lib/auth/roles';
+import { memberLiveDrafts } from '@/lib/draft/liveBanner';
 import { formatDateRange, tbaEventUrl } from '@/lib/format';
 import { loadRoundPage } from '@/lib/views/round';
 
@@ -46,6 +48,7 @@ export default async function RoundPage({ params }: Props) {
   // The league bar in app/l/[slug]/layout.tsx shows the league name; the back link below is the compact way home.
   const { league, view, playerNames } = page;
   const { round } = view;
+  const drafts = await memberLiveDrafts(slug, [view]);
   const draftInProgress = view.status === 'setup' || view.status === 'drafting';
   const notStarted = !view.hasEventData;
   const oprPending = view.hasEventData && !view.qualsComplete;
@@ -54,6 +57,7 @@ export default async function RoundPage({ params }: Props) {
   return (
     <main id="main" className="space-y-6">
       <AutoRefresh seconds={60} />
+      <LiveDraftBanner slug={league.slug} drafts={drafts} />
 
       <header className="space-y-3">
         <Link
