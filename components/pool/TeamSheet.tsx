@@ -104,6 +104,18 @@ export function TeamSheetBody({ data, nickname }: { data: TeamSheetData; nicknam
   );
 }
 
+/**
+ * Stops the page behind an open sheet from scrolling (on iOS a drag on the scrim scrolls it).
+ * Pass document.body.style; returns the function that puts the previous overflow back.
+ */
+export function lockScroll(style: { overflow: string }): () => void {
+  const previous = style.overflow;
+  style.overflow = 'hidden';
+  return () => {
+    style.overflow = previous;
+  };
+}
+
 type Load = { status: 'loading' } | { status: 'error' } | { status: 'ready'; data: TeamSheetData };
 
 const FOCUSABLE =
@@ -148,6 +160,9 @@ export function TeamSheet({
       cancelled = true;
     };
   }, [slug, roundId, teamKey]);
+
+  // The list behind the scrim stays put while the sheet is open.
+  useEffect(() => lockScroll(document.body.style), []);
 
   // Focus goes back to the row that opened the sheet when it closes.
   useEffect(

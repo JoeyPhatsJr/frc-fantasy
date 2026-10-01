@@ -6,7 +6,10 @@ import { qualRecords } from '@/lib/scoring/quals';
 import type { EventScores } from '@/lib/scoring/types';
 import type { EventData, TbaEvent } from '@/lib/tba/types';
 
-/** One team at one event: the facts team_stats is built from. */
+/**
+ * One team at one event: the facts team_stats is built from. playedQuals = 0 marks an awards-only
+ * summary (an award at an event that doesn't count, such as Championship awards on cmptx).
+ */
 export type TeamEventSummary = {
   teamKey: string;
   eventKey: string;
@@ -33,9 +36,11 @@ export function betterFinish(a: BestFinish | null, b: BestFinish | null): BestFi
 }
 
 /**
- * Per-team facts for one event (spec §6.1). Only teams with at least one PLAYED qual match are
- * returned, so Einstein (no quals) and events that haven't started are never counted.
- * Expects cleaned data (cleanEventData) and scores computed with DEFAULT_SCORING.
+ * Per-team facts for one event (spec §6.1). Teams with at least one PLAYED qual match get a full
+ * summary, so Einstein (no quals) and events that haven't started are never counted. A team with an
+ * award there but no played quals gets an awards-only summary (playedQuals 0) so the team sheet
+ * still lists it (final review M4). Expects cleaned data (cleanEventData) and scores computed with
+ * DEFAULT_SCORING.
  */
 export function summarizeEvent(event: TbaEvent, data: EventData, scores: EventScores): TeamEventSummary[] {
   const played = new Map<string, number>();
@@ -77,9 +82,25 @@ export function summarizeEvent(event: TbaEvent, data: EventData, scores: EventSc
   }
 
   const oprs = data.oprs?.oprs ?? {};
-  return [...played.entries()]
+  const awardsOnly: TeamEventSummary[] = [...awards.entries()]
+    .filter(([teamKey]) => !played.has(teamKey))
+    .map(([teamKey, list]) => ({
+      teamKey,
+      eventKey: event.key,
+      name: event.name,
+      endDate: event.end_date,
+      playedQuals: 0,
+      wins: 0,
+      losses: 0,
+      ties: 0,
+      rank: null,
+      finish: null,
+      points: 0,
+      opr: null,
+      awards: list,
+    }));
+  const counted: TeamEventSummary[] = [...played.entries()]
     .filter(([, n]) => n > 0)
-    .sort(([a], [b]) => a.localeCompare(b))
     .map(([teamKey, playedQuals]) => {
       const rec = records.get(teamKey) ?? { wins: 0, losses: 0, ties: 0 };
       const opr = oprs[teamKey];
@@ -99,6 +120,7 @@ export function summarizeEvent(event: TbaEvent, data: EventData, scores: EventSc
         awards: awards.get(teamKey) ?? [],
       };
     });
+  return [...counted, ...awardsOnly].sort((a, b) => a.teamKey.localeCompare(b.teamKey));
 }
 
 /** One team's season row (spec §6.1) from its per-event summaries. */
@@ -112,9 +134,11 @@ export function aggregateTeamSeason(
   for (const s of summaries) {
     if (s.teamKey === teamKey && !byEvent.has(s.eventKey)) byEvent.set(s.eventKey, s);
   }
-  const mine = [...byEvent.values()].sort(
+  const all = [...byEvent.values()].sort(
     (a, b) => a.endDate.localeCompare(b.endDate) || a.eventKey.localeCompare(b.eventKey),
   );
+  // Awards-only summaries add their awards and nothing else.
+  const mine = all.filter((s) => s.playedQuals > 0);
 
   const latest = [...mine].reverse().find((s) => s.opr !== null || s.rank !== null) ?? null;
   return {
@@ -126,7 +150,7 @@ export function aggregateTeamSeason(
     qualLosses: mine.reduce((sum, s) => sum + s.losses, 0),
     qualTies: mine.reduce((sum, s) => sum + s.ties, 0),
     bestFinish: mine.reduce<BestFinish | null>((best, s) => betterFinish(best, s.finish), null),
-    awards: mine.flatMap((s) => s.awards),
+    awards: all.flatMap((s) => s.awards),
     events: mine.map((s) => ({
       eventKey: s.eventKey,
       name: s.name,

@@ -2,7 +2,7 @@ import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { PoolList } from '@/components/draft/PoolList';
-import { TeamSheetBody } from '@/components/pool/TeamSheet';
+import { lockScroll, TeamSheetBody } from '@/components/pool/TeamSheet';
 import type { PoolEntry } from '@/lib/pool/entries';
 import type { TeamSheetData } from '@/lib/stats/pool';
 
@@ -90,5 +90,24 @@ describe('PoolList rows open the team sheet', () => {
   it('still opens the sheet for read-only watchers', () => {
     const html = renderToStaticMarkup(h(PoolList, { ...props, readOnly: true }));
     expect(html).toMatch(/aria-haspopup="dialog"/);
+  });
+});
+
+// Final review M7: the page behind the sheet must not scroll (iOS scrolls it through the scrim).
+describe('lockScroll', () => {
+  it('hides overflow while open and restores the previous value on close', () => {
+    const style = { overflow: 'auto' };
+    const restore = lockScroll(style);
+    expect(style.overflow).toBe('hidden');
+    restore();
+    expect(style.overflow).toBe('auto');
+  });
+
+  it('restores an empty (default) overflow too', () => {
+    const style = { overflow: '' };
+    const restore = lockScroll(style);
+    expect(style.overflow).toBe('hidden');
+    restore();
+    expect(style.overflow).toBe('');
   });
 });

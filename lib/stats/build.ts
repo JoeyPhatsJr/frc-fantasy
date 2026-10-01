@@ -97,15 +97,19 @@ export async function buildSeasonStats(
 
   for (const [i, event] of events.entries()) {
     const summaries = await loadEventSummaries(event, deps);
-    if (summaries.length === 0) skipped.push(event.key);
+    const counted = summaries.filter((s) => s.playedQuals > 0).length;
+    if (counted === 0) skipped.push(event.key);
     all.push(...summaries);
-    log(`[${i + 1}/${events.length}] ${event.key}  ${summaries.length} teams`);
+    log(`[${i + 1}/${events.length}] ${event.key}  ${counted} teams`);
   }
 
   const byTeam = new Map<string, TeamEventSummary[]>();
   for (const s of all) byTeam.set(s.teamKey, [...(byTeam.get(s.teamKey) ?? []), s]);
   const updatedAt = deps.now.toISOString();
-  const rows = [...byTeam].map(([teamKey, list]) => aggregateTeamSeason(teamKey, season, list, updatedAt));
+  // A team seen only through an awards-only summary played no counted event: no row.
+  const rows = [...byTeam]
+    .map(([teamKey, list]) => aggregateTeamSeason(teamKey, season, list, updatedAt))
+    .filter((r) => r.eventsPlayed > 0);
   await deps.repo.upsertTeamStats(rows);
   return { events: events.length, teams: rows.length, skipped };
 }
@@ -190,9 +194,8 @@ export async function refreshRecentTeams(
     for (const event of await teamSeasonEvents(teamKey, season, deps)) {
       summaries.push(...(await summariesFor(event)).filter((s) => s.teamKey === teamKey));
     }
-    if (summaries.length > 0) {
-      await deps.repo.upsertTeamStats([aggregateTeamSeason(teamKey, season, summaries, deps.now.toISOString())]);
-    }
+    const row = aggregateTeamSeason(teamKey, season, summaries, deps.now.toISOString());
+    if (row.eventsPlayed > 0) await deps.repo.upsertTeamStats([row]);
     done += 1;
   }
   return {

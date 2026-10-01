@@ -23,6 +23,10 @@ const DATA: Record<string, EventData> = {
   '2025parr': loadFixture('2025parr'),
   '2025cmptx': {
     ...emptyEvent(),
+    awards: [
+      { name: 'FIRST Impact Award', award_type: 0, recipient_list: [{ team_key: 'frc2607', awardee: null }] },
+      { name: 'Engineering Inspiration Award', award_type: 9, recipient_list: [{ team_key: 'frc1', awardee: null }] },
+    ],
     alliances: [alliance(['frc1', 'frc2', 'frc3']), alliance(['frc4', 'frc5', 'frc6'])],
     matches: [match({ level: 'f', num: 1, red: ['frc1', 'frc2', 'frc3'], blue: ['frc4', 'frc5', 'frc6'], redScore: 9, blueScore: 1 })],
   },
@@ -76,8 +80,9 @@ describe('buildSeasonStats', () => {
 
     const [row] = await repo.getTeamStats(['frc2607'], [2025], { withHistory: true });
     expect(row).toMatchObject({ eventsPlayed: 1, bestFinish: 'winner', latestEventKey: '2025parr', latestOpr: 89.5, latestRank: 3 });
-    expect(row.events[0].eventKey).toBe('2025parr');
-    expect(await repo.getTeamStats(['frc1'], [2025])).toEqual([]); // Einstein-only team: no row
+    expect(row.events.map((e) => e.eventKey)).toEqual(['2025parr']);
+    expect(row.awards).toContainEqual({ type: 0, name: 'FIRST Impact Award', eventKey: '2025cmptx' }); // M4
+    expect(await repo.getTeamStats(['frc1'], [2025])).toEqual([]); // Einstein-only team: no row, even with an award
   });
 
   it('is resumable: a second run of a past season makes no TBA requests', async () => {

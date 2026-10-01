@@ -115,6 +115,30 @@ describe('awards', () => {
   });
 });
 
+// Final review M4: Championship awards (Impact, Engineering Inspiration...) are listed on cmptx,
+// which has no quals. They must reach the team sheet without counting cmptx as an event played.
+describe('awards at an event that does not count', () => {
+  it('returns an awards-only summary (no quals, no points, no finish) for an Einstein award winner', () => {
+    const data: EventData = {
+      ...emptyEvent(),
+      alliances: [alliance(['frc1', 'frc2', 'frc3']), alliance(['frc4', 'frc5', 'frc6'])],
+      matches: [match({ level: 'f', num: 1, red: ['frc1', 'frc2', 'frc3'], blue: ['frc4', 'frc5', 'frc6'], redScore: 9, blueScore: 1 })],
+      awards: [
+        { name: 'FIRST Impact Award', award_type: 0, recipient_list: [{ team_key: 'frc254', awardee: null }] },
+        { name: 'Winner', award_type: 1, recipient_list: [{ team_key: 'frc1', awardee: null }] },
+      ],
+    };
+    const got = summarizeEvent(synthetic('2026cmptx', { event_type: 4 }), data, scoreEvent(data, DEFAULT_SCORING));
+    expect(got).toEqual([
+      {
+        teamKey: 'frc254', eventKey: '2026cmptx', name: 'Event 2026cmptx', endDate: '2026-03-16',
+        playedQuals: 0, wins: 0, losses: 0, ties: 0, rank: null, finish: null, points: 0, opr: null,
+        awards: [{ type: 0, name: 'FIRST Impact Award', eventKey: '2026cmptx' }],
+      },
+    ]);
+  });
+});
+
 describe('betterFinish', () => {
   it('orders winner > finalist > captain > picked > none', () => {
     expect(betterFinish('picked', 'captain')).toBe('captain');

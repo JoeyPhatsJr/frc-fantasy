@@ -59,6 +59,20 @@ describe('aggregateTeamSeason', () => {
     expect(row.awards.map((a) => a.type)).toEqual([0, 9]);
   });
 
+  // Final review M4.
+  it('keeps awards from an awards-only event without counting the event', () => {
+    const row = aggregateTeamSeason('frc5181', 2026, [
+      s('2026paca', '2026-03-08'),
+      s('2026cmptx', '2026-04-19', {
+        playedQuals: 0, wins: 0, losses: 0, rank: null, finish: null, points: 0, opr: null,
+        awards: [{ type: 0, name: 'FIRST Impact Award', eventKey: '2026cmptx' }],
+      }),
+    ], T);
+    expect(row).toMatchObject({ eventsPlayed: 1, totalPoints: 30, qualWins: 6, latestEventKey: '2026paca' });
+    expect(row.events.map((e) => e.eventKey)).toEqual(['2026paca']);
+    expect(row.awards).toEqual([{ type: 0, name: 'FIRST Impact Award', eventKey: '2026cmptx' }]);
+  });
+
   it('ignores other teams and duplicate events', () => {
     const row = aggregateTeamSeason('frc5181', 2026, [
       s('2026paca', '2026-03-08'),

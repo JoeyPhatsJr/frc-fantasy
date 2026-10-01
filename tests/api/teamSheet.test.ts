@@ -70,4 +70,21 @@ describe('GET …/pool/{teamKey}', () => {
   ])('is 404 for %s', async (_label, call) => {
     expect((await call()).status).toBe(404);
   });
+
+  // Final review M8: more bad team keys, and a real round that belongs to a different league.
+  it.each(['frc0341', 'FRC341', 'frc', 'frc341; drop table', 'frc123456'])('is 404 for the bad team key %j', async (key) => {
+    expect((await get(key)).status).toBe(404);
+  });
+
+  it('is 404 for a round that belongs to another league', async () => {
+    const other = await repo.createLeague({
+      slug: 'other-league-xyz234', name: 'Other', defaultScoring: defaultScoring(), createdBy: league.createdBy,
+    });
+    const theirs = await repo.createRound({
+      leagueId: other.id, eventKey: '2026parr', eventName: 'Ramp Riot', startDate: '2026-10-24',
+      endDate: '2026-10-24', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    expect((await get('frc341', league.slug, theirs.id)).status).toBe(404);
+    expect((await get('frc341', other.slug, theirs.id)).status).toBe(200);
+  });
 });
