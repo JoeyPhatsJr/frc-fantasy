@@ -13,7 +13,7 @@ import { Select } from '@/components/ui/Select';
 import { moveItem, shuffled } from '@/lib/draft';
 import { MAX_SEASON_ROSTER } from '@/lib/season/calendar';
 import { DEFAULT_POOL_FILTER, type PoolFilter, poolFilterSchema } from '@/lib/season/poolFilter';
-import { parseTeamInput } from '@/lib/teams';
+import { type PoolTeam, parseTeamInput } from '@/lib/teams';
 
 /** The summary of a <details> styled as a secondary button, matching the dashboard's. */
 export const DETAILS_SUMMARY =
@@ -23,6 +23,32 @@ export const DETAILS_SUMMARY =
   '[&::-webkit-details-marker]:hidden';
 
 const SUBHEAD = 'font-display text-[17px] font-bold leading-6 text-fg';
+
+/**
+ * "Show all N teams". The list is mounted only while open (final review I6): a season pool is ~3,500
+ * teams, and React would otherwise build and re-render them inside the closed <details> on every poll.
+ */
+export function AllPoolTeams({ pool, defaultOpen = false }: { pool: PoolTeam[]; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <details className="group" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary className={DETAILS_SUMMARY}>
+        Show all {pool.length} teams
+        <ChevronDown className="size-5 shrink-0 motion-safe:transition-transform duration-200 group-open:rotate-180" />
+      </summary>
+      {open ? (
+        <ul className="grid grid-cols-2 gap-x-3 gap-y-1 pt-3 text-sm">
+          {pool.map((t) => (
+            <li key={t.teamKey} className="truncate text-fg-muted">
+              <span className="font-display text-base font-bold text-fg tabular-nums">{t.label}</span>{' '}
+              {t.nickname ?? ''}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </details>
+  );
+}
 
 export function RoundSetup({ detail, busy, run, api, playerNames }: SectionProps) {
   const { round } = detail;
@@ -258,20 +284,7 @@ export function RoundSetup({ detail, busy, run, api, playerNames }: SectionProps
             ))}
           </ul>
         ) : null}
-        <details className="group">
-          <summary className={DETAILS_SUMMARY}>
-            Show all {detail.pool.length} teams
-            <ChevronDown className="size-5 shrink-0 motion-safe:transition-transform duration-200 group-open:rotate-180" />
-          </summary>
-          <ul className="grid grid-cols-2 gap-x-3 gap-y-1 pt-3 text-sm">
-            {detail.pool.map((t) => (
-              <li key={t.teamKey} className="truncate text-fg-muted">
-                <span className="font-display text-base font-bold text-fg tabular-nums">{t.label}</span>{' '}
-                {t.nickname ?? ''}
-              </li>
-            ))}
-          </ul>
-        </details>
+        <AllPoolTeams pool={detail.pool} />
       </div>
 
       <div className="space-y-3">

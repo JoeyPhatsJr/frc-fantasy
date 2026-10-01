@@ -2,9 +2,10 @@ import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { PoolFilterFields, poolFilterLabel, samePoolFilter } from '@/components/PoolFilterFields';
-import { RoundSetup } from '@/components/admin/RoundSetup';
+import { AllPoolTeams, RoundSetup } from '@/components/admin/RoundSetup';
 import type { AdminRoundDetail } from '@/lib/api/types';
 import { defaultScoring } from '@/lib/scoring/config';
+import { mergePool } from '@/lib/teams';
 
 describe('poolFilterLabel', () => {
   it('describes each filter in words', () => {
@@ -82,5 +83,43 @@ describe('RoundSetup for a season round', () => {
     expect(html).not.toContain('Which teams');
     expect(html).toContain('<option value="10">10</option>');
     expect(html).not.toContain('<option value="11">');
+  });
+});
+
+describe('"Show all N teams" mounts its list only when opened (final review I6)', () => {
+  const pool = mergePool(
+    Array.from({ length: 3500 }, (_, i) => ({ key: `frc${i + 1}`, nickname: `Nick ${i + 1}` })),
+    [],
+  );
+
+  it('closed (the default): the summary shows the count, and no team rows are rendered', () => {
+    const html = renderToStaticMarkup(h(AllPoolTeams, { pool }));
+    expect(html).toContain('Show all 3500 teams');
+    expect(html).not.toContain('Nick 1<');
+    expect(html).not.toContain('<li');
+    expect(html).not.toMatch(/<details[^>]*open/);
+  });
+
+  it('open: every team is listed', () => {
+    const html = renderToStaticMarkup(h(AllPoolTeams, { pool, defaultOpen: true }));
+    expect(html).toMatch(/<details[^>]*open/);
+    expect(html.match(/<li/g)).toHaveLength(3500);
+    expect(html).toContain('Nick 3500');
+  });
+
+  it('RoundSetup renders it closed, so a poll re-render skips the big list', () => {
+    const detail = {
+      round: { id: 'r1', kind: 'season', seasonYear: 2027, poolFilter: null, rosterSize: 8, draftOrder: [], draftStartedAt: null, scoring: defaultScoring() },
+      players: [],
+      pool,
+      poolStale: false,
+      poolEmptyMessage: null,
+      picks: [],
+    } as unknown as AdminRoundDetail;
+    const html = renderToStaticMarkup(
+      h(RoundSetup, { detail, busy: false, run: async () => {}, api: (async () => ({})) as never, playerNames: {} }),
+    );
+    expect(html.includes('Show all 3500 teams')).toBe(true);
+    expect(html.includes('Nick 1234')).toBe(false);
   });
 });
