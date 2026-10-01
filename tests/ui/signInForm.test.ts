@@ -19,4 +19,9 @@ describe('SignInForm', () => {
     expect(html).toContain('autoComplete="new-password"');
     expect(html).toContain('minLength="8"');
   });
+  it('is a POST form so a pre-hydration submit never puts the password in the URL', () => {
+    const html = renderToStaticMarkup(createElement(SignInForm, {}));
+    expect(html).toMatch(/<form[^>]*method="post"/);
+    expect(html).not.toMatch(/<form[^>]*method="get"/i);
+  });
 });

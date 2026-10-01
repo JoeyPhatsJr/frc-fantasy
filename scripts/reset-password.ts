@@ -5,10 +5,10 @@ import { createSupabaseClient } from '@/lib/db/supabaseRepo';
 
 async function main() {
   const [email, password] = process.argv.slice(2);
-  if (!email || !password) throw new Error('Usage: reset-password.ts <email> <new-password>');
+  const wanted = email?.trim().toLowerCase();
+  if (!wanted || !password) throw new Error('Usage: reset-password.ts <email> <new-password>');
   if (password.length < MIN_PASSWORD) throw new Error(`Passwords need at least ${MIN_PASSWORD} characters.`);
   const admin = createSupabaseClient().auth.admin;
-  const wanted = email.trim().toLowerCase();
   for (let page = 1; ; page++) {
     const { data, error } = await admin.listUsers({ page, perPage: 200 });
     if (error) throw new Error(error.message);

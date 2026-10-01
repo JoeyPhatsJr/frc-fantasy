@@ -115,8 +115,6 @@ Skip any item that is already done.
      (same values as `.env.local`).
    - [ ] For accounts (Production and Preview), also add `NEXT_PUBLIC_SUPABASE_URL`,
      `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `CRON_SECRET`. Never add `E2E_AUTH_SECRET`.
-   - [ ] In Supabase → Authentication → URL Configuration, the Redirect URLs include the production
-     site (`https://<your-app>.vercel.app/**`).
    - [x] Press Deploy. Expect a green build and a URL like `https://frc-fantasy-xxxx.vercel.app`.
    - [x] Open the URL. Expect the home page.
 3. **Create the real league on production.** (The v1 league was removed in the 2026-09-30 cleanup.)

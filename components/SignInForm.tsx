@@ -11,6 +11,15 @@ import { createBrowserSupabase } from '@/lib/supabase/browser';
 type Mode = 'signin' | 'signup';
 
 /** Spec §4.1: one form for "Sign in" and "Create account". `next` is where to land afterwards. */
+/** The browser holds a session before /auth/finish runs; if finish fails, drop it so nobody stays signed in with no profile. */
+async function dropSession() {
+  try {
+    await createBrowserSupabase().auth.signOut({ scope: 'local' });
+  } catch {
+    // best effort
+  }
+}
+
 export function SignInForm({ next = '/', initialMode = 'signin' }: { next?: string; initialMode?: Mode }) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [name, setName] = useState('');
@@ -44,11 +53,13 @@ export function SignInForm({ next = '/', initialMode = 'signin' }: { next?: stri
       });
       const body = (await res.json().catch(() => ({}))) as { redirectTo?: string; error?: string };
       if (!res.ok || !body.redirectTo) {
+        await dropSession();
         setError(body.error ?? "Sign-in didn't finish — try again.");
         return;
       }
       window.location.assign(body.redirectTo);
     } catch {
+      await dropSession();
       setError("Couldn't sign in. Try again.");
     } finally {
       setBusy(false);
@@ -56,7 +67,7 @@ export function SignInForm({ next = '/', initialMode = 'signin' }: { next?: stri
   }
 
   return (
-    <form onSubmit={submit} className="space-y-3" noValidate>
+    <form method="post" onSubmit={submit} className="space-y-3" noValidate>
       {signup ? (
         <Input
           label="Your name"
