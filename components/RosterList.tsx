@@ -81,6 +81,13 @@ function SeasonBreakdown({ detail, adjustments }: { detail: SeasonTeamDetail; ad
   );
 }
 
+/** The line above the rosters. Season rosters open player → team's events → one event's lines (T15). */
+export function rostersHint(season: boolean): string {
+  return season
+    ? 'Tap a player, then an event, to see where its points came from.'
+    : 'Tap a player to see where their points came from.';
+}
+
 export function RosterList({
   scores,
   teamNames,

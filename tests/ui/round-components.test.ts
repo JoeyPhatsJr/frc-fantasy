@@ -5,7 +5,7 @@ import { AdjustmentList } from '@/components/AdjustmentList';
 import { DraftBoard } from '@/components/DraftBoard';
 import { Freshness } from '@/components/Freshness';
 import { Leaderboard } from '@/components/Leaderboard';
-import { RosterList } from '@/components/RosterList';
+import { RosterList, rostersHint } from '@/components/RosterList';
 import { StatusBadge } from '@/components/StatusBadge';
 import { STATUS_LABEL, type RoundStatus } from '@/lib/rounds/status';
 import type { PlayerRoundScore } from '@/lib/scoring/types';
@@ -222,5 +222,14 @@ describe('RosterList with season detail', () => {
   it('keeps team adjustments and shows the next event', () => {
     expect(t).toContain('Spirit');
     expect(t).toContain('Next: Mid-Atlantic Championship · Apr 8, 2027');
+  });
+});
+
+describe('rostersHint (SP2 final review, Minor 6)', () => {
+  it('season rosters expand player, then event: the hint names what to tap', () => {
+    expect(rostersHint(true)).toBe('Tap a player, then an event, to see where its points came from.');
+  });
+  it('event rounds expand only the player', () => {
+    expect(rostersHint(false)).toBe('Tap a player to see where their points came from.');
   });
 });

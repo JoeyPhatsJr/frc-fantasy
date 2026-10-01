@@ -8,7 +8,7 @@ import { DraftBoard } from '@/components/DraftBoard';
 import { Freshness } from '@/components/Freshness';
 import { Leaderboard } from '@/components/Leaderboard';
 import { PrivateLeague } from '@/components/PrivateLeague';
-import { RosterList } from '@/components/RosterList';
+import { RosterList, rostersHint } from '@/components/RosterList';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
@@ -111,7 +111,7 @@ export default async function RoundPage({ params }: Props) {
       <section>
         <Card title="Rosters">
           <p className="-mt-1 mb-3 text-[15px] text-fg-muted">
-            {season ? 'Tap a player, then a team, to see each event.' : 'Tap a player to see where their points came from.'}
+            {rostersHint(season)}
           </p>
           <RosterList
             scores={view.scores}
