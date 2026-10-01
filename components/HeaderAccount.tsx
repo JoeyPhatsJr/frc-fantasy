@@ -8,9 +8,12 @@ export type HeaderUser = { displayName: string; avatarUrl: string | null } | nul
 
 export function HeaderAccountView({ user, pathname }: { user: HeaderUser; pathname: string }) {
   if (!user) {
-    const next = pathname === '/' ? '/' : `/?next=${encodeURIComponent(pathname)}`;
+    // On /signin the page is the sign-in form; a second "Sign in" would only repeat it.
+    if (pathname === '/signin') return null;
+    // Come back to this page after signing in; home needs no next.
+    const href = pathname === '/' ? '/signin' : `/signin?next=${encodeURIComponent(pathname)}`;
     return (
-      <Button href={next} variant="secondary" size="sm">
+      <Button href={href} variant="secondary" size="sm">
         Sign in
       </Button>
     );

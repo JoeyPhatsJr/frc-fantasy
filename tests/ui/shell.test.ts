@@ -164,10 +164,16 @@ describe('AppTabBarView', () => {
 });
 
 describe('HeaderAccountView', () => {
-  it('signed out: a Sign in link that comes back to this page', () => {
+  it('signed out: a Sign in link to /signin that comes back to this page', () => {
     const html = render(h(HeaderAccountView, { user: null, pathname: '/join/ABC234' }));
     expect(html).toContain('Sign in');
-    expect(html).toContain('href="/?next=%2Fjoin%2FABC234"');
+    expect(html).toContain('href="/signin?next=%2Fjoin%2FABC234"');
+  });
+  it('signed out on the home page: plain /signin', () => {
+    expect(render(h(HeaderAccountView, { user: null, pathname: '/' }))).toContain('href="/signin"');
+  });
+  it('signed out on /signin itself: no second Sign in (the page is the form)', () => {
+    expect(render(h(HeaderAccountView, { user: null, pathname: '/signin' }))).toBe('');
   });
   it('signed in: an account link to settings with the initial when there is no avatar', () => {
     const html = render(h(HeaderAccountView, { user: { displayName: 'Joey', avatarUrl: null }, pathname: '/' }));

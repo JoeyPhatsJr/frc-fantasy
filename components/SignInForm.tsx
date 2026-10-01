@@ -20,7 +20,21 @@ async function dropSession() {
   }
 }
 
-export function SignInForm({ next = '/', initialMode = 'signin' }: { next?: string; initialMode?: Mode }) {
+const HEADINGS: Record<Mode, { title: string; line: string }> = {
+  signin: { title: 'Sign in', line: 'Use the email and password you signed up with.' },
+  signup: { title: 'Create an account', line: 'Then start a league, or join one with an invite code.' },
+};
+
+export function SignInForm({
+  next = '/',
+  initialMode = 'signin',
+  heading = false,
+}: {
+  next?: string;
+  initialMode?: Mode;
+  /** The /signin page: show a page title (h1) and one line that follow the mode as it toggles. */
+  heading?: boolean;
+}) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -68,6 +82,12 @@ export function SignInForm({ next = '/', initialMode = 'signin' }: { next?: stri
 
   return (
     <form method="post" onSubmit={submit} className="space-y-3" noValidate>
+      {heading ? (
+        <div className="space-y-1 pb-3">
+          <h1 className="font-display text-[28px] font-bold leading-[30px] text-fg">{HEADINGS[mode].title}</h1>
+          <p className="text-[15px] leading-[22px] text-fg-muted">{HEADINGS[mode].line}</p>
+        </div>
+      ) : null}
       {signup ? (
         <Input
           label="Your name"
