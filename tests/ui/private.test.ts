@@ -54,14 +54,15 @@ describe('members-only leagues (spec §4.5)', () => {
   it('shows the private card, with no league data, to signed-out visitors', async () => {
     const out = await html(LeaguePage({ params: Promise.resolve({ slug: league.slug }) }));
     expect(out).toContain('Private league');
-    expect(out).toContain('Continue with Google');
+    expect(out).toContain('type="password"');
+    expect(out).toContain('Sign in');
     for (const secret of ['Habich Fam', 'SecretMom', 'Commish', 'Ramp Riot']) expect(out).not.toContain(secret);
   });
   it('shows the same card to signed-in non-members on the round page', async () => {
     setUser(await makeUser(repo, 'Stranger'));
     const out = await html(RoundPage({ params: Promise.resolve({ slug: league.slug, roundId: round.id }) }));
     expect(out).toContain('Private league — ask the commissioner for an invite code');
-    expect(out).not.toContain('Continue with Google');
+    expect(out).not.toContain('type="password"');
     for (const secret of ['Habich Fam', 'SecretMom', 'Ramp Riot']) expect(out).not.toContain(secret);
   });
   it('never calls the league or round data loaders for non-members', async () => {

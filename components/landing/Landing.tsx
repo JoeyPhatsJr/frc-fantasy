@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { InviteCodeBox } from '@/components/InviteCodeBox';
 import { SampleScoreboard } from '@/components/landing/SampleScoreboard';
-import { SignInButtons } from '@/components/SignInButtons';
+import { SignInForm } from '@/components/SignInForm';
 import { Alert } from '@/components/ui/Alert';
 import { BumperPlate, type BumperSide } from '@/components/ui/BumperPlate';
 import { Card } from '@/components/ui/Card';
@@ -40,7 +40,7 @@ export function Landing({ upcoming, authError, next }: { upcoming: TbaEvent[]; a
           ))}
         </div>
         {authError ? <Alert tone="danger">Sign-in didn&apos;t finish — try again.</Alert> : null}
-        <SignInButtons next={next} />
+        <SignInForm next={next} />
         <InviteCodeBox />
       </section>
 

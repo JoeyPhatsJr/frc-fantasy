@@ -1,4 +1,4 @@
-import { SignInButtons } from '@/components/SignInButtons';
+import { SignInForm } from '@/components/SignInForm';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 
@@ -15,7 +15,7 @@ export function PrivateLeague({ signedIn, next }: { signedIn: boolean; next: str
         ) : (
           <>
             <p className="text-[15px] text-fg-muted">Already a member? Sign in to see it.</p>
-            <SignInButtons next={next} />
+            <SignInForm next={next} />
           </>
         )}
       </Card>

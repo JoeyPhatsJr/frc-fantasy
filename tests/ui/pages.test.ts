@@ -16,10 +16,11 @@ const preview = {
 };
 
 describe('JoinView (spec §4.6 /join)', () => {
-  it('signed out: league name and sign-in buttons that come back here', () => {
+  it('signed out: league name and sign-in form that comes back here', () => {
     const out = render(h(JoinView, { preview, signedIn: false, code: 'ABC234' }));
     expect(out).toContain('Habich Fam');
-    expect(out).toContain('Continue with Google');
+    expect(out).toContain('type="password"');
+    expect(out).toContain('Sign in');
     expect(out).not.toContain('Commissioner: Joey'); // details only after sign-in
   });
   it('signed in: commissioner, member count and a Join button', () => {

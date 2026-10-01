@@ -22,8 +22,8 @@ describe('AdminGateView', () => {
   it('asks a signed-out visitor to sign in and come back here', () => {
     const html = render(h(AdminGateView, { slug: 'abc', next: '/l/abc/admin/r/1', session: { status: 'signed_out' }, children: kids }));
     expect(html).toContain('Sign in to manage this league');
-    expect(html).toContain('Continue with Google');
-    expect(html).toContain('Continue with Discord');
+    expect(html).toContain('type="password"');
+    expect(html).toContain('Sign in');
     expect(html).not.toContain('secret dashboard');
   });
   it('tells a signed-in non-commissioner plainly', () => {

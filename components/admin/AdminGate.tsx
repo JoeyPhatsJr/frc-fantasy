@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { SignInButtons } from '@/components/SignInButtons';
+import { SignInForm } from '@/components/SignInForm';
 import { useAdmin, type AdminSession } from '@/components/admin/useAdmin';
 import { Alert } from '@/components/ui/Alert';
 import { Button, buttonClass } from '@/components/ui/Button';
@@ -52,7 +52,7 @@ export function AdminGateView({
         <Card className="space-y-3">
           <h1 className={TITLE}>Sign in to manage this league</h1>
           <p className="text-[15px] text-fg-muted">Commissioners sign in with the account they made the league with.</p>
-          <SignInButtons next={next} />
+          <SignInForm next={next} />
         </Card>
       </main>
     );

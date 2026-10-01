@@ -12,7 +12,7 @@ describe('Landing (spec §4.6)', () => {
     const out = render(h(Landing, { upcoming, authError: false, next: '/' }));
     for (const text of [
       'Draft FRC teams. Watch every match. Roast your friends.',
-      'Continue with Google', 'Continue with Discord', 'Have an invite code?',
+      'type="password"', 'Create account', 'Have an invite code?',
       '+15 winner', 'Draft', 'Watch', 'Win', 'Event-by-event', 'Full season',
       'Coming up', 'Ramp Riot', 'href="/leagues/new?event=2026parr"',
     ]) expect(out, text).toContain(text);
