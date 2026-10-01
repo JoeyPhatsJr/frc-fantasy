@@ -33,4 +33,18 @@ describe('buildPoolEntries', () => {
     expect(entries[0]).toMatchObject({ teamKey: 'frc1', proj: 38.2, bestFinish: 'winner', available: true });
     expect(entries[1].proj).toBeNull();
   });
+
+  it('fills proj from team_stats by default (SP3)', async () => {
+    const { round } = await seedLiveDraft(mocks.repo);
+    await mocks.repo.upsertTeamStats([{
+      teamKey: 'frc1', season: 2025, eventsPlayed: 2, totalPoints: 80, qualWins: 10, qualLosses: 4, qualTies: 0,
+      bestFinish: 'captain', awards: [], events: [], latestEventKey: '2025pahat', latestOpr: 40.1, latestRank: 5,
+      updatedAt: '2026-10-01T00:00:00.000Z',
+    }]);
+    const entries = await buildPoolEntries(round, T0);
+    const one = entries.find((e) => e.teamKey === 'frc1')!;
+    expect(one.proj).toBe(40);
+    expect(one.opr).toBe(40.1);
+    expect(entries.find((e) => e.teamKey !== 'frc1')!.proj).toBeNull(); // everyone else is "New"
+  });
 });
