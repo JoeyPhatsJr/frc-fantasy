@@ -6,7 +6,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: () => {} }), usePa
 
 import AdminPage from '@/app/l/[slug]/admin/page';
 import { AdminDashboard, FIRST_ROUND_FAILED, leagueLinkLabels } from '@/components/admin/AdminDashboard';
-import { afterCreateUrl, CreateLeagueForm } from '@/components/CreateLeagueForm';
+import { afterCreateUrl, CreateLeagueForm, formatFields } from '@/components/CreateLeagueForm';
 import { InviteCodeBox } from '@/components/InviteCodeBox';
 import { JoinView } from '@/components/JoinView';
 import { SettingsForm } from '@/components/SettingsForm';
@@ -48,6 +48,40 @@ describe('CreateLeagueForm', () => {
   it('shows the prefilled first round', () => {
     const out = render(h(CreateLeagueForm, { event: { key: '2026parr', name: 'Ramp Riot 2026' } }));
     expect(out).toContain('First round: Ramp Riot 2026');
+  });
+  it('offers event-by-event (picked) or full season, says it is permanent, and asks for follows', () => {
+    const out = render(h(CreateLeagueForm, {}));
+    expect(out).toContain('How do you want to play?');
+    expect(out).toContain('Event by event');
+    expect(out).toContain('Full season');
+    expect(out).toContain('You can&#x27;t change this after the league is created.');
+    expect(out).toMatch(/name="format" checked="" value="event"/);
+    expect(out).toContain('Follow teams (optional, up to 3)');
+  });
+});
+
+describe('formatFields (the format part of the create-league body)', () => {
+  it('event: parses follows, or reports the follow error', () => {
+    expect(formatFields({ format: 'event', follows: '5181, frc341', seasonYear: 2027, poolFilter: { type: 'all' } })).toEqual({
+      ok: true,
+      fields: { format: 'event', followTeams: [5181, 341] },
+    });
+    expect(formatFields({ format: 'event', follows: '1 2 3 4', seasonYear: 2027, poolFilter: { type: 'all' } })).toEqual({
+      ok: false,
+      on: 'follows',
+      error: 'Follow at most 3 teams',
+    });
+  });
+  it('season: sends the year and pool filter, and wants a district picked', () => {
+    expect(formatFields({ format: 'season', follows: 'junk', seasonYear: 2027, poolFilter: { type: 'district', key: '2027fma' } })).toEqual({
+      ok: true,
+      fields: { format: 'season', seasonYear: 2027, poolFilter: { type: 'district', key: '2027fma' } },
+    });
+    expect(formatFields({ format: 'season', follows: '', seasonYear: 2027, poolFilter: { type: 'district', key: '' } })).toEqual({
+      ok: false,
+      on: 'pool',
+      error: 'Pick a district',
+    });
   });
 });
 

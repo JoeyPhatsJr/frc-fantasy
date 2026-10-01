@@ -129,6 +129,71 @@ describe('POST /api/leagues (spec §4.4)', () => {
   });
 });
 
+describe('POST /api/leagues with a format (spec §5)', () => {
+  let joeyId: string;
+  beforeEach(async () => {
+    const joey = await makeUser(repo, 'Joey');
+    joeyId = joey.id;
+    setUser(joey);
+    h.getTba = vi.fn(async (path: unknown) =>
+      String(path) === '/events/2027/simple'
+        ? { data: [{ key: '2027paca', name: 'x', event_type: 1, start_date: '2027-03-05', end_date: '2027-03-07' }], fetchedAt: 'x', stale: false }
+        : { data: [], fetchedAt: 'x', stale: false },
+    );
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-23T18:00:00.000Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('creates a season league with its season round (spec §5.5)', async () => {
+    const res = await createLeague(
+      request('POST', '/x', { body: { name: 'Season Fam', visibility: 'link', format: 'season', seasonYear: 2027 } }),
+    );
+    expect(res.status).toBe(201);
+    const slug = (await readJson(res)).slug; // SP1 answers { slug, inviteCode }
+    const league = (await repo.getLeagueBySlug(slug))!;
+    expect(league.format).toBe('season');
+    expect((await repo.listRounds(league.id)).map((r) => r.kind)).toEqual(['season']);
+  });
+
+  it('rejects an unknown format', async () => {
+    const res = await createLeague(request('POST', '/x', { body: { name: 'X', visibility: 'link', format: 'weekly' } }));
+    expect(res.status).toBe(400);
+  });
+
+  it('defaults to an event league and saves its follows', async () => {
+    const res = await createLeague(request('POST', '/x', { body: { name: 'Fam', followTeams: [5181, 341] } }));
+    expect(res.status).toBe(201);
+    const league = (await repo.getLeagueBySlug((await readJson(res)).slug))!;
+    expect(league.format).toBe('event');
+    expect(await repo.listFollows(league.id)).toEqual([341, 5181]);
+    expect(await repo.listRounds(league.id)).toEqual([]);
+  });
+
+  it('answers 400 for a bad season year or district and leaves no league behind', async () => {
+    const spy = vi.spyOn(repo, 'createLeague');
+    for (const extra of [{ seasonYear: 2029 }, { seasonYear: 2027, poolFilter: { type: 'district', key: '2026fma' } }]) {
+      const res = await createLeague(request('POST', '/x', { body: { name: 'Fam', format: 'season', ...extra } }));
+      expect(res.status, JSON.stringify(extra)).toBe(400);
+    }
+    expect((await readJson(await createLeague(request('POST', '/x', { body: { name: 'Fam', format: 'season', seasonYear: 2029 } })))).error).toBe(
+      'Pick the 2026 or 2027 season',
+    );
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('removes the league if its season round cannot be created', async () => {
+    vi.spyOn(repo, 'createRound').mockRejectedValueOnce(new Error('boom'));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await createLeague(request('POST', '/x', { body: { name: 'Fam', format: 'season' } }));
+    expect(res.status).toBeGreaterThanOrEqual(500);
+    expect(await repo.countLeaguesCreatedBy(joeyId)).toBe(0);
+    log.mockRestore();
+  });
+});
+
 describe('PATCH /admin/league visibility', () => {
   it('switches between link and members', async () => {
     const { league } = await seedLeague(repo);
