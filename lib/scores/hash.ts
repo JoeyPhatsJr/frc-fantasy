@@ -26,8 +26,26 @@ export function bodyHash(body: unknown): string | null {
   return body === null || body === undefined ? null : sha256Hex(canonicalJson(body));
 }
 
-export function configHash(config: ScoringConfig): string {
-  return sha256Hex(canonicalJson(config));
+/**
+ * The scoring-code version baked into every event_scores key. Bump it with any change to
+ * lib/scoring/*, lib/tba/clean.ts or lib/scores/serialize.ts: every old row is then keyed
+ * differently, so it is re-scored by the new code instead of served (old rows are never read again).
+ */
+export const SCORES_VERSION = 1;
+
+export function configHash(config: ScoringConfig, version: number = SCORES_VERSION): string {
+  return sha256Hex(canonicalJson({ v: version, config }));
+}
+
+/** `hashOf` gives a path's body hash, or undefined when the path has no cache row. */
+function stampFrom(paths: string[], hashOf: (path: string) => string | null | undefined): string | null {
+  const lines: string[] = [];
+  for (const path of paths) {
+    const hash = hashOf(path);
+    if (hash === undefined) return null;
+    lines.push(`${path}=${hash ?? 'null'}`);
+  }
+  return sha256Hex(lines.join('\n'));
 }
 
 /**
@@ -36,11 +54,17 @@ export function configHash(config: ScoringConfig): string {
  * because then there is nothing trustworthy to compare against.
  */
 export function sourceStamp(paths: string[], meta: Map<string, CacheMeta>): string | null {
-  const lines: string[] = [];
-  for (const path of paths) {
+  return stampFrom(paths, (path) => {
     const m = meta.get(path);
-    if (!m) return null;
-    lines.push(`${path}=${m.bodyHash ?? 'null'}`);
-  }
-  return sha256Hex(lines.join('\n'));
+    return m ? m.bodyHash : undefined;
+  });
+}
+
+/**
+ * The same stamp, built from bodies in hand instead of tba_cache metadata: hashed exactly as
+ * upsertCache hashes them, so it equals sourceStamp once those bodies are the cached ones. A path
+ * missing from `bodies` has never been cached, so the stamp is null.
+ */
+export function sourceStampOfBodies(paths: string[], bodies: Map<string, unknown>): string | null {
+  return stampFrom(paths, (path) => (bodies.has(path) ? bodyHash(bodies.get(path)) : undefined));
 }

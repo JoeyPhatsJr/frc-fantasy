@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CacheMeta } from '@/lib/db/types';
 import { defaultScoring } from '@/lib/scoring/config';
-import { bodyHash, canonicalJson, configHash, sha256Hex, sourceStamp } from '@/lib/scores/hash';
+import { bodyHash, canonicalJson, configHash, SCORES_VERSION, sha256Hex, sourceStamp, sourceStampOfBodies } from '@/lib/scores/hash';
 
 describe('canonicalJson', () => {
   it('sorts object keys at every depth and keeps array order', () => {
@@ -57,6 +57,18 @@ describe('configHash', () => {
   });
 });
 
+describe('SCORES_VERSION', () => {
+  // Final review I2: a scoring, cleaning or serializer change bumps the version, so every cached
+  // event_scores row is keyed differently and gets re-scored instead of served from old code.
+  it('is part of the config hash, so bumping it changes every key', () => {
+    const c = defaultScoring();
+    expect(Number.isInteger(SCORES_VERSION)).toBe(true);
+    expect(configHash(c)).toBe(configHash(c, SCORES_VERSION));
+    expect(configHash(c, SCORES_VERSION + 1)).not.toBe(configHash(c));
+    expect(configHash(c)).toBe(sha256Hex(canonicalJson({ v: SCORES_VERSION, config: c })));
+  });
+});
+
 describe('sourceStamp', () => {
   const meta = (path: string, hash: string | null): CacheMeta => ({
     path,
@@ -81,5 +93,25 @@ describe('sourceStamp', () => {
 
   it('is null when any path has never been cached', () => {
     expect(sourceStamp(paths, new Map([['/a', meta('/a', 'h1')]]))).toBeNull();
+  });
+});
+
+describe('sourceStampOfBodies', () => {
+  const paths = ['/a', '/b'];
+  const meta = (path: string, body: unknown): CacheMeta => ({
+    path, fetchedAt: '2026-10-24T12:00:00.000Z', bodyHash: bodyHash(body), lastErrorAt: null,
+  });
+
+  it('equals the metadata stamp when the bodies are the cached ones (so a hit follows the miss)', () => {
+    const a = { x: 1 };
+    const fromMeta = sourceStamp(paths, new Map([['/a', meta('/a', a)], ['/b', meta('/b', null)]]));
+    expect(sourceStampOfBodies(paths, new Map<string, unknown>([['/a', { x: 1 }], ['/b', null]]))).toBe(fromMeta);
+  });
+
+  it('is null when a path has never been cached, and changes with any body', () => {
+    expect(sourceStampOfBodies(paths, new Map([['/a', { x: 1 }]]))).toBeNull();
+    const one = sourceStampOfBodies(paths, new Map<string, unknown>([['/a', { x: 1 }], ['/b', null]]));
+    const two = sourceStampOfBodies(paths, new Map<string, unknown>([['/a', { x: 2 }], ['/b', null]]));
+    expect(two).not.toBe(one);
   });
 });

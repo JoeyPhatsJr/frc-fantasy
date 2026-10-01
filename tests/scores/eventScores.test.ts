@@ -26,6 +26,7 @@ import { defaultScoring, type ScoringConfig } from '@/lib/scoring/config';
 import { configHash } from '@/lib/scores/hash';
 import { getEventScores } from '@/lib/scores/eventScores';
 import { cleanEventData } from '@/lib/tba/clean';
+import { eventPaths } from '@/lib/tba/event';
 import type { EventData } from '@/lib/tba/types';
 import { emptyEvent, match, rankRow, rankings } from '../helpers/builders';
 import { createMemoryRepo } from '../helpers/memoryRepo';
@@ -249,6 +250,52 @@ describe('getEventScores', () => {
 
     const retry = await run();
     expect(retry.scores.teams.size).toBe(6);
+  });
+
+  // Final review C1: a concurrent tba_cache write between the body read and the stamp must never
+  // produce a (new stamp, old scores) row that later views serve as fresh.
+  it('a newer body saved while this request scores never leaves old scores under the new stamp', async () => {
+    const inner = createMemoryRepo();
+    const v1 = eventData(50);
+    const v2 = eventData(5); // blue now wins match 1
+    const paths = eventPaths(EVENT);
+    for (const name of Object.keys(paths) as (keyof EventData)[]) {
+      await inner.upsertCache({
+        path: paths[name], etag: '"v1"', body: v1[name], fetchedAt: now.toISOString(), lastError: null, lastErrorAt: null,
+      });
+    }
+    let raced = false;
+    repo = {
+      ...inner,
+      getCache: async (path) => {
+        const row = await inner.getCache(path);
+        if (!raced && path === paths.matches && row) {
+          raced = true; // another request (refresh route, cron, a viewer) saves newer matches right now
+          await inner.upsertCache({ ...row, etag: '"v2"', body: v2.matches });
+        }
+        return row;
+      },
+    };
+
+    await run(); // scores v1 bodies while matches moves to v2 underneath
+    const second = await run();
+    expect(second.stale).toBe(false);
+    expect(second.scores).toEqual(realScore(cleanEventData(v2), defaultScoring()));
+
+    h.scoreCalls = 0;
+    const third = await run(); // now a plain hit on the v2 row
+    expect(h.scoreCalls).toBe(0);
+    expect(third.scores).toEqual(realScore(cleanEventData(v2), defaultScoring()));
+  });
+
+  it('a miss reads tba_cache metadata once (the stamp comes from the scored bodies)', async () => {
+    await run();
+    later(2 * WINDOW);
+    let metaCalls = 0;
+    const base = repo;
+    repo = { ...base, getCacheMeta: (p) => { metaCalls += 1; return base.getCacheMeta(p); } };
+    await run();
+    expect(metaCalls).toBe(1);
   });
 
   it('treats a corrupt cached row as a miss and replaces it', async () => {

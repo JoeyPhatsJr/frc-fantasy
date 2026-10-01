@@ -99,7 +99,7 @@ npx tsx --env-file=.env.local scripts/db-smoke.ts   # talks to the real database
 | `scripts/reset-password.ts <email> <new-password>` | Resets a forgotten password (no emails are sent), then you give the player the new one |
 | `scripts/build-team-stats.ts <season>` | Builds the draft-pool stats (`team_stats`) for one season from TBA, ~5 requests/s. Safe to stop and rerun. Run for the last two seasons before a draft |
 | `scripts/show-team-stats.ts <team> <season>` | Prints one team's stats rows and the projection a draft in that season shows |
-| `scripts/rebuild-event-scores.ts` | Empties the `event_scores` cache. **Run it on production after any change to `lib/scoring/*`** (cached rows hold the old code's scores) |
+| `scripts/rebuild-event-scores.ts` | Empties the `event_scores` cache. Rarely needed: after any change to `lib/scoring/*`, `lib/tba/clean.ts` or `lib/scores/serialize.ts`, **bump `SCORES_VERSION` in `lib/scores/hash.ts`** instead, and old rows are simply never read again. This script just reclaims their space |
 | `scripts/backfill-body-hash.ts` | One-time, after migration 0004: fills `tba_cache.body_hash` for old rows |
 
 Run them with `npx tsx --env-file=.env.local scripts/<name>.ts ...`. For example, the demo league:

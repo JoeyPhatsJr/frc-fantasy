@@ -4,11 +4,12 @@ import type { CacheMeta, EventScoresRow } from '@/lib/db/types';
 import type { ScoringConfig } from '@/lib/scoring/config';
 import { scoreEvent } from '@/lib/scoring/engine';
 import type { EventScores } from '@/lib/scoring/types';
-import { configHash, sourceStamp } from '@/lib/scores/hash';
+import { configHash, sourceStamp, sourceStampOfBodies } from '@/lib/scores/hash';
 import { deserializeEventScores, parseEventInfo, serializeEventScores } from '@/lib/scores/serialize';
 import { cleanEventData, eventInfo, NO_EVENT_DATA, type EventInfo } from '@/lib/tba/clean';
 import type { TbaDeps } from '@/lib/tba/client';
-import { eventPaths, loadEventData } from '@/lib/tba/event';
+import { eventPaths, loadEventData, type LoadedEvent } from '@/lib/tba/event';
+import type { EventData } from '@/lib/tba/types';
 
 export { deserializeEventScores, serializeEventScores } from '@/lib/scores/serialize';
 
@@ -36,6 +37,21 @@ function toMap(meta: CacheMeta[]): Map<string, CacheMeta> {
 function oldest(meta: CacheMeta[]): string | null {
   const times = meta.map((m) => m.fetchedAt).sort();
   return times[0] ?? null;
+}
+
+/**
+ * The stamp of the bodies that were actually scored (final review C1). Re-reading tba_cache
+ * metadata here instead would let a concurrent write of a newer body pair the NEW stamp with
+ * scores computed from the OLD body, and later views would serve those scores as fresh.
+ */
+function stampOfLoaded(eventKey: string, loaded: LoadedEvent): string | null {
+  const paths = eventPaths(eventKey);
+  const names = Object.keys(paths) as (keyof EventData)[];
+  const bodies = new Map<string, unknown>();
+  for (const name of names) {
+    if (loaded.sectionFetchedAt[name] !== null) bodies.set(paths[name], loaded.data[name]);
+  }
+  return sourceStampOfBodies(Object.values(paths), bodies);
 }
 
 function fromRow(row: EventScoresRow | null): { scores: EventScores; info: EventInfo } | null {
@@ -73,9 +89,9 @@ export async function getEventScores(
   // Step 4: refresh through getTba exactly as v1 does (304s keep body_hash, so the stamp stays put).
   // One clock for the hit check and getTba's window, unless the caller overrides tba.now.
   const loaded = await loadEventData(eventKey, { windowMs }, { store: repo, now: () => now, ...opts.tba });
+  const newStamp = stampOfLoaded(eventKey, loaded);
   const data = cleanEventData(loaded.data);
   const info = eventInfo(data);
-  const newStamp = sourceStamp(paths, toMap(await repo.getCacheMeta(paths)));
 
   if (newStamp !== null && stored?.sourceStamp === newStamp) {
     const cached = fromRow(stored);

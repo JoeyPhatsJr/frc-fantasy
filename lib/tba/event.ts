@@ -13,7 +13,13 @@ export function eventPaths(eventKey: string): Record<keyof EventData, string> {
   };
 }
 
-export type LoadedEvent = { data: EventData; fetchedAt: string | null; stale: boolean };
+export type LoadedEvent = {
+  data: EventData;
+  fetchedAt: string | null;
+  stale: boolean;
+  /** Per section: when its body was fetched, or null when it has never been cached. */
+  sectionFetchedAt: Record<keyof EventData, string | null>;
+};
 
 /** Fetches everything the scoring engine needs for one event, in parallel. `deps` is for scripts and tests. */
 export async function loadEventData(
@@ -35,5 +41,6 @@ export async function loadEventData(
     // ISO timestamps sort correctly as strings. The oldest one is the honest "last updated".
     fetchedAt: times.length > 0 ? times.sort()[0] : null,
     stale: results.some((r) => r.stale),
+    sectionFetchedAt: Object.fromEntries(names.map((name, i) => [name, results[i].fetchedAt])) as LoadedEvent['sectionFetchedAt'],
   };
 }
