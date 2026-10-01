@@ -210,8 +210,8 @@ describe('GET /admin/state', () => {
 
     const body = JSON.parse(text);
     expect(body.league).toEqual({
-      slug: league.slug, name: 'Habich Fam', homeTeamNumber: 5181, defaultScoring: DEFAULT_SCORING,
-      inviteCode: league.inviteCode, visibility: 'link', format: 'event',
+      slug: league.slug, name: 'Habich Fam', defaultScoring: DEFAULT_SCORING,
+      inviteCode: league.inviteCode, visibility: 'link', format: 'event', follows: [],
     });
     expect(body.me).toBe(commissioner.id);
     expect(body.players).toEqual([
@@ -249,17 +249,16 @@ describe('PATCH /admin/league', () => {
     expect((await repo.getLeagueBySlug(league.slug))!.name).toBe('Robot Fam');
   });
 
-  it('updates the default scoring and home team', async () => {
+  it('updates the default scoring', async () => {
     const { league } = await seedLeague(repo);
     const scoring = { ...defaultScoring(), qualWin: 2 };
     const res = await patchLeague(
-      request('PATCH', '/x', { body: { defaultScoring: scoring, homeTeamNumber: 341 } }),
+      request('PATCH', '/x', { body: { defaultScoring: scoring } }),
       params({ slug: league.slug }),
     );
     expect(res.status).toBe(200);
     const saved = (await repo.getLeagueBySlug(league.slug))!;
     expect(saved.defaultScoring.qualWin).toBe(2);
-    expect(saved.homeTeamNumber).toBe(341);
   });
 
   it('does not change existing rounds when the league default changes (§3.5)', async () => {
@@ -284,6 +283,8 @@ describe('PATCH /admin/league', () => {
       { adminTokenHash: 'x' },
       { name: '' },
       { homeTeamNumber: 0 },
+      { homeTeamNumber: 341 },
+      { format: 'season' },
     ];
     for (const body of bodies) {
       const res = await patchLeague(request('PATCH', '/x', { body }), params({ slug: league.slug }));

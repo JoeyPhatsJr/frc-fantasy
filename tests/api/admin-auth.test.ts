@@ -11,6 +11,7 @@ vi.mock('@/lib/auth/session', async () => (await import('../helpers/auth')).fake
 vi.mock('@/lib/tba/client', () => ({ getTba: (...args: unknown[]) => h.getTba(...args) }));
 
 import * as eventsRoute from '@/app/api/l/[slug]/admin/events/[eventKey]/route';
+import * as followsRoute from '@/app/api/l/[slug]/admin/follows/route';
 import * as inviteRoute from '@/app/api/l/[slug]/admin/invite/route';
 import * as leagueRoute from '@/app/api/l/[slug]/admin/league/route';
 import * as playerRoute from '@/app/api/l/[slug]/admin/players/[id]/route';
@@ -53,6 +54,7 @@ type Case = {
 
 const MODULES: Record<string, RouteModule> = {
   'events/[eventKey]': eventsRoute,
+  follows: followsRoute,
   invite: inviteRoute,
   league: leagueRoute,
   'players/[id]': playerRoute,
@@ -76,6 +78,7 @@ const roundOf = (s: Seed) => ({ slug: s.league.slug, id: s.round.id });
 
 const CASES: Case[] = [
   { route: 'events/[eventKey]', method: 'GET', params: (s) => ({ ...slugOf(s), eventKey: '2026parr' }) },
+  { route: 'follows', method: 'PUT', params: slugOf, body: () => ({ teams: [5181] }) },
   { route: 'invite', method: 'POST', params: slugOf },
   { route: 'league', method: 'PATCH', params: slugOf, body: () => ({ name: 'Hacked' }) },
   { route: 'league', method: 'DELETE', params: slugOf, body: () => ({ confirmName: 'Habich Fam' }) },
@@ -124,7 +127,7 @@ function adminRouteFolders(): string[] {
     .sort();
 }
 
-const MUTATING = /^(create|update|delete|insert|rename|reset|add|remove|upsert)/;
+const MUTATING = /^(create|update|delete|insert|rename|reset|add|remove|upsert|set)/;
 
 let repo: Repo;
 let writes: string[];

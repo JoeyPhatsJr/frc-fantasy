@@ -11,11 +11,12 @@ import type { PoolTeam } from '@/lib/teams';
 export type AdminLeague = {
   slug: string;
   name: string;
-  homeTeamNumber: number;
   defaultScoring: ScoringConfig;
   inviteCode: string;
   visibility: Visibility;
   format: LeagueFormat;
+  /** Followed team numbers, ascending; their events become rounds automatically (spec §5.4). */
+  follows: number[];
 };
 
 export type AdminPlayer = {

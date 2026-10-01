@@ -129,7 +129,7 @@ const members = [
   { id: 'p2', name: 'Mom', inUse: true, role: 'player' as const, linked: true },
   { id: 'p3', name: 'Grandpa', inUse: true, role: 'player' as const, linked: false },
 ];
-const league = { slug: 'fam', name: 'Habich Fam', homeTeamNumber: 5181, defaultScoring: DEFAULT_SCORING, inviteCode: 'ABC234', visibility: 'link' as const, format: 'event' as const };
+const league = { slug: 'fam', name: 'Habich Fam', defaultScoring: DEFAULT_SCORING, inviteCode: 'ABC234', visibility: 'link' as const, format: 'event' as const, follows: [] };
 const noop = () => {};
 
 describe('MembersCard (spec §4.6 admin additions)', () => {

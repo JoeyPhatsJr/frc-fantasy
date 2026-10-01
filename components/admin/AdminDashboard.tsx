@@ -5,6 +5,7 @@ import { AddManualRoundForm, type ManualRoundInput } from '@/components/admin/Ad
 import { AddRoundForm, EventRow, RenameLeague } from '@/components/admin/DashboardParts';
 import { AdminGate } from '@/components/admin/AdminGate';
 import { DangerZone } from '@/components/admin/DangerZone';
+import { FollowTeamsForm } from '@/components/admin/FollowTeamsForm';
 import { MembersCard } from '@/components/admin/MembersCard';
 import { ScoringForm } from '@/components/admin/ScoringForm';
 import { usePolling } from '@/components/admin/usePolling';
@@ -16,6 +17,7 @@ import { Card } from '@/components/ui/Card';
 import { ChevronDown, Trash2 } from '@/components/ui/icons';
 import type { AdminApi } from '@/lib/admin/client';
 import type { AdminState, EventLookup } from '@/lib/api/types';
+import { autoAddedNote } from '@/lib/follow/input';
 import { formatDateRange } from '@/lib/format';
 
 /** Members-only leagues have no public page, so the shortcuts don't call it one. */
@@ -174,6 +176,7 @@ function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminAp
                     formatDateRange(round.startDate, round.endDate),
                     round.eventKey ?? (round.kind === 'manual' ? 'Manual event' : `${round.seasonYear} season`),
                     round.totalPicks === 0 ? 'Draft not set up' : `${round.pickCount} of ${round.totalPicks} picks`,
+                    ...(round.autoAdded ? [autoAddedNote(state.league.follows)] : []),
                   ]}
                   trailing={<StatusBadge status={round.status} />}
                 />
@@ -189,7 +192,8 @@ function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminAp
                     disabled={busy}
                     onClick={() => {
                       const sure = window.confirm(
-                        `Delete ${round.eventName}? This also deletes its picks and adjustments. It can't be undone.`,
+                        `Delete ${round.eventName}? This also deletes its picks and adjustments. It can't be undone.` +
+                          (round.autoAdded ? ' Follow-a-team won’t add it again.' : ''),
                       );
                       if (sure) {
                         run(`delete:${round.id}`, () => api(`/rounds/${round.id}`, { method: 'DELETE' }), 'Round deleted.');
@@ -205,6 +209,24 @@ function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminAp
           </ul>
           {state.league.format === 'event' ? (
             <div className="space-y-3">
+              <FollowTeamsForm
+                key={state.league.follows.join(',')}
+                follows={state.league.follows}
+                busy={busy}
+                saving={pending === 'follows'}
+                onSave={(teams) =>
+                  run('follows', async () => {
+                    const out = await api<{ added: number; synced: boolean }>('/follows', { method: 'PUT', body: { teams } });
+                    setNotice(
+                      !out.synced
+                        ? "Saved. Couldn't reach The Blue Alliance — new events will be added on the next check."
+                        : out.added > 0
+                          ? `Saved. Added ${out.added} ${out.added === 1 ? 'round' : 'rounds'}.`
+                          : 'Saved.',
+                    );
+                  })
+                }
+              />
               <div role="group" aria-label="Kind of round to add" className="flex gap-2">
                 {(['tba', 'manual'] as const).map((kind) => (
                   <Button

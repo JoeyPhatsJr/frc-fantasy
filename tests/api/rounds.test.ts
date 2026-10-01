@@ -390,6 +390,24 @@ describe('DELETE /admin/rounds/{id}', () => {
     expect(res.status).toBe(403);
     expect(await repo.getRound(round.id)).not.toBeNull();
   });
+
+  it('remembers a deleted auto-added round so follow-a-team never re-adds it (Review Focus 1)', async () => {
+    const auto = await repo.createRound({
+      leagueId: league.id, eventKey: '2026paca', eventName: 'Chesapeake', startDate: '2026-10-20',
+      endDate: '2026-10-20', timezone: 'America/New_York', scoring: defaultScoring(), autoAdded: true,
+    });
+    expect((await deleteRound(request('DELETE', '/x'), at(auto))).status).toBe(204);
+    expect(await repo.listSkippedEvents(league.id)).toEqual(['2026paca']);
+  });
+
+  it('does not skip an event whose round was added by hand', async () => {
+    const byHand = await repo.createRound({
+      leagueId: league.id, eventKey: '2026paca', eventName: 'Chesapeake', startDate: '2026-10-20',
+      endDate: '2026-10-20', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    await deleteRound(request('DELETE', '/x'), at(byHand));
+    expect(await repo.listSkippedEvents(league.id)).toEqual([]);
+  });
 });
 
 describe('team pool endpoints', () => {

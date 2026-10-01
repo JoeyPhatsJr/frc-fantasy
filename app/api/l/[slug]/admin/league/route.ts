@@ -18,26 +18,20 @@ const patchSchema = z
       .min(1, 'League name is required')
       .max(80, 'League name must be 80 characters or fewer')
       .optional(),
-    homeTeamNumber: z
-      .number()
-      .int()
-      .min(1, 'Home team number must be between 1 and 99999')
-      .max(99999, 'Home team number must be between 1 and 99999')
-      .optional(),
     defaultScoring: scoringConfigSchema.optional(),
     visibility: z.enum(['link', 'members'], 'visibility must be link or members').optional(),
   })
   .refine((v) => Object.values(v).some((x) => x !== undefined), { message: 'Nothing to change' });
 
-function toAdminLeague(l: LeagueRow): AdminLeague {
+function toAdminLeague(l: LeagueRow, follows: number[]): AdminLeague {
   return {
     slug: l.slug,
     name: l.name,
-    homeTeamNumber: l.homeTeamNumber,
     defaultScoring: l.defaultScoring,
     inviteCode: l.inviteCode,
     visibility: l.visibility,
     format: l.format,
+    follows,
   };
 }
 
@@ -46,8 +40,9 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
     const { slug } = await ctx.params;
     const { league } = await requireLeagueRole(slug, 'commissioner');
     const patch = await parseBody(req, patchSchema);
-    const saved = await getRepo().updateLeague(league.id, patch);
-    return json({ league: toAdminLeague(saved) });
+    const repo = getRepo();
+    const saved = await repo.updateLeague(league.id, patch);
+    return json({ league: toAdminLeague(saved, await repo.listFollows(saved.id)) });
   });
 }
 

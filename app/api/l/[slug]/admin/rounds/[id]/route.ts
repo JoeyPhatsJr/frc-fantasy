@@ -136,7 +136,12 @@ export async function DELETE(_req: Request, ctx: Ctx): Promise<Response> {
     const { slug, id } = await ctx.params;
     const { league } = await requireLeagueRole(slug, 'commissioner');
     const round = await requireRound(league, id);
-    await getRepo().deleteRound(round.id);
+    const repo = getRepo();
+    if (round.autoAdded && round.eventKey) {
+      // Spec §5.4: a deleted auto-added round must never come back on the next sync.
+      await repo.addSkippedEvent(league.id, round.eventKey);
+    }
+    await repo.deleteRound(round.id);
     return noContent();
   });
 }

@@ -16,10 +16,11 @@ export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
     const repo = getRepo();
     const now = new Date();
 
-    const [players, rounds, used] = await Promise.all([
+    const [players, rounds, used, follows] = await Promise.all([
       repo.listPlayers(league.id),
       repo.listRounds(league.id),
       playersInUse(repo, league.id),
+      repo.listFollows(league.id),
     ]);
     const picks = await repo.listPicksForRounds(rounds.map((r) => r.id));
 
@@ -28,11 +29,11 @@ export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
       league: {
         slug: league.slug,
         name: league.name,
-        homeTeamNumber: league.homeTeamNumber,
         defaultScoring: league.defaultScoring,
         inviteCode: league.inviteCode,
         visibility: league.visibility,
         format: league.format,
+        follows,
       },
       players: players.map((p) => ({
         id: p.id, name: p.name, inUse: used.has(p.id), role: p.role, linked: p.userId !== null,
