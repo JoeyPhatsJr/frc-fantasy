@@ -1,4 +1,4 @@
-import type { BestFinish, TeamStatsAward } from '@/lib/db/types';
+import type { BestFinish, TeamStatsAward, TeamStatsRow } from '@/lib/db/types';
 import { DEFAULT_SCORING } from '@/lib/scoring/config';
 import { hasResult } from '@/lib/scoring/matches';
 import { allianceMembers, finalsResult } from '@/lib/scoring/playoffs';
@@ -99,4 +99,45 @@ export function summarizeEvent(event: TbaEvent, data: EventData, scores: EventSc
         awards: awards.get(teamKey) ?? [],
       };
     });
+}
+
+/** One team's season row (spec §6.1) from its per-event summaries. */
+export function aggregateTeamSeason(
+  teamKey: string,
+  season: number,
+  summaries: TeamEventSummary[],
+  updatedAt: string,
+): TeamStatsRow {
+  const byEvent = new Map<string, TeamEventSummary>();
+  for (const s of summaries) {
+    if (s.teamKey === teamKey && !byEvent.has(s.eventKey)) byEvent.set(s.eventKey, s);
+  }
+  const mine = [...byEvent.values()].sort(
+    (a, b) => a.endDate.localeCompare(b.endDate) || a.eventKey.localeCompare(b.eventKey),
+  );
+
+  const latest = [...mine].reverse().find((s) => s.opr !== null || s.rank !== null) ?? null;
+  return {
+    teamKey,
+    season,
+    eventsPlayed: mine.length,
+    totalPoints: mine.reduce((sum, s) => sum + s.points, 0),
+    qualWins: mine.reduce((sum, s) => sum + s.wins, 0),
+    qualLosses: mine.reduce((sum, s) => sum + s.losses, 0),
+    qualTies: mine.reduce((sum, s) => sum + s.ties, 0),
+    bestFinish: mine.reduce<BestFinish | null>((best, s) => betterFinish(best, s.finish), null),
+    awards: mine.flatMap((s) => s.awards),
+    events: mine.map((s) => ({
+      eventKey: s.eventKey,
+      name: s.name,
+      endDate: s.endDate,
+      rank: s.rank,
+      finish: s.finish,
+      points: s.points,
+    })),
+    latestEventKey: latest?.eventKey ?? null,
+    latestOpr: latest?.opr == null ? null : Math.round(latest.opr * 10) / 10,
+    latestRank: latest?.rank ?? null,
+    updatedAt,
+  };
 }
