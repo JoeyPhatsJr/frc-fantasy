@@ -13,8 +13,8 @@ The design specs: v1 `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md` a
 - v1 is implemented and merged to `main` (Tasks 1–27 of `docs/superpowers/plans/2026-09-29-frc-fantasy-v1*.md`), reviewed task-by-task, with a design layer from `design-system/frc-fantasy/`.
 - Local dev works against the real Supabase project; demo league seeded (`scripts/seed-demo.ts`).
 - Deployed: https://frc-fantasy-6yo3.vercel.app (PR #1 merged 2026-09-30). The caching proof passed. The v1 test leagues were deleted 2026-09-30; the family league will be created fresh after the SP1 merge.
-- UI overhaul shipped (PR #3, 2026-09-30): dark-first shell with light toggle (since 2026-09-30: light by default, dark toggle), bumper plates, scoreboard leaderboards; brief in `design-system/frc-fantasy/OVERHAUL.md`. Its two cosmetic leftovers (draft banner wrapping at 360px, faint gold ring in light mode) were fixed 2026-09-30.
-- v2 SP1 (accounts & leagues) merged <date>; next SP4 live draft. v2 roadmap: see memory v2-league-formats-idea.
+- UI overhaul shipped (PR #3, 2026-09-30): shell with a light/dark toggle (since 2026-09-30: light by default, dark toggle), bumper plates, scoreboard leaderboards; brief in `design-system/frc-fantasy/OVERHAUL.md`. Its two cosmetic leftovers (draft banner wrapping at 360px, faint gold ring in light mode) were fixed 2026-09-30.
+- v2 SP1 (accounts & leagues) merged 2026-09-30; next SP4 live draft. v2 roadmap: see memory v2-league-formats-idea.
 
 ## Locked decisions (don't re-litigate)
 

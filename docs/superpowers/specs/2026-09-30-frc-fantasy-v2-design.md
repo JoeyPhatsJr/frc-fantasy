@@ -184,18 +184,20 @@ alter table leagues
 
 **App shell (signed in):** a fixed bottom tab bar, **Me** | **Leagues**, on every signed-in page; league pages keep their existing top `TabBar`. Avatar/settings gear in the Me header. Signed-out pages have no bottom bar, just a "Sign in" button in the header.
 
-**`/` signed out: landing page** (dark-first, bumper plates, scoreboard style from `design-system/frc-fantasy/`):
+**`/` signed out: landing page** (light by default with a dark toggle, bumper plates, scoreboard style from `design-system/frc-fantasy/`). There is no sign-in form on the landing page; the hero is calm and sends people to `/signin`:
 
 | Block | Content |
 |---|---|
-| Hero | Display headline (working copy: "Draft FRC teams. Watch every match. Roast your friends."), one-line explainer, the **Sign in / Create account** form, and a "Have an invite code?" input that goes to `/join/{CODE}` |
+| Hero | Display headline ("Draft FRC teams. Watch every match. Roast your friends."), one-line explainer, a **Create an account** button → `/signin?mode=signup`, a "Have an invite code?" reveal (a `<details>` holding the code input, which goes to `/join/{CODE}`), and a decorative 3-vs-3 bumper-plate match lineup. No form in the hero |
 | Sample scoreboard | Static demo leaderboard (4 players, bumper plates) with one expanded breakdown (e.g. "341: +10 rank · +8 captain · +15 winner") — explains scoring by showing it |
 | How it works | 3 scoreboard cards: **Draft** (snake draft live from your phone) → **Watch** (points from real results via The Blue Alliance) → **Win** (season standings) |
-| Two ways to play | Cards for Event-by-event and Full season |
+| ~~Two ways to play~~ | Deferred to SP2 (formats). Not on the landing page in SP1 |
 | Coming up | Next 4 upcoming events from TBA `/events/{year}/simple` (`start_date ≥ today`, sorted; cache window 10 min), each with "Start a league for this event" → `/leagues/new?event={key}` (sign-in first if needed) |
 | Footer | "Made by students on FRC Team 5181 · Data from The Blue Alliance" |
 
 If TBA is unreachable, the Coming-up block is omitted (never an error page).
+
+**`/signin`:** the sign-in / create-account form on its own page (title follows the mode). The header's "Sign in" button and the landing page's "Create an account" both go here (`?mode=signup` opens create-account mode; `?next=` is where to land afterwards).
 
 **`/` signed in: Me tab**
 
