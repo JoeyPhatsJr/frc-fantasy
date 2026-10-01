@@ -1,4 +1,4 @@
-import { getTba } from '@/lib/tba/client';
+import { getTba, type TbaDeps } from '@/lib/tba/client';
 import type { EventData } from '@/lib/tba/types';
 
 export function eventPaths(eventKey: string): Record<keyof EventData, string> {
@@ -15,14 +15,18 @@ export function eventPaths(eventKey: string): Record<keyof EventData, string> {
 
 export type LoadedEvent = { data: EventData; fetchedAt: string | null; stale: boolean };
 
-/** Fetches everything the scoring engine needs for one event, in parallel. */
+/** Fetches everything the scoring engine needs for one event, in parallel. `deps` is for scripts and tests. */
 export async function loadEventData(
   eventKey: string,
   opts: { windowMs: number; force?: boolean },
+  deps?: Partial<TbaDeps>,
 ): Promise<LoadedEvent> {
   const paths = eventPaths(eventKey);
   const names = Object.keys(paths) as (keyof EventData)[];
-  const results = await Promise.all(names.map((name) => getTba<unknown>(paths[name], opts)));
+  // Only pass deps when given, so existing call expectations (path, opts) stay exact.
+  const results = await Promise.all(
+    names.map((name) => (deps ? getTba<unknown>(paths[name], opts, deps) : getTba<unknown>(paths[name], opts))),
+  );
 
   const data = Object.fromEntries(names.map((name, i) => [name, results[i].data])) as EventData;
   const times = results.map((r) => r.fetchedAt).filter((t): t is string => t !== null);

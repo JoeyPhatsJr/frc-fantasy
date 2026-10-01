@@ -7,15 +7,10 @@ import { scoreEvent } from '@/lib/scoring/engine';
 import { roundPlayers, scoreRound } from '@/lib/scoring/round';
 import type { PlayerRoundScore, RpMethod } from '@/lib/scoring/types';
 import { loadEventData } from '@/lib/tba/event';
-import type {
-  Alliance,
-  Award,
-  EventData,
-  MatchSimple,
-  RankingRow,
-  RankingsResponse,
-  TeamSimple,
-} from '@/lib/tba/types';
+import { cleanEventData, NO_EVENT_DATA } from '@/lib/tba/clean';
+
+// Kept so existing imports (tests/views/views.test.ts) keep working.
+export { cleanEventData } from '@/lib/tba/clean';
 
 export type RoundView = {
   round: RoundRow;
@@ -41,35 +36,6 @@ export type RoundPage = {
   /** Every player in the league: id -> name ("Mom (left)" for former members). */
   playerNames: Record<string, string>;
 };
-
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
-
-const objects = <T>(v: unknown): T[] | null => (Array.isArray(v) ? (v.filter(isObject) as T[]) : null);
-
-const NO_EVENT_DATA: EventData = {
-  teams: null,
-  matches: null,
-  rankings: null,
-  alliances: null,
-  awards: null,
-  oprs: null,
-};
-
-/** TBA is trusted but not blindly: a section (or row) with the wrong shape is treated as "no data". */
-export function cleanEventData(data: EventData): EventData {
-  const rankings: unknown = data.rankings;
-  const oprs: unknown = data.oprs;
-  const rankingRows = isObject(rankings) ? objects<RankingRow>(rankings.rankings) : null;
-  return {
-    teams: objects<TeamSimple>(data.teams),
-    matches: objects<MatchSimple>(data.matches),
-    rankings: isObject(rankings) && rankingRows ? { ...(rankings as RankingsResponse), rankings: rankingRows } : null,
-    alliances: objects<Alliance>(data.alliances),
-    awards: objects<Award>(data.awards),
-    oprs: isObject(oprs) && isObject(oprs.oprs) ? (oprs as EventData['oprs']) : null,
-  };
-}
 
 export async function buildRoundView(
   round: RoundRow,
