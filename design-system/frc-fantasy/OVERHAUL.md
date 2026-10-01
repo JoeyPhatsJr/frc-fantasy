@@ -109,10 +109,13 @@ use spacing or a line break.
 - Draft board: one block per draft round; cells are bumper plates with the picker's name under them.
 - Adjustments: rows with reason and a gold/red points pill.
 
-**Home (`/`)**
-- Hero: the wordmark large, one sentence, then a **bumper-plate strip** (a row of real numbers —
-  341, 5181, 2607, 103, 9998 — in alternating blue/red plates) as the visual, then the Create league
-  card. No icon-bullet row.
+**Home (`/`, signed out)** (landing redesign 2026-09-30)
+- Hero: three-line sentence-case headline, one muted explainer line, a "Create an account" button
+  (→ `/signin?mode=signup`) and a quiet "Have an invite code?" disclosure, then the **match lineup**:
+  three blue bumper plates, "vs", three red (real numbers: 341, 2607, 5181 vs 1114, 254, 118).
+- Then a sample family league (the page's only card), "How it works" as a numbered list, and
+  "Coming up" rows on the page background with thin dividers. No sign-in form on the page:
+  sign-in lives at `/signin`, linked from the header.
 
 **Commissioner dashboard**
 - League bar shows "Commissioner" in secondary (violet) next to the league name.

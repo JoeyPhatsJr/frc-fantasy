@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { AppTabBar } from '@/components/AppTabBar';
 import { HeaderAccount, type HeaderUser } from '@/components/HeaderAccount';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { ExternalLink } from '@/components/ui/icons';
 import { getUser } from '@/lib/auth/session';
 import { getRepo } from '@/lib/db';
 import { THEME_BOOT_SCRIPT } from '@/lib/theme';
@@ -87,21 +86,29 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           </div>
         </header>
 
-        <div className="mx-auto w-full max-w-2xl flex-1 px-4 py-6 pb-24 md:max-w-3xl md:pb-8">{children}</div>
+        {/* Signed in, the footer clears the fixed bottom tab bar on phones; signed out there is no tab
+            bar (league pages' TabBar pads <body> itself, see globals.css), so no extra space. */}
+        <div
+          className={`mx-auto w-full max-w-2xl flex-1 px-4 py-6 md:max-w-3xl md:pb-8 ${headerUser ? 'pb-24' : 'pb-10'}`}
+        >
+          {children}
+        </div>
         {headerUser ? <AppTabBar /> : null}
 
-        <footer className="mx-auto w-full max-w-2xl px-4 pb-24 text-center md:max-w-3xl md:pb-6">
-          <p className="text-sm text-fg-muted">
-            Made by students on FRC Team 5181 ·{' '}
+        <footer
+          className={`mx-auto w-full max-w-2xl px-4 text-center md:max-w-3xl md:pb-6 ${headerUser ? 'pb-24' : 'pb-6'}`}
+        >
+          <p className="py-3 text-sm leading-6 text-fg-muted">
+            Made by students on FRC Team 5181.{' '}
             <a
               href="https://www.thebluealliance.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-11 cursor-pointer items-center gap-1 underline-offset-4 hover:text-fg hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              className="cursor-pointer rounded-sm py-3 underline decoration-fg-muted/40 underline-offset-4 hover:text-fg hover:decoration-current focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
-              Data from The Blue Alliance
-              <ExternalLink className="size-3.5" />
+              Data from The Blue Alliance<span className="sr-only"> (opens in a new tab)</span>
             </a>
+            . Not affiliated with FIRST.
           </p>
         </footer>
       </body>

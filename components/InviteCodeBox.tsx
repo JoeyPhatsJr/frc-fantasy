@@ -6,8 +6,11 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { normalizeInviteCode } from '@/lib/leagues/inviteCode';
 
-/** "Have an invite code?" → /join/{CODE} (spec §4.6). Used on the landing page and the Leagues tab. */
-export function InviteCodeBox() {
+/**
+ * "Have an invite code?" → /join/{CODE} (spec §4.6). Used on the landing page and the Leagues tab.
+ * `label` lets the landing page, which already asks the question, label the field plainly.
+ */
+export function InviteCodeBox({ label = 'Have an invite code?' }: { label?: string }) {
   const router = useRouter();
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +25,7 @@ export function InviteCodeBox() {
       }}
     >
       <Input
-        label="Have an invite code?"
+        label={label}
         value={value}
         onChange={(e) => {
           setValue(e.target.value);

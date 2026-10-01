@@ -19,7 +19,16 @@ const RANK_CIRCLE: Record<number, string> = {
  * and a faint tint). Rows fade up with a 40ms stagger when they first appear (motion-safe only);
  * a refresh reuses the same DOM nodes, so the animation doesn't replay.
  */
-export function Leaderboard({ rows, emptyText }: { rows: LeaderboardRow[]; emptyText: string }) {
+export function Leaderboard({
+  rows,
+  emptyText,
+  animate = true,
+}: {
+  rows: LeaderboardRow[];
+  emptyText: string;
+  /** False for static displays (the landing page's sample) that shouldn't move on load. */
+  animate?: boolean;
+}) {
   if (rows.length === 0) return <p className="text-sm text-fg-muted">{emptyText}</p>;
   return (
     <ol className="divide-y divide-border">
@@ -28,14 +37,17 @@ export function Leaderboard({ rows, emptyText }: { rows: LeaderboardRow[]; empty
         return (
           <li
             key={row.id}
-            style={{ animationDelay: `${index * 40}ms` }}
+            style={animate ? { animationDelay: `${index * 40}ms` } : undefined}
             className={[
-              'flex min-h-14 items-center gap-3 py-2 pr-3 motion-safe:animate-fade-up',
+              'flex min-h-14 items-center gap-3 py-2 pr-3',
+              animate && 'motion-safe:animate-fade-up',
               // Gold tint: /15 reads as gold in dark; light keeps /10, where accent-text on /15 would drop to 4.47:1.
               leader
                 ? 'rounded-lg border-l-[3px] border-l-accent bg-accent/15 pl-[9px] [[data-theme=light]_&]:bg-accent/10'
                 : 'pl-3',
-            ].join(' ')}
+            ]
+              .filter(Boolean)
+              .join(' ')}
           >
             <span
               className={[
