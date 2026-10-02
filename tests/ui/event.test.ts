@@ -60,6 +60,30 @@ describe('PlayerBoard details', () => {
     expect(html).toContain('Adjustment: Late to the draft → -5');
     expect(html).not.toContain('Adjustment: Adjustment:');
   });
+  it('lists each scoring line on its own wrapped line, never cut off (final review I2)', () => {
+    const s: PlayerRoundScore = {
+      playerId: 'a', name: 'Mom', rank: 1, total: 36,
+      teams: [{ teamKey: 'frc5181', total: 36, lines: [
+        { category: 'qualRecord', label: 'Qual record 4-1-0', points: 12 },
+        { category: 'awards', label: 'Awards', points: 0 },
+        { category: 'rankingPoints', label: 'Ranking points 14', points: 14 },
+        { category: 'alliance', label: 'Alliance captain', points: 10 },
+      ] }],
+      adjustments: [],
+    };
+    const html = r(h(PlayerBoard, { scores: [s], meId: null, teamNames: { frc5181: 'Bagel Bytes' }, status: 'live', season: null }));
+    const lists = html.match(/<ul class="space-y-0\.5[^"]*">[\s\S]*?<\/ul>/g) ?? [];
+    expect(lists).toHaveLength(1);
+    const breakdown = lists[0] ?? '';
+    expect(breakdown).toContain('text-[13px]');
+    expect(breakdown).toContain('text-fg-muted');
+    expect(breakdown).not.toContain('truncate');
+    expect(breakdown).not.toContain('title=');
+    expect(breakdown).not.toContain(' · ');
+    const items = [...breakdown.matchAll(/<li class="break-words">([^<]*)<\/li>/g)].map((m) => m[1]);
+    expect(items).toEqual(['Qual record 4-1-0 → +12', 'Ranking points 14 → +14', 'Alliance captain → +10']);
+    expect(html).toContain('36'); // the team total stays on the right
+  });
   it('season rounds list each team’s events and its next event', () => {
     const s = p('a', 'Mom', 1, 41, ['frc5181']);
     const season = {

@@ -6,6 +6,11 @@ const hoisted = vi.hoisted(() => ({ repo: undefined as unknown }));
 vi.mock('@/lib/db', () => ({ getRepo: () => hoisted.repo }));
 vi.mock('@/lib/auth/session', async () => (await import('../helpers/auth')).fakeSession);
 vi.mock('@/lib/tba/client', () => ({ getTba: async () => ({ data: null, fetchedAt: null, stale: false }) }));
+// AutoRefresh renders nothing; swap in a marker so the page's refresh choice shows in the markup.
+vi.mock('@/components/AutoRefresh', async () => {
+  const { createElement } = await import('react');
+  return { AutoRefresh: ({ seconds }: { seconds: number }) => createElement('i', { 'data-auto-refresh': seconds }) };
+});
 vi.mock('next/navigation', () => ({
   notFound: () => {
     throw new Error('NEXT_NOT_FOUND');
@@ -167,6 +172,19 @@ describe('league page: standings and "(left)" names (spec §6.3)', () => {
     expect(out).not.toContain('Live now');
     expect(out).not.toContain('Small numbers are points per round');
     expect(out).not.toContain('See rosters');
+  });
+
+  it('waits for a live draft by refreshing every 30 s (spec §5.5: the pill is in the layout)', async () => {
+    const round = await repo.createRound({
+      leagueId: league.id, eventKey: '2026parr', eventName: 'Ramp Riot', startDate: '2026-10-24',
+      endDate: '2026-10-24', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    // A hand-entered draft never shows the pill, so nothing to wait for.
+    expect(await page()).not.toContain('data-auto-refresh');
+    await repo.updateRound(round.id, { draftMode: 'live' });
+    const out = await page();
+    expect(out.match(/data-auto-refresh/g)).toHaveLength(1);
+    expect(out).toContain('data-auto-refresh="30"');
   });
 
   it('full-season leagues show the current season round with the Event layout', async () => {

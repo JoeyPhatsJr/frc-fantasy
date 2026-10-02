@@ -16,6 +16,7 @@ import { localDate, type RoundStatus } from '@/lib/rounds/status';
 import { targetRound } from '@/lib/rounds/target';
 import type { SeasonEventScore } from '@/lib/season/score';
 import { loadLeaguePage, type LeaguePage as LeaguePageData } from '@/lib/views/league';
+import { awaitingLiveDraft, DRAFT_WAIT_REFRESH_SECONDS } from '@/lib/views/refresh';
 import type { RoundView } from '@/lib/views/round';
 
 export const dynamic = 'force-dynamic';
@@ -49,11 +50,13 @@ function seasonEvents(view: RoundView): SeasonEventScore[] {
 }
 
 /** Event-by-event leagues (spec §6.3): progress strip, season leaderboard, events list. */
-function EventStandings({ slug, page, meId, isCommissioner, now }: { slug: string; page: LeaguePageData; meId: string | null; isCommissioner: boolean; now: Date }) {
+type StandingsProps = { slug: string; page: LeaguePageData; meId: string | null; isCommissioner: boolean; now: Date; draftWait: boolean };
+
+function EventStandings({ slug, page, meId, isCommissioner, now, draftWait }: StandingsProps) {
   const { standings, rounds } = page;
   return (
     <>
-      {page.anyLive ? <AutoRefresh seconds={60} /> : null}
+      {page.anyLive && !draftWait ? <AutoRefresh seconds={60} /> : null}
       <StatusStrip
         tone="neutral"
         title={seasonProgress(rounds)}
@@ -95,7 +98,7 @@ function EventStandings({ slug, page, meId, isCommissioner, now }: { slug: strin
 }
 
 /** Full-season leagues (spec §6.4): the current season round in the Event-tab layout, then its calendar. */
-function SeasonStandings({ slug, page, meId, isCommissioner, now }: { slug: string; page: LeaguePageData; meId: string | null; isCommissioner: boolean; now: Date }) {
+function SeasonStandings({ slug, page, meId, isCommissioner, now, draftWait }: StandingsProps) {
   const seasons = page.rounds.filter((v) => v.round.kind === 'season');
   const currentId = targetRound(
     seasons.map((v) => ({ id: v.round.id, startDate: v.round.startDate, status: v.status })),
@@ -113,7 +116,7 @@ function SeasonStandings({ slug, page, meId, isCommissioner, now }: { slug: stri
   const events = seasonEvents(view);
   return (
     <>
-      {view.status === 'live' ? <AutoRefresh seconds={60} /> : null}
+      {view.status === 'live' && !draftWait ? <AutoRefresh seconds={60} /> : null}
       <EventBody
         slug={slug}
         view={view}
@@ -152,10 +155,13 @@ export default async function LeaguePage({ params }: Props) {
   scheduleFollowSync(access.league, now);
 
   const meId = access.player?.id ?? null;
-  const props = { slug: page.league.slug, page, meId, isCommissioner: access.isCommissioner, now };
+  // Spec §5.5: the live-draft pill is in the root layout, so wait for a live draft by refreshing (30 s beats 60 s).
+  const draftWait = awaitingLiveDraft(page.rounds.map((v) => ({ status: v.status, draftMode: v.round.draftMode })));
+  const props = { slug: page.league.slug, page, meId, isCommissioner: access.isCommissioner, now, draftWait };
 
   return (
     <main id="main" className="space-y-6">
+      {draftWait ? <AutoRefresh seconds={DRAFT_WAIT_REFRESH_SECONDS} /> : null}
       {/* The league header (app/l/[slug]/layout.tsx) shows the name; this keeps a page heading for screen readers. */}
       <h1 className="sr-only">{page.league.name} standings</h1>
       {access.league.format === 'season' ? <SeasonStandings {...props} /> : <EventStandings {...props} />}

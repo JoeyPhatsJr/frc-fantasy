@@ -19,30 +19,35 @@ export function seasonEventLabel(e: SeasonEventScore): string {
   return `${formatDateRange(e.startDate, e.endDate)} · ${e.name}`;
 }
 
-/** Zero-point lines are hidden (spec §7.9); what's left reads "Qual record 7-2-0 → +21 · …". */
-function breakdown(lines: Line[]): string {
-  return lines.filter((l) => l.points !== 0).map(lineText).join(' · ');
+/** Zero-point lines are hidden (spec §7.9); each one left reads "Qual record 7-2-0 → +21". */
+function breakdown(lines: Line[]): string[] {
+  return lines.filter((l) => l.points !== 0).map(lineText);
 }
 
 function TeamLine({ team, teamNames, preEvent, detail }: { team: TeamScore; teamNames: Record<string, string>; preEvent: boolean; detail: SeasonTeamDetail | null }) {
   // A season team's lines are every event's lines flattened, so only its hand-added ones are shown;
   // the per-event subtotals below carry the rest.
-  const text = breakdown(detail ? team.lines.filter((l) => l.category === 'adjustment') : team.lines);
+  const lines = breakdown(detail ? team.lines.filter((l) => l.category === 'adjustment') : team.lines);
   return (
     <li className="py-2">
-      <div className="flex items-center gap-3">
+      <div className="flex items-start gap-3">
         <BumperPlate size="sm" number={teamLabel(team.teamKey)} />
-        <span className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1">
           {/* The plate already shows the number, so only the nickname goes here (when TBA knows it). */}
           {teamNames[team.teamKey] ? (
             <span className="block truncate text-[15px] font-medium text-fg">{teamNames[team.teamKey]}</span>
           ) : null}
-          {text ? (
-            <span className="block truncate text-[13px] text-fg-muted" title={text}>{text}</span>
+          {/* One scoring line per row, wrapped in full: a phone has no hover tooltip (final review I2). */}
+          {lines.length > 0 ? (
+            <ul className="space-y-0.5 text-[13px] leading-5 text-fg-muted">
+              {lines.map((line, i) => (
+                <li key={i} className="break-words">{line}</li>
+              ))}
+            </ul>
           ) : !preEvent && !detail ? (
             <span className="block text-[13px] text-fg-muted">No points yet</span>
           ) : null}
-        </span>
+        </div>
         <Points size="md" value={preEvent ? null : team.total} />
       </div>
       {detail ? (

@@ -1,13 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Section } from '@/components/ui/Section';
 
-/** The Profile and Account sections of /you: display name, "My FRC team", sign out, delete account. */
-export function SettingsForm({ profile }: { profile: { displayName: string; frcTeam: number | null } }) {
+/**
+ * The Profile and Account sections of /you: display name, "My FRC team", sign out, delete account.
+ * `children` render between the two (spec §6.7: Profile · My season · Appearance · Account).
+ */
+export function SettingsForm({ profile, children }: { profile: { displayName: string; frcTeam: number | null }; children?: ReactNode }) {
   const [displayName, setDisplayName] = useState(profile.displayName);
   const [team, setTeam] = useState(profile.frcTeam === null ? '' : String(profile.frcTeam));
   const [busy, setBusy] = useState<'save' | 'delete' | null>(null);
@@ -84,6 +87,7 @@ export function SettingsForm({ profile }: { profile: { displayName: string; frcT
           </Button>
         </form>
       </Section>
+      {children}
       <Section label="Account">
         <div className="px-4 py-4">
           <form action="/auth/signout" method="post">

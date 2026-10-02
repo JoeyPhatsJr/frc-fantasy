@@ -185,6 +185,8 @@ When the signed-in user is a member of any league with a draft in phase `live` o
 
 Data: a new `loadMyLiveDrafts(userId)` in `lib/views/` that uses **only existing repo methods** (the user's leagues → their rounds → picks for rounds still drafting) and `liveDraftsOf` from `lib/draft/liveBanner.ts`. It must not call TBA or `loadLeaguePage`. Rendered from the root layout; failures render nothing (never block the page). It replaces the per-page `LiveDraftBanner` on Standings/Event.
 
+Refresh (final review I1): data rendered in a layout (this pill, the league band's live dot and tab targets) is fetched on a hard load and on `router.refresh()` only — a soft navigation (`<Link>`, bottom-bar taps) reuses the layout. `AutoRefresh` calls `router.refresh()`, which re-renders the layouts too. So pages a member may sit on while waiting for a live draft refresh every **30 s** (`lib/views/refresh.ts`): Standings while any round in `live` draft mode is `setup`/`drafting`; Home and Leagues while Up next is `draft-soon` for a `live`-mode draft (both keep the 60 s refresh for `event-live`/`draft-live`). The Event tab already refreshes on its own.
+
 ## 6. Player screens (Phase 3)
 
 ### 6.1 Home `/` (signed in)

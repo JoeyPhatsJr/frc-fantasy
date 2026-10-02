@@ -10,6 +10,7 @@ import { safeNext } from '@/lib/auth/next';
 import { getUser } from '@/lib/auth/session';
 import { loadUpcomingEvents } from '@/lib/views/landing';
 import { loadHome } from '@/lib/views/home';
+import { homeRefreshSeconds } from '@/lib/views/refresh';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -23,9 +24,10 @@ export default async function HomePage({ searchParams }: Props) {
     const next = safeNext(sp.next);
     if (next !== '/') redirect(next);
     const home = await loadHome(user.id, new Date());
+    const refresh = homeRefreshSeconds(home.upNext);
     return (
       <main id="main" className="space-y-8">
-        {home.upNext && (home.upNext.kind === 'event-live' || home.upNext.kind === 'draft-live') ? <AutoRefresh seconds={60} /> : null}
+        {refresh ? <AutoRefresh seconds={refresh} /> : null}
         {home.leagues.length === 0 ? (
           <div className="space-y-4 rounded-card border border-accent bg-surface p-4">
             <h1 className="font-display text-[28px] font-bold leading-8">Welcome!</h1>

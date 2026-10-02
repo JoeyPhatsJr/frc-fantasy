@@ -24,17 +24,19 @@ export default async function YouPage() {
   return (
     <main id="main" className="space-y-8">
       <h1 className="font-display text-[28px] font-bold leading-8 text-fg">You</h1>
-      {season ? (
-        <Section label="My season">
-          <MySeason season={season} year={localDate(now, 'America/New_York').slice(0, 4)} />
+      {/* Spec §6.7 order: Profile · My season · Appearance · Account (the form owns the first and last). */}
+      <SettingsForm profile={{ displayName: profile?.displayName ?? 'Player', frcTeam: profile?.frcTeam ?? null }}>
+        {season ? (
+          <Section label="My season">
+            <MySeason season={season} year={localDate(now, 'America/New_York').slice(0, 4)} />
+          </Section>
+        ) : null}
+        <Section label="Appearance">
+          <div className="px-4 py-3">
+            <AppearanceControl />
+          </div>
         </Section>
-      ) : null}
-      <Section label="Appearance">
-        <div className="px-4 py-3">
-          <AppearanceControl />
-        </div>
-      </Section>
-      <SettingsForm profile={{ displayName: profile?.displayName ?? 'Player', frcTeam: profile?.frcTeam ?? null }} />
+      </SettingsForm>
     </main>
   );
 }
