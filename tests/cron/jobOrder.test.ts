@@ -8,7 +8,7 @@ import { DAILY_JOBS, runDailyJobs } from '@/lib/cron/jobs';
 // bounded jobs run first and are never skipped behind it.
 describe('DAILY_JOBS order', () => {
   it('runs follow-sync and season-dates before team-stats', () => {
-    expect(DAILY_JOBS.map((j) => j.name)).toEqual(['follow-sync', 'season-dates', 'team-stats']);
+    expect(DAILY_JOBS.map((j) => j.name)).toEqual(['auto-finalize', 'follow-sync', 'season-dates', 'team-stats']);
   });
 
   it('team-stats spending the whole budget skips none of the cheap jobs', async () => {
@@ -23,6 +23,7 @@ describe('DAILY_JOBS order', () => {
     }));
     const results = await runDailyJobs(jobs, new Date('2027-03-10T09:00:00Z'), deadline, () => t);
     expect(results.map((r) => [r.name, r.skipped])).toEqual([
+      ['auto-finalize', false],
       ['follow-sync', false],
       ['season-dates', false],
       ['team-stats', false],

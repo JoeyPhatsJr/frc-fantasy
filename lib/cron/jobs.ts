@@ -1,3 +1,4 @@
+import { autoFinalizeJob } from '@/lib/cron/autoFinalize';
 import { getRepo } from '@/lib/db';
 import { followSyncJob } from '@/lib/follow/sync';
 import { localDate } from '@/lib/rounds/status';
@@ -11,10 +12,12 @@ export type JobResult = { name: string; ok: boolean; skipped: boolean; error?: s
 
 /**
  * Everything /api/cron/daily does, in order. Order matters only for who gets the time budget first:
- * the cheap, bounded jobs (follow-a-team sync: one TBA list per follow; season-round dates: one per
+ * the cheap, bounded jobs (auto-finalize: one DB read, then at most two cached TBA reads per
+ * just-ended TBA round; follow-a-team sync: one TBA list per follow; season-round dates: one per
  * year) run before team-stats, which may use the whole budget during build season (final review I5).
  */
 export const DAILY_JOBS: DailyJob[] = [
+  autoFinalizeJob,
   followSyncJob,
   seasonDatesJob,
   {
