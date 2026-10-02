@@ -97,19 +97,22 @@ export function CreateLeagueForm({ event }: { event?: { key: string; name: strin
     }
   }
 
+  // Big native-radio rows: the label wraps the input, so the whole row is the tap target.
+  const OPTION =
+    'flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-border p-3 has-checked:border-fg has-focus-visible:ring-2 has-focus-visible:ring-ring';
   const choice = (value: Visibility, label: string, hint: string) => (
-    <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-border p-3 has-[:checked]:border-primary">
+    <label className={OPTION}>
       <input
         type="radio"
         name="visibility"
         value={value}
         checked={visibility === value}
         onChange={() => setVisibility(value)}
-        className="mt-1 size-4 accent-[var(--color-primary)]"
+        className="mt-0.5 size-5 accent-primary"
       />
       <span>
         <span className="block font-semibold text-fg">{label}</span>
-        <span className="block text-sm text-fg-muted">{hint}</span>
+        <span className="block text-[13px] text-fg-muted">{hint}</span>
       </span>
     </label>
   );
@@ -120,29 +123,26 @@ export function CreateLeagueForm({ event }: { event?: { key: string; name: strin
         <Input label="League name" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} required />
         <fieldset className="space-y-2">
           <legend className="mb-1 text-sm font-semibold text-fg">Who can see it?</legend>
-          {choice('link', 'Anyone with the link can view', 'Standings are public to whoever has the link. Only members play.')}
-          {choice('members', 'Members only', 'Only people who joined with the invite code can see it.')}
+          {choice('link', 'Anyone with the link', 'Anyone with the link can watch')}
+          {choice('members', 'Members only', 'Only members can see it')}
         </fieldset>
 
         <fieldset className="space-y-2">
           <legend className="text-sm font-semibold text-fg">How do you want to play?</legend>
           {(
             [
-              ['event', 'Event by event', 'Draft before each event. Scores add up across the season.'],
-              ['season', 'Full season', 'Draft once. Your teams score at every official event all season.'],
+              ['event', 'Event by event', 'Draft new teams for each event.'],
+              ['season', 'Full season', 'Draft once and score every official event all year.'],
             ] as const
           ).map(([value, title, blurb]) => (
-            <label
-              key={value}
-              className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-border p-3 has-checked:border-primary"
-            >
+            <label key={value} className={OPTION}>
               <input
                 type="radio"
                 name="format"
                 value={value}
                 checked={format === value}
                 onChange={() => setFormat(value)}
-                className="mt-1 size-5 accent-primary"
+                className="mt-0.5 size-5 accent-primary"
               />
               <span>
                 <span className="block font-semibold text-fg">{title}</span>
@@ -161,7 +161,7 @@ export function CreateLeagueForm({ event }: { event?: { key: string; name: strin
             onChange={(e) => setFollows(e.target.value)}
             placeholder="5181"
             error={followsError}
-            hint="Their events become rounds automatically."
+            hint="Follow up to 3 teams and we'll add each event they attend automatically."
           />
         ) : (
           <div className="space-y-3">
@@ -179,7 +179,7 @@ export function CreateLeagueForm({ event }: { event?: { key: string; name: strin
         {event && format === 'event' ? <p className="text-[15px] text-fg-muted">First round: {event.name}</p> : null}
         {error ? <Alert tone="danger">{error}</Alert> : null}
         <Button type="submit" busy={busy} disabled={name.trim() === ''}>
-          Create league
+          Create a league
         </Button>
       </form>
     </Card>

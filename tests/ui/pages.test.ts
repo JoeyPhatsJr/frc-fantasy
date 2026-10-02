@@ -21,12 +21,12 @@ describe('JoinView (spec §4.6 /join)', () => {
     expect(out).toContain('Habich Fam');
     expect(out).toContain('type="password"');
     expect(out).toContain('Sign in');
-    expect(out).not.toContain('Commissioner: Joey'); // details only after sign-in
+    expect(out).toContain('Run by Joey · 3 players'); // the invite card shows who runs it either way
   });
   it('signed in: commissioner, member count and a Join button', () => {
     const out = render(h(JoinView, { preview, signedIn: true, code: 'ABC234' }));
-    expect(out).toContain('Commissioner: Joey');
-    expect(out).toContain('3 members');
+    expect(out).toContain('Run by Joey');
+    expect(out).toContain('3 players');
     expect(out).toContain('>Join<');
   });
   it('full league and bad code messages', () => {
@@ -41,7 +41,7 @@ describe('CreateLeagueForm', () => {
   it('has name, the two visibility choices, and no passcode', () => {
     const out = render(h(CreateLeagueForm, {}));
     expect(out).toContain('League name');
-    expect(out).toContain('Anyone with the link can view');
+    expect(out).toContain('Anyone with the link');
     expect(out).toContain('Members only');
     expect(out).not.toMatch(/passcode/i);
   });

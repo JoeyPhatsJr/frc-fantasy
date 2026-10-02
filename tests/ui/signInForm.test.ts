@@ -10,7 +10,8 @@ describe('SignInForm', () => {
     expect(html).toContain('type="password"');
     expect(html).toContain('autoComplete="current-password"');
     expect(html).toContain('Create account');
-    expect(html).toContain('Forgot your password? Ask the site admin to reset it.');
+    expect(html).toContain('Forgot your password? Ask the league commissioner to reset it.');
+    expect(html).not.toContain('site admin');
     expect(html).not.toContain('Continue with Google');
   });
   it('create-account mode asks for a name too', () => {

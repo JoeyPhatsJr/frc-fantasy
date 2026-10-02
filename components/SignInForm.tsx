@@ -104,10 +104,10 @@ export function SignInForm({
   }
 
   return (
-    <form ref={formRef} method="post" onSubmit={submit} className="space-y-3" noValidate>
+    <form ref={formRef} method="post" onSubmit={submit} className="space-y-4" noValidate>
       {heading ? (
         <div className="space-y-1 pb-3">
-          <h1 className="font-display text-[28px] font-bold leading-[30px] text-fg">{HEADINGS[mode].title}</h1>
+          <h1 className="font-display text-[34px] font-bold leading-[36px] tracking-[-0.01em] text-fg">{HEADINGS[mode].title}</h1>
           <p className="text-[15px] leading-[22px] text-fg-muted">{HEADINGS[mode].line}</p>
         </div>
       ) : null}
@@ -169,7 +169,7 @@ export function SignInForm({
         {signup ? 'Have an account? Sign in' : 'New here? Create account'}
       </button>
       {!signup ? (
-        <p className="text-center text-sm text-fg-muted">Forgot your password? Ask the site admin to reset it.</p>
+        <p className="text-center text-sm text-fg-muted">Forgot your password? Ask the league commissioner to reset it.</p>
       ) : null}
     </form>
   );

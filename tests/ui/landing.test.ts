@@ -24,6 +24,11 @@ describe('Landing (spec §4.6, landing redesign 2026-09-30)', () => {
     expect(text).toContain('341 earned +10 for rank, +8 as a captain and +15 for winning the event.');
   });
 
+  it('has a visible Sign in button beside Create an account', () => {
+    expect(out).toMatch(/<a[^>]*href="\/signin"[^>]*>Sign in<\/a>/);
+    expect(out).toContain('href="/signin?mode=signup"');
+  });
+
   it('has no sign-in form on the landing page', () => {
     expect(out).not.toContain('type="password"');
   });
