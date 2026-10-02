@@ -81,6 +81,7 @@ export type RoundPatch = {
   startDate?: string;
   endDate?: string;
   poolFilter?: PoolFilter | null;
+  autoFinalize?: boolean;
 };
 export type NewPick = { roundId: string; pickNumber: number; playerId: string; teamKey: string; auto?: boolean };
 export type NewAdjustment = {
@@ -150,6 +151,8 @@ export interface Repo {
   createRoundIfAbsent(input: NewRound): Promise<RoundRow | null>;
   /** kind = 'season' and not finalized, across every league (daily cron). */
   listOpenSeasonRounds(): Promise<RoundRow[]>;
+  /** Not final and auto-finalize on, across all leagues (spec 2026-10-02 §5). */
+  listAutoFinalizeCandidates(): Promise<RoundRow[]>;
 
   listManualResults(roundId: string): Promise<ManualResultRow[]>; // by team key
   upsertManualResult(row: ManualResultRow): Promise<ManualResultRow>;

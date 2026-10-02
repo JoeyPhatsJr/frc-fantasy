@@ -329,6 +329,7 @@ describe('Round admin (spec §7.2: a four-step checklist)', () => {
         draftOrder: ['p1', 'p2'],
         scoring: DEFAULT_SCORING,
         finalizedAt: null,
+        autoFinalize: true,
         draftMode: 'commissioner',
         pickSeconds: null,
         draftStartedAt: null,
@@ -434,7 +435,7 @@ describe('Round admin pieces after the restructure', () => {
   const base = {
     id: 'r1', eventKey: '2026parr', kind: 'tba' as const, seasonYear: null, poolFilter: null, eventName: 'Ramp Riot',
     startDate: '2026-10-24', endDate: '2026-10-24', timezone: 'America/New_York', rosterSize: 2, draftOrder: ['p1', 'p2'],
-    scoring: DEFAULT_SCORING, finalizedAt: null, draftMode: 'live' as const, pickSeconds: null, draftStartedAt: null,
+    scoring: DEFAULT_SCORING, finalizedAt: null, autoFinalize: true, draftMode: 'live' as const, pickSeconds: null, draftStartedAt: null,
     draftPausedAt: null,
   };
   const detail = (over: Partial<AdminRoundDetail> = {}, round: Partial<AdminRoundDetail['round']> = {}): AdminRoundDetail => ({

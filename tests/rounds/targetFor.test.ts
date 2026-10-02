@@ -28,6 +28,7 @@ const round = (id: string, startDate: string, over: Partial<RoundRow> = {}): Rou
   seasonYear: null,
   poolFilter: null,
   autoAdded: false,
+  autoFinalize: true,
   createdAt: '2026-09-01T00:00:00Z',
   ...over,
 });

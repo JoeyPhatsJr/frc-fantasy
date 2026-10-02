@@ -48,10 +48,23 @@ async function require0005() {
   console.log('ok    0005 columns and tables exist');
 }
 
+/** Auto-finalize (migration 0006, spec 2026-10-02 §3): stop early with a clear message if it isn't applied. */
+async function require0006() {
+  const { error } = await createSupabaseClient().from('rounds').select('auto_finalize').limit(1);
+  if (error) {
+    console.error('STOP: migration 0006_auto_finalize.sql is not applied:');
+    console.error(`  - rounds.auto_finalize: ${error.message}`);
+    console.error('Paste supabase/migrations/0006_auto_finalize.sql into the Supabase SQL Editor, run it, then rerun db-smoke.');
+    process.exit(1);
+  }
+  console.log('ok    0006 auto_finalize column exists');
+}
+
 async function main() {
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!anonKey) throw new Error('NEXT_PUBLIC_SUPABASE_ANON_KEY is missing from .env.local (needed for the RLS checks)');
   await require0005();
+  await require0006();
   const repo = createSupabaseRepo(createSupabaseClient());
   const slug = `smoke-test-${Date.now().toString(36)}`;
   const league = await repo.createLeague({
@@ -73,6 +86,7 @@ async function main() {
       scoring: defaultScoring(),
     });
     check('round defaults', round.rosterSize === 4 && round.draftOrder.length === 0 && round.finalizedAt === null);
+    check('round auto-finalize defaults on', round.autoFinalize === true);
     check('round dates are YYYY-MM-DD', round.startDate === '2025-10-25');
     check('same event twice is rejected',
       (await constraintOf(repo.createRound({
