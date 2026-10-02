@@ -3,9 +3,11 @@ import { renderToStaticMarkup as render } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: () => {} }), usePathname: () => '/' }));
+const landing = vi.hoisted(() => ({ loadUpcomingEvents: vi.fn() }));
+vi.mock('@/lib/views/landing', () => landing);
 
 import AdminPage from '@/app/l/[slug]/admin/page';
-import { AdminDashboard, FIRST_ROUND_FAILED, leagueLinkLabels } from '@/components/admin/AdminDashboard';
+import { AdminDashboard, FIRST_ROUND_FAILED } from '@/components/admin/AdminDashboard';
 import { addFirstRound, afterCreateUrl, CreateLeagueForm, formatFields } from '@/components/CreateLeagueForm';
 import { InviteCodeBox } from '@/components/InviteCodeBox';
 import { JoinView } from '@/components/JoinView';
@@ -91,13 +93,30 @@ describe('a failed prefilled first round is not silent (final review, Minor #13)
     expect(afterCreateUrl('fam-abc234', true)).toBe('/l/fam-abc234/admin?round_error=1');
   });
   it('the admin page passes the flag to the dashboard, which explains what happened', async () => {
+    landing.loadUpcomingEvents.mockResolvedValue([]);
     const page = (slug: string, sp: Record<string, string>) =>
       AdminPage({ params: Promise.resolve({ slug }), searchParams: Promise.resolve(sp) });
     const failed = await page('fam-abc234', { round_error: '1' });
     expect(failed.type).toBe(AdminDashboard);
-    expect(failed.props).toEqual({ slug: 'fam-abc234', firstRoundFailed: true });
-    expect((await page('fam-abc234', {})).props).toEqual({ slug: 'fam-abc234', firstRoundFailed: false });
-    expect(FIRST_ROUND_FAILED).toBe("Your league is ready, but the first round couldn't be added. Add it under Rounds below.");
+    expect(failed.props).toEqual({ slug: 'fam-abc234', firstRoundFailed: true, upcoming: [] });
+    expect((await page('fam-abc234', {})).props).toEqual({ slug: 'fam-abc234', firstRoundFailed: false, upcoming: [] });
+    expect(FIRST_ROUND_FAILED).toBe("Your league is ready, but the first round couldn't be added. Add it under Events below.");
+  });
+});
+
+describe('admin page: upcoming TBA events for the event picker (spec §7.1)', () => {
+  const page = () => AdminPage({ params: Promise.resolve({ slug: 'fam' }), searchParams: Promise.resolve({}) });
+  it('passes a trimmed list of upcoming events', async () => {
+    landing.loadUpcomingEvents.mockResolvedValue([
+      { key: '2026parr', name: 'Ramp Riot', start_date: '2026-10-24', end_date: '2026-10-24', timezone: 'America/New_York', event_type: 99 },
+    ]);
+    expect((await page()).props.upcoming).toEqual([
+      { key: '2026parr', name: 'Ramp Riot', startDate: '2026-10-24', endDate: '2026-10-24' },
+    ]);
+  });
+  it('a TBA outage never breaks admin: the list is just empty', async () => {
+    landing.loadUpcomingEvents.mockRejectedValue(new Error('TBA down'));
+    expect((await page()).props.upcoming).toEqual([]);
   });
 });
 
@@ -126,13 +145,6 @@ describe('addFirstRound: the prefilled event from /leagues/new?event= (SP2 final
       throw new TypeError('offline');
     });
     expect(await addFirstRound('fam-abc234', '2026parr', offline as never)).toBe(false);
-  });
-});
-
-describe('admin shortcuts (final review, Minor #6)', () => {
-  it('only call the league page "public" when it is', () => {
-    expect(leagueLinkLabels('link')).toEqual({ view: 'View public page', copy: 'Copy public link' });
-    expect(leagueLinkLabels('members')).toEqual({ view: 'View league page', copy: 'Copy league link' });
   });
 });
 

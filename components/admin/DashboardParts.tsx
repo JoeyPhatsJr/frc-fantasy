@@ -1,13 +1,16 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { INPUT } from '@/components/admin/AdminGate';
+import { EventPicker, type UpcomingEvent } from '@/components/admin/EventPicker';
 import { DateBlock } from '@/components/DateBlock';
+import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { Plus } from '@/components/ui/icons';
-import { Input } from '@/components/ui/Input';
-import type { EventLookup } from '@/lib/api/types';
+import { ChevronDown, Plus } from '@/components/ui/icons';
+import { Row } from '@/components/ui/Row';
+import type { AdminRoundSummary, EventLookup } from '@/lib/api/types';
+import type { Visibility } from '@/lib/db/types';
+import { autoAddedNote } from '@/lib/follow/input';
 import { formatDateRange } from '@/lib/format';
 
 // Pieces of the commissioner dashboard that hold their own text-box state.
@@ -26,35 +29,102 @@ export function RenameLeague({
   onSave: (name: string) => void;
 }) {
   const [value, setValue] = useState(name);
+  const id = useId();
   return (
-    <section>
-      <Card title="League name">
-        <form
-          className="flex gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            onSave(value);
-          }}
+    <form
+      className="flex flex-col gap-1.5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave(value);
+      }}
+    >
+      <label htmlFor={id} className="text-sm font-semibold text-fg">
+        League name
+      </label>
+      <div className="flex gap-2">
+        <input
+          id={id}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          maxLength={80}
+          required
+          className={`${INPUT} min-w-0 flex-1`}
+        />
+        <Button
+          type="submit"
+          variant="secondary"
+          busy={saving}
+          disabled={busy || value.trim() === '' || value.trim() === name}
+          className="shrink-0"
         >
+          Rename
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/** "Who can see the league?" (spec §7.1 Settings; moved here from the Members card). */
+export function VisibilityField({
+  visibility,
+  busy,
+  onChange,
+}: {
+  visibility: Visibility;
+  busy: boolean;
+  onChange: (v: Visibility) => void;
+}) {
+  return (
+    <fieldset className="space-y-1">
+      <legend className="mb-1 text-sm font-semibold text-fg">Who can see the league?</legend>
+      {(
+        [
+          ['link', 'Anyone with the link'],
+          ['members', 'Members only'],
+        ] as const
+      ).map(([value, label]) => (
+        <label key={value} className="flex min-h-11 cursor-pointer items-center gap-3">
           <input
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            maxLength={80}
-            required
-            aria-label="League name"
-            className={`${INPUT} flex-1`}
+            type="radio"
+            name="visibility"
+            checked={visibility === value}
+            disabled={busy}
+            onChange={() => onChange(value)}
+            className="size-4"
           />
-          <Button
-            type="submit"
-            variant="secondary"
-            busy={saving}
-            disabled={busy || value.trim() === '' || value.trim() === name}
-          >
-            Rename
-          </Button>
-        </form>
-      </Card>
-    </section>
+          <span className="text-fg">{label}</span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
+/**
+ * The league's rounds on the admin page (spec §7.1): one row per round, linking to its round admin.
+ * There is no Delete here; deleting an event lives in round admin.
+ */
+export function RoundRows({ slug, rounds, follows }: { slug: string; rounds: AdminRoundSummary[]; follows: number[] }) {
+  return (
+    <>
+      {rounds.map((round) => (
+        <Row
+          key={round.id}
+          href={`/l/${slug}/admin/r/${round.id}`}
+          leading={<DateBlock date={round.startDate} />}
+          title={round.eventName}
+          subtitle={[
+            round.totalPicks === 0 ? 'Draft not set up' : `${round.pickCount} of ${round.totalPicks} picks`,
+            ...(round.autoAdded ? [autoAddedNote(follows)] : []),
+          ].join(' · ')}
+          trailing={
+            <>
+              <StatusBadge status={round.status} />
+              <ChevronDown className="size-4 shrink-0 -rotate-90 text-fg-muted" />
+            </>
+          }
+        />
+      ))}
+    </>
   );
 }
 
@@ -90,16 +160,19 @@ export function EventRow({
 }
 
 /**
- * "Add a round by event key": Check looks the event up on TBA first and shows its name and dates
- * (spec §5.4), and only then offers "Add this round". Typing a different key clears the preview.
+ * "Add an event": the EventPicker (upcoming TBA events + "Other event") feeding one check → "Found"
+ * preview → "Add this round" flow (spec §5.4, §7.1). Picking an upcoming event and checking a typed
+ * key or pasted TBA link both go through `check`; editing the box clears a stale preview.
  */
 export function AddRoundForm({
+  upcoming,
   busy,
   checking,
   saving,
   onCheck,
   onAdd,
 }: {
+  upcoming: UpcomingEvent[];
   busy: boolean;
   checking: boolean;
   saving: boolean;
@@ -108,45 +181,26 @@ export function AddRoundForm({
   /** Resolves to true when the round was added; the box and preview are cleared only then. */
   onAdd: (eventKey: string) => Promise<boolean>;
 }) {
-  const [value, setValue] = useState('');
   const [preview, setPreview] = useState<EventLookup | null>(null);
+  /** Bumped after an add, so the picker remounts with an empty box. */
+  const [resets, setResets] = useState(0);
+  const check = async (eventKey: string) => {
+    setPreview(null);
+    setPreview(await onCheck(eventKey));
+  };
   return (
-    <div className="space-y-3">
-      <form
-        className="flex items-end gap-2"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setPreview(null);
-          setPreview(await onCheck(value));
-        }}
-      >
-        <Input
-          label="Add a round by event key"
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value);
-            setPreview(null);
-          }}
-          maxLength={40}
-          required
-          placeholder="2026parr"
-          autoCapitalize="none"
-          autoCorrect="off"
-          className="min-w-0 flex-1"
-        />
-        <Button
-          type="submit"
-          variant="secondary"
-          busy={checking}
-          disabled={busy || value.trim() === ''}
-          className="shrink-0"
-        >
-          Check
-        </Button>
-      </form>
-      <div aria-live="polite">
+    <div>
+      <EventPicker
+        key={resets}
+        upcoming={upcoming}
+        busy={busy}
+        checking={checking}
+        onPick={(key) => void check(key)}
+        onEdit={() => setPreview(null)}
+      />
+      <div aria-live="polite" className="px-4">
         {preview?.found ? (
-          <div className="space-y-3 rounded-xl border border-border p-3">
+          <div className="mb-4 space-y-3 rounded-xl border border-border p-3">
             <EventRow
               startDate={preview.startDate}
               title={`Found: ${preview.name}`}
@@ -160,7 +214,7 @@ export function AddRoundForm({
                 disabled={busy || preview.alreadyInLeague}
                 onClick={async () => {
                   if (await onAdd(preview.eventKey)) {
-                    setValue('');
+                    setResets((n) => n + 1);
                     setPreview(null);
                   }
                 }}
@@ -174,7 +228,7 @@ export function AddRoundForm({
             </div>
           </div>
         ) : preview ? (
-          <p className="rounded-xl border border-border bg-surface-2 p-3 text-sm font-medium text-fg">
+          <p className="mb-4 rounded-xl border border-border bg-surface-2 p-3 text-sm font-medium text-fg">
             Not on The Blue Alliance yet — try again in a few days.
           </p>
         ) : null}
