@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   agoLabel,
   formatDateRange,
+  ordinal,
+  shortDate,
   freshnessText,
   lineText,
   roundKeyLine,
@@ -88,5 +90,15 @@ describe('roundKeyLine (SP2 final review, Minor 5)', () => {
   it('never leaves the line blank for manual and season rounds', () => {
     expect(roundKeyLine({ eventKey: null, kind: 'manual', seasonYear: null })).toBe('Manual event');
     expect(roundKeyLine({ eventKey: null, kind: 'season', seasonYear: 2027 })).toBe('2027 season');
+  });
+});
+
+describe('shortDate / ordinal', () => {
+  it('formats dates without timezone drift', () => {
+    expect(shortDate('2026-10-24')).toBe('Oct 24');
+    expect(shortDate('2026-01-01')).toBe('Jan 1');
+  });
+  it('handles English ordinals', () => {
+    expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 101, 111].map(ordinal)).toEqual(['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd', '23rd', '101st', '111th']);
   });
 });

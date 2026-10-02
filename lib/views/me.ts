@@ -5,7 +5,12 @@ import { hasResult, winnerOf } from '@/lib/scoring/matches';
 import { pickEventForMe } from '@/lib/season/current';
 import { getTba } from '@/lib/tba/client';
 import type { MatchSimple } from '@/lib/tba/types';
+import { seasonSummary, type MeSeason, type SeasonInput } from '@/lib/views/home';
 import { loadLeaguePage } from '@/lib/views/league';
+
+// Moved to home.ts (UX overhaul Task 8); re-exported until me.ts is deleted.
+export { seasonSummary };
+export type { MeSeason, SeasonInput };
 
 export type MeLeague = {
   slug: string;
@@ -18,11 +23,6 @@ export type MeLeague = {
   error: boolean;
 };
 export type MeTeam = { teamKey: string; leagueName: string; eventName: string; label: string; status: 'live' | 'upcoming' };
-export type MeSeason = {
-  total: number;
-  bestPick: { teamKey: string; eventName: string; points: number } | null;
-  averageFinish: number | null;
-};
 export type MePage = { leagues: MeLeague[]; teams: MeTeam[]; season: MeSeason };
 
 const LEVELS: Record<string, number> = { qm: 0, ef: 1, qf: 2, sf: 3, f: 4 };
@@ -71,29 +71,6 @@ export function nextMatchLabel(teamKey: string, matches: MatchSimple[] | null): 
   return outOfPlayoffs(teamKey, mine) ? 'Eliminated' : 'Waiting for next match';
 }
 
-export type SeasonInput = {
-  eventName: string;
-  startDate: string;
-  finalized: boolean;
-  me: { total: number; rank: number; teams: { teamKey: string; total: number }[] } | null;
-};
-
-/** "My season" (spec §4.6): calendar-year total, best single team-in-a-round, mean rank over finalized rounds. */
-export function seasonSummary(rounds: SeasonInput[], year: string): MeSeason {
-  const mine = rounds.filter((r) => r.me !== null && r.startDate.startsWith(year));
-  let total = 0;
-  let bestPick: MeSeason['bestPick'] = null;
-  for (const r of mine) {
-    total += r.me!.total;
-    for (const t of r.me!.teams) {
-      if (!bestPick || t.total > bestPick.points) bestPick = { teamKey: t.teamKey, eventName: r.eventName, points: t.total };
-    }
-  }
-  const finals = mine.filter((r) => r.finalized);
-  const averageFinish =
-    finals.length === 0 ? null : Math.round((finals.reduce((s, r) => s + r.me!.rank, 0) / finals.length) * 10) / 10;
-  return { total, bestPick, averageFinish };
-}
 
 /** Everything the Me tab shows. Leagues load in parallel; one failing league doesn't break the page. */
 export async function loadMePage(userId: string, now: Date): Promise<MePage> {
