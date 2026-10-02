@@ -15,9 +15,9 @@ The design specs: v1 `docs/superpowers/specs/2026-09-29-frc-fantasy-design.md` a
 - Deployed: https://frc-fantasy-5181.vercel.app (PR #1 merged 2026-09-30). The caching proof passed. The v1 test leagues were deleted 2026-09-30; the family league will be created fresh after the SP1 merge.
 - UI overhaul shipped (PR #3, 2026-09-30): shell with a light/dark toggle (since 2026-09-30: light by default, dark toggle), bumper plates, scoreboard leaderboards; brief in `design-system/frc-fantasy/OVERHAUL.md`. Its two cosmetic leftovers (draft banner wrapping at 360px, faint gold ring in light mode) were fixed 2026-09-30.
 - **v2 is complete and live.** SP1 (accounts & leagues) PR #4 on 2026-09-30; SP4 (live draft room), SP3 (team info) and SP2 (league formats) PRs #5, #6, #7 on 2026-10-01. Migrations 0002–0005 are applied; `team_stats` is built for 2025 and 2026; `smoke-v2`, `db-smoke` and the Playwright two-phone E2E pass against the real DB. v2 roadmap: see memory v2-league-formats-idea.
-- UX overhaul (branch `ux-overhaul`, 2026-10-01): Home/Leagues/You bottom bar, league top tabs (Standings · Event · Draft · Admin), broadcast-scoreboard style; spec `docs/superpowers/specs/2026-10-01-ux-overhaul-design.md`.
+- UX overhaul shipped (PR #8, 2026-10-02): Home/Leagues/You bottom bar, league top tabs (Standings · Event · Draft · Admin), broadcast-scoreboard style; spec `docs/superpowers/specs/2026-10-01-ux-overhaul-design.md`.
 - Next: Joey's phone check of the live draft on both themes, the Oct 22 sign-in party (invite link from Admin → Invite people), draft night Oct 23.
-- Tabled for a later phase: auto-finalize rounds at event end.
+- Auto-finalize (branch `auto-finalize`, spec `docs/superpowers/specs/2026-10-02-auto-finalize-design.md`): rounds finalize on their own after the event; needs migration 0006 applied before merge.
 
 ## Locked decisions (don't re-litigate)
 

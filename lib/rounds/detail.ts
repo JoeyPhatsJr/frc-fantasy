@@ -32,6 +32,7 @@ export async function roundDetail(round: RoundRow, now: Date): Promise<AdminRoun
       draftOrder: round.draftOrder,
       scoring: round.scoring,
       finalizedAt: round.finalizedAt,
+      autoFinalize: round.autoFinalize,
       draftMode: round.draftMode,
       pickSeconds: round.pickSeconds,
       draftStartedAt: round.draftStartedAt,

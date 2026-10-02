@@ -252,6 +252,7 @@ export function createMemoryRepo(opts: { now?: () => Date } = {}): Repo {
         seasonYear: null,
         poolFilter: null,
         autoAdded: false,
+        autoFinalize: true,
         createdAt: stamp(),
         ...defined(copy(input)),
       } as RoundRow;
@@ -277,6 +278,9 @@ export function createMemoryRepo(opts: { now?: () => Date } = {}): Repo {
     },
     async listOpenSeasonRounds() {
       return copy(rounds.filter((r) => r.kind === 'season' && r.finalizedAt === null));
+    },
+    async listAutoFinalizeCandidates() {
+      return copy(rounds.filter((r) => r.finalizedAt === null && r.autoFinalize));
     },
 
     async listManualResults(roundId) {

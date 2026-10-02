@@ -72,6 +72,7 @@ const toRound = (r: Raw): RoundRow => ({
   seasonYear: r.season_year ?? null,
   poolFilter: r.pool_filter ?? null,
   autoAdded: r.auto_added ?? false,
+  autoFinalize: r.auto_finalize ?? true,
   createdAt: r.created_at,
 });
 const toManualResult = (r: Raw): ManualResultRow => ({
@@ -418,6 +419,10 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
       const rows = await run(db.from('rounds').select().eq('kind', 'season').is('finalized_at', null));
       return rows.map(toRound);
     },
+    async listAutoFinalizeCandidates() {
+      const rows = await run(db.from('rounds').select().is('finalized_at', null).eq('auto_finalize', true));
+      return rows.map(toRound);
+    },
 
     async listManualResults(roundId) {
       const rows = await run(db.from('manual_results').select().eq('round_id', roundId).order('team_key'));
@@ -495,6 +500,7 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
               start_date: patch.startDate,
               end_date: patch.endDate,
               pool_filter: patch.poolFilter,
+              auto_finalize: patch.autoFinalize,
             }),
           )
           .eq('id', id)

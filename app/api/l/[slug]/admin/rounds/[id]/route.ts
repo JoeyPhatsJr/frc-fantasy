@@ -156,6 +156,8 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
       pausedRemainingMs,
       finalizedAt:
         patch.finalized === undefined ? undefined : patch.finalized ? now.toISOString() : null,
+      // Spec 2026-10-02 §6: a reopened round stays open until the commissioner marks it final again.
+      autoFinalize: patch.finalized === false ? false : undefined,
     });
     return json(await roundDetail(saved, now));
   });

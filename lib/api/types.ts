@@ -68,6 +68,8 @@ export type AdminRoundDetail = {
     draftOrder: string[];
     scoring: ScoringConfig;
     finalizedAt: string | null;
+    /** Spec 2026-10-02: false once the commissioner reopens the round. */
+    autoFinalize: boolean;
     draftMode: DraftMode;
     pickSeconds: PickSeconds | null;
     draftStartedAt: string | null;

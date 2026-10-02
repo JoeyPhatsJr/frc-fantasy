@@ -77,6 +77,8 @@ export type RoundRow = {
   poolFilter: PoolFilter | null;
   /** Created by follow-a-team (spec §5.4). */
   autoAdded: boolean;
+  /** Spec 2026-10-02: the daily job may finalize this round. Reopening turns it off. */
+  autoFinalize: boolean;
   createdAt: string;
 };
 

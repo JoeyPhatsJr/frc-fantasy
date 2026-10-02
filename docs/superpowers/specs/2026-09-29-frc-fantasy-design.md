@@ -503,9 +503,9 @@ Evaluated top to bottom; first match wins. "Today" is the local date in `rounds.
 | **Drafting** | `0 < picks < P × R` |
 | **Upcoming** | Draft complete and today < `start_date − 1 day` |
 | **Live** | Draft complete and today ∈ [`start_date − 1 day`, `end_date + 1 day`] |
-| **Awaiting final** | Draft complete and today > `end_date + 1 day` (commissioner is nudged to finalize, §5.5) |
+| **Results pending** | Draft complete and today > `end_date + 1 day` |
 
-- **Final only ever comes from the commissioner.** Dates alone never make a round Final, so late-posted offseason results keep flowing in (10 min cache window, §7.3) until the commissioner decides the results are complete.
+- **Final comes from the daily auto-finalize job or the commissioner** (spec `2026-10-02-auto-finalize-design.md` §4–5): a TBA round finalizes once TBA shows the finals decided (from the day after `end_date`); any round finalizes 3 days after `end_date`. Reopening a round turns auto-finalize off for that round. *(Amended 2026-10-02; was "Final only ever comes from the commissioner".)*
 - Finalizing does **not** freeze scores (scores are always computed from data). It only sets the badge and the 24 h cache window. Reopening clears `finalized_at`, and the round returns to whatever the dates imply.
 
 ### 7.9 Scoring engine (`lib/scoring/`)

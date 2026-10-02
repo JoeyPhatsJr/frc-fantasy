@@ -12,7 +12,7 @@ export const STATUS_LABEL: Record<RoundStatus, string> = {
   drafting: 'Drafting',
   upcoming: 'Upcoming',
   live: 'Live',
-  awaiting_final: 'Awaiting final',
+  awaiting_final: 'Results pending',
   final: 'Final',
 };
 
