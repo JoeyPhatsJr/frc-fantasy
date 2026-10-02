@@ -359,3 +359,44 @@ export function stepDone(step: AdminStep, current: AdminStep): boolean;   // ste
 - `lib/glossary.ts` (§4.7) — test that every key has a non-empty label and short text.
 - `parseEventInput(s)` in `lib/admin/` — accepts `2025parr`, ` 2025PARR `, `https://www.thebluealliance.com/event/2025parr`, `.../event/2025parr#rankings` → `2025parr`; anything else returned trimmed/lowercased for the existing validator to reject.
 - `shareOrCopy(url, title)` — client helper; not unit-tested beyond a fallback test with a stubbed `navigator`.
+
+## 9. Testing
+
+- **Unit (Vitest):** `lib/nav.ts`, `upNext`, `setupDone`/`adminStep`/`stepDone`, `parseEventInput`, glossary completeness, and the §4.5 contrast test. Existing tests that assert old nav behavior (`showAppTabBar`, `activeTab`, `AppTab = 'me' | 'leagues'`) are rewritten to the new rules, not deleted silently.
+- **All existing tests stay green** (1,352 at start), plus `tsc --noEmit` and `next build`.
+- **E2E (Playwright):** update `e2e/live-draft.spec.ts` selectors/flow for the new draft room (Pool · My queue · Board, visible auto-draft switch, commissioner strip); add `e2e/navigation.spec.ts`: Home → league (Leagues tab) → Event tab → Draft tab → Standings → Home via bottom bar, signed in through `POST /api/test/login`, asserting the bottom bar is present on every step and the live-draft pill appears while a draft is live. Real-DB E2E runs locally against the dev Supabase project (as in v2).
+- **Visual check:** a script (`scripts/screens.ts`, Playwright) captures every screen at 390×844 in light and dark against local dev with the demo league seeded (`scripts/seed-demo.ts`), saved under `.superpowers/sdd/2026-10-01-ux-overhaul/screens/` (gitignored) for review.
+- **Accessibility:** run the `web-design-guidelines` review on the changed UI in Phase 5; tap targets ≥ 44px, visible focus ring, `aria-current` on tabs, `aria-expanded` on expandable rows, sheet focus trap + Escape.
+
+## 10. Phases and timeline
+
+One branch `ux-overhaul`; each phase ends with tests + typecheck green and a commit. One comprehensive review at the end (Joey's standing preference), then the PR.
+
+| # | Phase | Contents | Target |
+|---|---|---|---|
+| 1 | Visual system | tokens (§4.1), contrast test, primitives (§4.6), glossary | Oct 2 |
+| 2 | Shell + nav | `lib/nav.ts`, `BottomBar`, app header, `LeagueHeader` (tabs, switcher, ⋯ menu), `/you`, `/me/settings` redirect, `/l/slug/draft`, live-draft pill | Oct 3 |
+| 3 | Player screens | Home + `upNext`, Leagues, Standings, season view, Event, Draft, You, Join, Sign in, Create, Landing | Oct 4–8 |
+| 4 | Admin | league admin (§7.1), round checklist (§7.2), `adminStep`, `parseEventInput` | Oct 9–11 |
+| 5 | Polish + verify | both themes at 360/390px, a11y pass, E2E updates + navigation spec, screenshots, docs | Oct 12–14 |
+| — | Final review + fix wave → PR (not merged until Joey OKs) | | ~Oct 15 |
+
+Auto-finalize (separate spec) follows, Oct 16–18; buffer to the Oct 21 freeze.
+
+## 11. Risks
+
+| Risk | Mitigation |
+|---|---|
+| Draft night runs on the redesigned draft room | Draft logic (`useDraftRoom`, `lib/draft/*`, draft APIs) untouched; two-phone E2E must pass; a dry-run draft in the demo league before the freeze |
+| Removing components that other screens still import | Delete old components (`AppTabBar`, `TabBar`, `LeagueBar`, `HeaderAccount`, `LiveDraftBanner`, `LeagueMeCard`, `MeHome`) only after `tsc` shows no importers |
+| Live-draft pill adds a query to every page | Repo-only query, no TBA; errors render nothing; skipped for signed-out users |
+| Token change makes some old screen unreadable mid-build | Phase 1 contrast test; each phase screenshots both themes |
+| Season-league tab change confuses existing links | `/l/slug/r/id` still works for season rounds; only the tab set changes |
+
+## 12. Amendments to earlier specs
+
+- **v2 §4.6 (app tabs Me · Leagues):** replaced by §5.2 (Home · Leagues · You, always visible when signed in).
+- **v1/v2 league tabs (Standings · Round · Admin, bottom bar on phones):** replaced by §5.3 (top tabs Standings · Event · Draft · Admin; full-season: Standings · Draft · Admin).
+- **v2 §7.6 live-draft banner on league pages:** replaced by the app-wide pill (§5.5).
+- **`design-system/frc-fantasy/OVERHAUL.md`:** superseded on palette and card usage by §4; a short note at its top points here.
+- Round status rules (v1 §7.8), scoring, caching, schema and APIs: **unchanged**.
