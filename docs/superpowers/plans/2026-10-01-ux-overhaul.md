@@ -675,3 +675,532 @@ export function BandTabs({ items, active, label }: { items: TabItem[]; active: s
 - [ ] **Step 8: Run** `npx vitest run && npx tsc --noEmit` → green.
 
 - [ ] **Step 9: Commit** — `feat(ux): Row, Section, StatusStrip, tabs and Sheet primitives`.
+
+---
+
+## Phase 2 — Shell and navigation
+
+**Pattern for client components (already used in the repo, e.g. `LeagueMeCardView`/`AppTabBarView`):** export a pure `XView(props)` that renders markup from props, and a thin stateful `X` wrapper that supplies hooks (`usePathname`, `useState`, router). Tests render the `View`.
+
+### Task 4: `lib/nav.ts` rewrite
+
+**Files:**
+- Modify: `lib/nav.ts` (full rewrite)
+- Create: `tests/nav.test.ts`
+- Modify: `tests/ui/shell.test.ts` (delete the `activeTab` describe block — moved to `tests/nav.test.ts` as `leagueTab`)
+
+**Interfaces:**
+- Consumes: `LeagueFormat` from `@/lib/db/types` (`'event' | 'season'`).
+- Produces:
+
+```ts
+export type AppTab = 'home' | 'leagues' | 'you';
+export function appTab(pathname: string): AppTab | null;
+export type LeagueTab = 'standings' | 'event' | 'draft' | 'admin';
+export function leagueTab(pathname: string, slug: string): LeagueTab | null;
+export function leagueTabs(format: LeagueFormat, isCommissioner: boolean): LeagueTab[];
+export function leagueTabHref(tab: LeagueTab, slug: string, targetRoundId: string | null): string;
+export const LEAGUE_TAB_LABEL: Record<LeagueTab, string>; // standings 'Standings', event 'Event', draft 'Draft', admin 'Admin'
+export function showLiveDraftPill(pathname: string): boolean;
+```
+
+- [ ] **Step 1: Write the failing test** — `tests/nav.test.ts`
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { appTab, leagueTab, leagueTabHref, leagueTabs, showLiveDraftPill } from '@/lib/nav';
+
+describe('appTab', () => {
+  it('home is the root only', () => {
+    expect(appTab('/')).toBe('home');
+  });
+  it('leagues covers the list, create, join and every league page', () => {
+    for (const p of ['/leagues', '/leagues/new', '/join/ABC123', '/l/fam', '/l/fam/r/1', '/l/fam/r/1/draft', '/l/fam/draft', '/l/fam/admin/r/1']) {
+      expect(appTab(p), p).toBe('leagues');
+    }
+  });
+  it('you covers /you and the old settings path', () => {
+    expect(appTab('/you')).toBe('you');
+    expect(appTab('/you/')).toBe('you');
+    expect(appTab('/me/settings')).toBe('you');
+  });
+  it('is null for sign-in and unknown pages', () => {
+    expect(appTab('/signin')).toBeNull();
+    expect(appTab('/younger')).toBeNull();
+    expect(appTab('/leaguesx')).toBeNull();
+  });
+});
+
+describe('leagueTab', () => {
+  it('maps each league path to its tab', () => {
+    expect(leagueTab('/l/fam', 'fam')).toBe('standings');
+    expect(leagueTab('/l/fam/', 'fam')).toBe('standings');
+    expect(leagueTab('/l/fam/r/abc', 'fam')).toBe('event');
+    expect(leagueTab('/l/fam/r/abc/draft', 'fam')).toBe('draft');
+    expect(leagueTab('/l/fam/draft', 'fam')).toBe('draft');
+    expect(leagueTab('/l/fam/admin', 'fam')).toBe('admin');
+    expect(leagueTab('/l/fam/admin/r/abc', 'fam')).toBe('admin');
+  });
+  it('is null outside this league and matches slugs literally', () => {
+    expect(leagueTab('/', 'fam')).toBeNull();
+    expect(leagueTab('/l/fam-2', 'fam')).toBeNull();
+    expect(leagueTab('/l/fam/administrator', 'fam')).toBeNull();
+    expect(leagueTab('/l/a.b', 'a.b')).toBe('standings');
+    expect(leagueTab('/l/axb', 'a.b')).toBeNull();
+  });
+});
+
+describe('leagueTabs', () => {
+  it('event leagues have an Event tab; season leagues do not', () => {
+    expect(leagueTabs('event', false)).toEqual(['standings', 'event', 'draft']);
+    expect(leagueTabs('event', true)).toEqual(['standings', 'event', 'draft', 'admin']);
+    expect(leagueTabs('season', false)).toEqual(['standings', 'draft']);
+    expect(leagueTabs('season', true)).toEqual(['standings', 'draft', 'admin']);
+  });
+});
+
+describe('leagueTabHref', () => {
+  it('points Event at the target round, or the standings when there is none', () => {
+    expect(leagueTabHref('event', 'fam', 'r1')).toBe('/l/fam/r/r1');
+    expect(leagueTabHref('event', 'fam', null)).toBe('/l/fam/r/none');
+    expect(leagueTabHref('draft', 'fam', 'r1')).toBe('/l/fam/draft');
+    expect(leagueTabHref('standings', 'fam', null)).toBe('/l/fam');
+    expect(leagueTabHref('admin', 'fam', null)).toBe('/l/fam/admin');
+  });
+  it('encodes the slug', () => {
+    expect(leagueTabHref('standings', 'a b', null)).toBe('/l/a%20b');
+  });
+});
+
+describe('showLiveDraftPill', () => {
+  it('hides on draft pages and the sign-in page only', () => {
+    expect(showLiveDraftPill('/')).toBe(true);
+    expect(showLiveDraftPill('/l/fam')).toBe(true);
+    expect(showLiveDraftPill('/l/fam/draft')).toBe(false);
+    expect(showLiveDraftPill('/l/fam/r/1/draft')).toBe(false);
+    expect(showLiveDraftPill('/signin')).toBe(false);
+  });
+});
+```
+
+Note on `/l/fam/r/none`: when a league has no rounds, the Event tab still exists (§5.3); it links to the sentinel round id `none`, which the round page renders as the "No events yet" empty state (Task 10). `isUuid('none')` is false, so `loadRoundPage` returns null today — Task 10 handles `roundId === 'none'` before calling it.
+
+- [ ] **Step 2: Run** `npx vitest run tests/nav.test.ts` → FAIL.
+
+- [ ] **Step 3: Implement `lib/nav.ts`**
+
+```ts
+import type { LeagueFormat } from '@/lib/db/types';
+
+const trim = (p: string) => (p.length > 1 ? p.replace(/\/+$/, '') : p);
+
+export type AppTab = 'home' | 'leagues' | 'you';
+
+/** Which bottom-bar tab a path belongs to (spec §5.2). Every league page counts as Leagues. */
+export function appTab(pathname: string): AppTab | null {
+  const p = trim(pathname);
+  if (p === '/') return 'home';
+  if (p === '/you' || p === '/me/settings') return 'you';
+  if (p === '/leagues' || p.startsWith('/leagues/') || p.startsWith('/join/') || p.startsWith('/l/')) return 'leagues';
+  return null;
+}
+
+export type LeagueTab = 'standings' | 'event' | 'draft' | 'admin';
+
+export const LEAGUE_TAB_LABEL: Record<LeagueTab, string> = {
+  standings: 'Standings',
+  event: 'Event',
+  draft: 'Draft',
+  admin: 'Admin',
+};
+
+/** Which league tab a path belongs to, or null outside this league (spec §5.4). */
+export function leagueTab(pathname: string, slug: string): LeagueTab | null {
+  const base = `/l/${slug}`;
+  const p = trim(pathname);
+  if (p === base) return 'standings';
+  if (!p.startsWith(`${base}/`)) return null;
+  const parts = p.slice(base.length + 1).split('/');
+  if (parts[0] === 'admin') return 'admin';
+  if (parts[0] === 'draft') return 'draft';
+  if (parts[0] === 'r') return parts[2] === 'draft' ? 'draft' : 'event';
+  return null;
+}
+
+/** Full-season leagues have no Event tab: the season is the standings (spec §6.4). */
+export function leagueTabs(format: LeagueFormat, isCommissioner: boolean): LeagueTab[] {
+  const tabs: LeagueTab[] = format === 'season' ? ['standings', 'draft'] : ['standings', 'event', 'draft'];
+  return isCommissioner ? [...tabs, 'admin'] : tabs;
+}
+
+export function leagueTabHref(tab: LeagueTab, slug: string, targetRoundId: string | null): string {
+  const base = `/l/${encodeURIComponent(slug)}`;
+  switch (tab) {
+    case 'standings':
+      return base;
+    case 'event':
+      return `${base}/r/${targetRoundId ?? 'none'}`;
+    case 'draft':
+      return `${base}/draft`;
+    case 'admin':
+      return `${base}/admin`;
+  }
+}
+
+/** The live-draft pill steps aside where it would be redundant or in the way (spec §5.5). */
+export function showLiveDraftPill(pathname: string): boolean {
+  const p = trim(pathname);
+  if (p === '/signin') return false;
+  return !/^\/l\/[^/]+(\/r\/[^/]+)?\/draft$/.test(p);
+}
+```
+
+Note: slugs reaching `leagueTab` come from route params (already decoded); `leagueTabHref` encodes for links. Existing tests passed raw slugs like `a.b`; keep that literal-match behavior.
+
+- [ ] **Step 4: Remove old exports' callers.** `activeTab`, `showAppTabBar` and `AppTab = 'me' | 'leagues'` are used by `components/TabBar.tsx`, `components/AppTabBar.tsx`, `components/HeaderAccount.tsx` and `tests/ui/shell.test.ts`/`tests/ui/me.test.ts`. Those components are replaced in Task 5/6 — to keep this task green, temporarily keep thin compatibility exports at the bottom of `lib/nav.ts`:
+
+```ts
+/** @deprecated removed in Task 17 — old league TabBar/AppTabBar only. */
+export function activeTab(pathname: string, slug: string): 'standings' | 'round' | 'admin' | null {
+  const t = leagueTab(pathname, slug);
+  return t === 'event' ? 'round' : t === 'draft' ? 'round' : t;
+}
+/** @deprecated removed in Task 17. */
+export function showAppTabBar(pathname: string): boolean {
+  return !pathname.startsWith('/l/');
+}
+```
+
+and update old callers that compare `appTab(...) === 'me'` to `'home'`/`'you'` as appropriate. Move the `activeTab` tests out of `tests/ui/shell.test.ts` (they're superseded by `leagueTab` tests).
+
+- [ ] **Step 5: Run** `npx vitest run && npx tsc --noEmit` → green.
+
+- [ ] **Step 6: Commit** — `feat(ux): navigation rules for the Home/Leagues/You bar and league tabs`.
+
+### Task 5: App shell — BottomBar, AppHeader, `/you`, settings redirect
+
+**Files:**
+- Create: `components/shell/BottomBar.tsx`, `components/shell/AppHeader.tsx`, `components/you/AppearanceControl.tsx`, `app/you/page.tsx`, `tests/ui/shell-v3.test.ts`
+- Modify: `app/layout.tsx`, `app/me/settings/page.tsx`, `components/SettingsForm.tsx`
+
+**Interfaces:**
+- Consumes: `appTab` (Task 4), `Button` (Task 2), icons `Trophy`, `UserRound` + a new `Home` icon added to `components/ui/icons.tsx` (24×24 stroke house, same style as the others).
+- Produces:
+  - `export function BottomBarView({ pathname }: { pathname: string })`, `export function BottomBar()` (client)
+  - `export function AppHeader({ signedIn }: { signedIn: boolean })` (server; band header, logo, "Sign in" button when signed out)
+  - `export function AppearanceControlView({ theme, onChange }: { theme: Theme | null; onChange: (t: Theme) => void })`, `export function AppearanceControl()` (client; segmented Light/Dark writing `document.documentElement.dataset.theme` + `localStorage[THEME_STORAGE_KEY]`, same mechanics as `ThemeToggle`)
+  - Route `/you`
+
+- [ ] **Step 1: Write the failing tests** — `tests/ui/shell-v3.test.ts`
+
+```ts
+import { createElement as h } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it } from 'vitest';
+import { BottomBarView } from '@/components/shell/BottomBar';
+import { AppHeader } from '@/components/shell/AppHeader';
+import { AppearanceControlView } from '@/components/you/AppearanceControl';
+
+const r = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(el);
+
+describe('BottomBarView', () => {
+  it('has Home, Leagues and You, fixed to the bottom with safe-area padding', () => {
+    const html = r(h(BottomBarView, { pathname: '/' }));
+    expect(html).toContain('aria-label="App"');
+    for (const [label, href] of [['Home', '/'], ['Leagues', '/leagues'], ['You', '/you']]) {
+      expect(html).toContain(`href="${href}"`);
+      expect(html).toContain(label);
+    }
+    expect(html).toContain('fixed inset-x-0 bottom-0');
+    expect(html).toContain('env(safe-area-inset-bottom)');
+  });
+  it('stays on league pages, with Leagues active', () => {
+    const html = r(h(BottomBarView, { pathname: '/l/fam/r/1' }));
+    expect(html).toMatch(/href="\/leagues"[^>]*aria-current="page"/);
+  });
+  it('marks You active on /you', () => {
+    expect(r(h(BottomBarView, { pathname: '/you' }))).toMatch(/href="\/you"[^>]*aria-current="page"/);
+  });
+});
+
+describe('AppHeader', () => {
+  it('is the dark band with the wordmark linking home', () => {
+    const html = r(h(AppHeader, { signedIn: true }));
+    expect(html).toContain('bg-band');
+    expect(html).toContain('href="/"');
+    expect(html).toContain('FRC FANTASY');
+    expect(html).not.toContain('Sign in');
+  });
+  it('shows Sign in when signed out', () => {
+    expect(r(h(AppHeader, { signedIn: false }))).toContain('href="/signin"');
+  });
+});
+
+describe('AppearanceControlView', () => {
+  it('is a two-option radio group with the current theme checked', () => {
+    const html = r(h(AppearanceControlView, { theme: 'dark', onChange: () => {} }));
+    expect(html).toContain('role="radiogroup"');
+    expect(html).toMatch(/aria-checked="true"[^>]*>[^<]*Dark|Dark[\s\S]*aria-checked="true"/);
+    expect(html).toContain('Light');
+  });
+});
+```
+
+- [ ] **Step 2: Run** → FAIL.
+
+- [ ] **Step 3: Implement `BottomBar.tsx`** — copy the structure of `components/AppTabBar.tsx` (`'use client'`, `usePathname`), but: three tabs `{ id: 'home', label: 'Home', href: '/', Icon: Home }`, `{ id: 'leagues', label: 'Leagues', href: '/leagues', Icon: Trophy }`, `{ id: 'you', label: 'You', href: '/you', Icon: UserRound }`; **no** `showAppTabBar` check (always renders); always fixed (`fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)]`) at every width — drop the `md:static` desktop pill variant; each link `min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[12px] font-semibold`; active `text-fg` with a 3px `bg-accent` bar on top (`before:` pseudo like today), inactive `text-fg-muted`.
+
+- [ ] **Step 4: Implement `AppHeader.tsx`** — move `Mark` from `app/layout.tsx` into this file. `<header className="sticky top-0 z-30 bg-band text-on-band">` containing the same inner flex row as today (logo link → `/`, `font-display text-2xl font-bold uppercase tracking-wide`), and on the right, when `!signedIn`, `<Button href="/signin" size="sm" variant="accent">Sign in</Button>`. No theme toggle, no avatar.
+
+- [ ] **Step 5: Implement `AppearanceControl.tsx`** — `AppearanceControlView` renders `<div role="radiogroup" aria-label="Appearance" className="inline-flex rounded-lg border border-border p-1">` with two `<button role="radio" aria-checked>` (Light, Dark; `min-h-11 px-4`; checked `bg-fg text-bg`). `theme === null` (before mount) renders both unchecked. `AppearanceControl` mirrors `ThemeToggle`'s effect/try-catch storage logic.
+
+- [ ] **Step 6: `app/you/page.tsx`**
+
+```tsx
+import { AppearanceControl } from '@/components/you/AppearanceControl';
+import { SettingsForm } from '@/components/SettingsForm';
+import { SignInCard } from '@/components/SignInCard';
+import { Section } from '@/components/ui/Section';
+import { getUser } from '@/lib/auth/session';
+import { getRepo } from '@/lib/db';
+
+export const dynamic = 'force-dynamic';
+
+export default async function YouPage() {
+  const user = await getUser();
+  if (!user) return <SignInCard title="Sign in to see your profile" next="/you" />;
+  const profile = await getRepo().getProfile(user.id);
+  return (
+    <main id="main" className="space-y-8">
+      <h1 className="font-display text-[28px] font-bold leading-8 text-fg">You</h1>
+      {/* "My season" is added in Task 9 once loadHome exists. */}
+      <Section label="Appearance">
+        <div className="px-4 py-3"><AppearanceControl /></div>
+      </Section>
+      <SettingsForm profile={{ displayName: profile?.displayName ?? 'Player', frcTeam: profile?.frcTeam ?? null }} />
+    </main>
+  );
+}
+```
+
+Restyle `SettingsForm` into two `Section`s — **Profile** (Display name, "My FRC team (optional)", Save) and **Account** (Sign out; then, separated by `mt-8 border-t pt-6`, the Delete account control with `variant="danger"`). Keep all its logic, field names and API calls. Update its display-name hint to: "Shown in every league. You can also set a different name inside a league from its ⋯ menu."
+
+- [ ] **Step 7: `/me/settings` → redirect.** Replace the page body with `import { redirect } from 'next/navigation'; export const dynamic = 'force-dynamic'; export default function SettingsRedirect() { redirect('/you'); }`. Update `tests/ui/pages.test.ts` / any test that rendered the old settings page.
+
+- [ ] **Step 8: Rewire `app/layout.tsx`.** Replace the inline header with `<AppHeader signedIn={headerUser !== null} />`; replace `<AppTabBar />` with `<BottomBar />` (signed in only, as today); keep `SkipLink`, fonts, theme boot script, footer. Content wrapper: `mx-auto w-full max-w-2xl flex-1 px-4 py-6` plus `pb-28` when signed in (bar + pill clearance), `pb-10` otherwise; drop the `md:` variants that assumed a static desktop bar. `loadHeaderUser` can shrink to a boolean `isSignedIn` (keep its try/catch fail-to-signed-out behavior). `HeaderAccount`/`ThemeToggle` are no longer imported (deleted in Task 17).
+
+- [ ] **Step 9: Run** `npx vitest run && npx tsc --noEmit` → green (fix tests that asserted the old header: `tests/ui/shell.test.ts` HeaderAccount cases move to deletion in Task 17 — mark them `describe.skip` now **only** if the component still exists but is unused; prefer leaving them passing since the component file still exists).
+
+- [ ] **Step 10: Commit** — `feat(ux): Home/Leagues/You bottom bar, band header and You page`.
+
+### Task 6: League header — tabs, switcher, ⋯ menu, `/l/[slug]/draft`
+
+**Files:**
+- Create: `components/shell/LeagueHeader.tsx`, `components/shell/LeagueMenu.tsx`, `components/shell/LeagueSwitcher.tsx`, `app/l/[slug]/draft/page.tsx`
+- Modify: `app/l/[slug]/layout.tsx`
+- Modify: `tests/ui/shell-v3.test.ts` (append)
+
+**Interfaces:**
+- Consumes: `leagueTab`, `leagueTabs`, `leagueTabHref`, `LEAGUE_TAB_LABEL` (Task 4); `BandTabs`, `Sheet` (Task 3); `leaveLeague`, `renameMe` from `@/lib/admin/client`; `leaveConfirmText` + `NAME_MAX` (from `LeagueMeCard`/`lib/leagues/names` — move `leaveConfirmText` into `LeagueMenu.tsx` and re-export it from `LeagueMeCard.tsx` until Task 17).
+- Produces:
+
+```ts
+export type LeagueHeaderProps = {
+  slug: string; name: string; format: LeagueFormat;
+  isCommissioner: boolean;
+  /** Signed-in member of this league (gets ⋯ menu); false for signed-out viewers and watchers. */
+  isMember: boolean;
+  /** This member's display name in this league (for the rename field); null when not a member. */
+  myName: string | null;
+  targetRoundId: string | null;
+  anyLive: boolean;
+  /** Other leagues of the signed-in user, for the switcher; [] hides the chip. */
+  myLeagues: { slug: string; name: string }[];
+};
+export function LeagueHeaderView(p: LeagueHeaderProps & { pathname: string }): JSX.Element;
+export function LeagueHeader(p: LeagueHeaderProps): JSX.Element; // client wrapper (usePathname)
+```
+
+- [ ] **Step 1: Write the failing tests** (append to `tests/ui/shell-v3.test.ts`)
+
+```ts
+import { LeagueHeaderView } from '@/components/shell/LeagueHeader';
+
+const base = {
+  slug: 'fam', name: 'Family League', format: 'event' as const, isCommissioner: false, isMember: true,
+  myName: 'Joey', targetRoundId: 'r1', anyLive: false, myLeagues: [], pathname: '/l/fam',
+};
+
+describe('LeagueHeaderView', () => {
+  it('shows the league name on the band with Standings · Event · Draft tabs', () => {
+    const html = r(h(LeagueHeaderView, base));
+    expect(html).toContain('bg-band');
+    expect(html).toContain('Family League');
+    expect(html).toContain('href="/l/fam"');
+    expect(html).toContain('href="/l/fam/r/r1"');
+    expect(html).toContain('href="/l/fam/draft"');
+    expect(html).not.toContain('href="/l/fam/admin"');
+  });
+  it('adds Admin and the Commissioner label for commissioners', () => {
+    const html = r(h(LeagueHeaderView, { ...base, isCommissioner: true }));
+    expect(html).toContain('href="/l/fam/admin"');
+    expect(html).toContain('Commissioner');
+  });
+  it('season leagues have no Event tab', () => {
+    const html = r(h(LeagueHeaderView, { ...base, format: 'season' }));
+    expect(html).not.toContain('href="/l/fam/r/r1"');
+    expect(html).toContain('href="/l/fam/draft"');
+  });
+  it('marks the Draft tab active inside the draft room', () => {
+    expect(r(h(LeagueHeaderView, { ...base, pathname: '/l/fam/r/r1/draft' }))).toMatch(/href="\/l\/fam\/draft"[^>]*aria-current="page"/);
+  });
+  it('links Event to the empty-state round when the league has no rounds', () => {
+    expect(r(h(LeagueHeaderView, { ...base, targetRoundId: null }))).toContain('href="/l/fam/r/none"');
+  });
+  it('signed-out viewers get no menu and no switcher', () => {
+    const html = r(h(LeagueHeaderView, { ...base, isMember: false, myName: null, myLeagues: [{ slug: 'x', name: 'X' }] }));
+    expect(html).not.toContain('aria-label="League menu"');
+    expect(html).not.toContain('Switch');
+  });
+  it('members with other leagues get a Switch chip and the ⋯ menu', () => {
+    const html = r(h(LeagueHeaderView, { ...base, myLeagues: [{ slug: 'x', name: 'X' }] }));
+    expect(html).toContain('Switch');
+    expect(html).toContain('aria-label="League menu"');
+  });
+  it('truncates a very long league name', () => {
+    const html = r(h(LeagueHeaderView, { ...base, name: 'The Extremely Long Habich Family And Friends Fantasy League' }));
+    expect(html).toContain('truncate');
+  });
+});
+```
+
+- [ ] **Step 2: Run** → FAIL.
+
+- [ ] **Step 3: Implement `LeagueHeader.tsx`** (`'use client'`).
+  - `LeagueHeaderView` renders `<div className="-mx-4 -mt-6 mb-4 bg-band px-4 pt-3 text-on-band">` (bleeds to the edges under the sticky `AppHeader`; the root content wrapper has `py-6`, hence `-mt-6`).
+  - Row 1: `<Link href=/l/slug className="min-w-0 flex-1 truncate font-display text-[22px] font-bold uppercase tracking-[.04em]">{name}</Link>`; live dot (`data-live-dot`, `motion-safe:animate-pulse`, sr-only "A round is live") when `anyLive`; "Commissioner" label (`text-[11px] font-bold uppercase tracking-[.1em] text-secondary` — on the band use `text-[#c4b5fd]`? **No**: use `rounded-[4px] bg-secondary px-1.5 text-on-secondary`); `LeagueSwitcher` chip when `isMember && myLeagues.length > 0`; `LeagueMenu` button when `isMember`.
+  - Row 2: `<BandTabs label="League" active={leagueTab(pathname, slug)} items={leagueTabs(format, isCommissioner).map(t => ({ key: t, label: LEAGUE_TAB_LABEL[t], href: leagueTabHref(t, slug, targetRoundId) }))} />`.
+  - `LeagueHeader` = `<LeagueHeaderView {...p} pathname={usePathname() ?? `/l/${p.slug}`} />`.
+
+- [ ] **Step 4: Implement `LeagueSwitcher.tsx`** (`'use client'`): a chip button `Switch ▾` (`min-h-11 rounded-full border border-on-band/30 px-3 text-[13px] font-semibold`, `aria-haspopup="dialog"`) opening a `Sheet` titled "Your leagues" listing `myLeagues` as `Row href=/l/{slug}` plus a final `Row href="/leagues" title="All leagues"`.
+
+- [ ] **Step 5: Implement `LeagueMenu.tsx`** (`'use client'`): `⋯` icon button (`aria-label="League menu"`, 44px) opening a `Sheet` titled the league name, containing: (a) "Your name in this league" form (move the rename form + `renameMe` call from `LeagueMeCard`, same validation, `NAME_MAX`, success/danger message), (b) "Copy league link" (`CopyButton` with `${location.origin}/l/${slug}` — compute in an effect, or use `CopyButton` with a relative→absolute helper), (c) "Leave league" `Button variant="danger"` with the same two-step confirm text from `leaveConfirmText(name)` and `leaveLeague` call, then `router.push('/leagues')`. Export a `LeagueMenuView` for tests mirroring `LeagueMeCardView`'s props; move/port `tests/ui/league-me.test.ts` cases to the new view (same behaviors: rename, leave confirm text, busy states).
+
+- [ ] **Step 6: Rewire `app/l/[slug]/layout.tsx`.** Extend `loadShell` (database only — no TBA) to also return `format: league.format`, `isMember` (`access.member !== null` — check `LeagueAccess` in `lib/auth/roles.ts` for the member field name), `myName` (the member's display name in this league from `repo.listPlayers` / `withPublicNames`, or null), and `myLeagues` (if signed in: `repo.listLeaguesForUser(user.id)` minus this league, mapped to `{ slug, name }`; wrap in try/catch → `[]` on failure, Review Focus 5). Replace `<LeagueBar/>` + `<TabBar/>` with `<LeagueHeader {...} />`. Keep the existing error fallback (`return children`) and `canView` behavior.
+
+- [ ] **Step 7: `app/l/[slug]/draft/page.tsx`**
+
+```tsx
+import { notFound, redirect } from 'next/navigation';
+import { PrivateLeague } from '@/components/PrivateLeague';
+import { leagueAccess } from '@/lib/auth/roles';
+import { getRepo } from '@/lib/db';
+import { localDate, roundStatus } from '@/lib/rounds/status';
+import { targetRound } from '@/lib/rounds/target';
+
+export const dynamic = 'force-dynamic';
+
+type Props = { params: Promise<{ slug: string }> };
+
+/** The Draft tab: jump to the current round's draft (spec §5.1). */
+export default async function DraftTabPage({ params }: Props) {
+  const { slug } = await params;
+  const access = await leagueAccess(slug);
+  if (!access) notFound();
+  if (!access.canView) return <PrivateLeague signedIn={access.user !== null} next={`/l/${slug}/draft`} />;
+  const repo = getRepo();
+  const rounds = await repo.listRounds(access.league.id);
+  const picks = await repo.listPicksForRounds(rounds.map((r) => r.id));
+  const now = new Date();
+  const target = targetRound(
+    rounds.map((round) => ({ id: round.id, startDate: round.startDate, status: roundStatus(round, picks.filter((p) => p.roundId === round.id).length, now) })),
+    localDate(now, rounds[0]?.timezone),
+  );
+  if (target) redirect(`/l/${encodeURIComponent(slug)}/r/${target}/draft`);
+  return (
+    <main id="main" className="space-y-4 py-6 text-center">
+      <h1 className="font-display text-[24px] font-bold text-fg">No drafts yet</h1>
+      <p className="text-fg-muted">When the commissioner adds an event, its draft shows up here.</p>
+    </main>
+  );
+}
+```
+
+Extract the shared "statuses + target" computation used by the layout and this page into `lib/rounds/targetFor.ts` (`export function targetFromRows(rounds: RoundRow[], picks: PickRow[], now: Date): string | null`) with a unit test (`tests/rounds/targetFor.test.ts`: no rounds → null; one live round among three → its id), and use it in both places.
+
+- [ ] **Step 8: Run** `npx vitest run && npx tsc --noEmit` → green.
+
+- [ ] **Step 9: Commit** — `feat(ux): league header with top tabs, switcher, menu and Draft tab route`.
+
+### Task 7: App-wide live-draft pill
+
+**Files:**
+- Create: `lib/views/liveDrafts.ts`, `components/shell/LiveDraftPill.tsx`, `tests/views/liveDrafts.test.ts`
+- Modify: `app/layout.tsx`, `app/l/[slug]/page.tsx`, `app/l/[slug]/r/[roundId]/page.tsx` (remove `LiveDraftBanner`/`memberLiveDrafts` usage)
+
+**Interfaces:**
+- Consumes: `repo.listLeaguesForUser(userId)` → `{ league, player }[]`; `repo.listRounds(leagueId)`; `repo.listPicksForRounds(ids)`; `draftPhase`, `onClockPlayer` from `@/lib/draft/live`; `showLiveDraftPill` (Task 4).
+- Produces:
+
+```ts
+export type MyLiveDraft = { leagueSlug: string; leagueName: string; roundId: string; eventName: string; phase: 'live' | 'paused'; myTurn: boolean };
+export async function loadMyLiveDrafts(userId: string): Promise<MyLiveDraft[]>; // sorted: myTurn first, then league name
+export function LiveDraftPillView(p: { drafts: MyLiveDraft[]; pathname: string }): JSX.Element | null;
+export function LiveDraftPill(p: { drafts: MyLiveDraft[] }): JSX.Element | null; // client wrapper
+```
+
+- [ ] **Step 1: Write the failing tests** — `tests/views/liveDrafts.test.ts`. Use the in-memory repo the other view tests use (`tests/helpers/memoryRepo.ts` + `tests/helpers/builders.ts`; read `tests/views/views.test.ts` for how a repo is installed — mirror it exactly). Cases:
+  1. User in a league whose round has `draftMode: 'live'`, `draftStartedAt` set, 0 picks → one entry, `phase: 'live'`, `myTurn` true when the user's player is first in `draftOrder`.
+  2. Paused draft → `phase: 'paused'`.
+  3. A `commissioner`-mode round, a not-started live round, and a finished draft → no entries.
+  4. Two leagues, one where it's the user's turn → that one is first.
+  5. User in no leagues → `[]`.
+  And for the view (render tests in the same file with `renderToStaticMarkup`):
+  6. `LiveDraftPillView({ drafts: [], pathname: '/' })` → `''`.
+  7. One live draft → contains `Draft is live`, the league name, and `href="/l/{slug}/r/{roundId}/draft"`.
+  8. `myTurn` → contains `Your pick!`.
+  9. On `/l/fam/r/1/draft` → `''`.
+  10. Two drafts → contains `+1`.
+
+- [ ] **Step 2: Run** → FAIL.
+
+- [ ] **Step 3: Implement `lib/views/liveDrafts.ts`**
+
+```ts
+import { getRepo } from '@/lib/db';
+import { draftPhase, onClockPlayer } from '@/lib/draft/live';
+
+export type MyLiveDraft = { leagueSlug: string; leagueName: string; roundId: string; eventName: string; phase: 'live' | 'paused'; myTurn: boolean };
+
+/** Every running draft in the user's leagues, database only (spec §5.5). */
+export async function loadMyLiveDrafts(userId: string): Promise<MyLiveDraft[]> {
+  const repo = getRepo();
+  const memberships = await repo.listLeaguesForUser(userId);
+  const perLeague = await Promise.all(
+    memberships.map(async ({ league, player }) => {
+      const rounds = (await repo.listRounds(league.id)).filter((r) => r.draftMode === 'live' && r.draftStartedAt);
+      if (rounds.length === 0) return [];
+      const picks = await repo.listPicksForRounds(rounds.map((r) => r.id));
+      return rounds.flatMap((round): MyLiveDraft[] => {
+        const count = picks.filter((p) => p.roundId === round.id).length;
+        const phase = draftPhase(round, count);
+        if (phase !== 'live' && phase !== 'paused') return [];
+        return [{ leagueSlug: league.slug, leagueName: league.name, roundId: round.id, eventName: round.eventName, phase, myTurn: phase === 'live' && onClockPlayer(round, count) === player.id }];
+      });
+    }),
+  );
+  return perLeague.flat().sort((a, b) => Number(b.myTurn) - Number(a.myTurn) || a.leagueName.localeCompare(b.leagueName));
+}
+```
+
+(Check `onClockPlayer`'s first parameter type in `lib/draft/live.ts` — it takes `{ draftOrder, rosterSize, ... }`; a `RoundRow` satisfies it.)
+
+- [ ] **Step 4: Implement `LiveDraftPill.tsx`** (`'use client'`): `LiveDraftPillView` returns null when `drafts.length === 0 || !showLiveDraftPill(pathname)`. Otherwise a `Link` to the first draft: `fixed inset-x-4 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 mx-auto flex min-h-11 max-w-md items-center gap-2 rounded-full bg-accent px-4 text-on-accent shadow-lg font-semibold`; text: `● Your pick! — {league}` / `● Draft is live — {league} · Join` / `Draft paused — {league}`; `+{n-1}` suffix when more than one; dot `motion-safe:animate-pulse`. `LiveDraftPill` = view + `usePathname()`.
+
+- [ ] **Step 5: Wire into `app/layout.tsx`.** When signed in: `const drafts = await loadMyLiveDrafts(user.id).catch((e) => { console.error(e); return []; });` (Review Focus 5) and render `<LiveDraftPill drafts={drafts} />` right before `<BottomBar />`. `loadHeaderUser` must now also return the user id (or call `getUser()` once and reuse).
+
+- [ ] **Step 6: Remove the per-page banner.** In `app/l/[slug]/page.tsx` and `app/l/[slug]/r/[roundId]/page.tsx`, delete `<LiveDraftBanner …/>` and the `memberLiveDrafts` call/import. (Those pages are rebuilt in Tasks 10–11; this keeps the pill the only banner.) Update `tests/ui/pages.test.ts`/`round-components.test.ts` cases that asserted the banner on those pages.
+
+- [ ] **Step 7: Run** `npx vitest run && npx tsc --noEmit` → green.
+
+- [ ] **Step 8: Commit** — `feat(ux): app-wide live-draft pill`.
