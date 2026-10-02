@@ -4,9 +4,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { Flag, ListOrdered, Settings2, type IconProps } from '@/components/ui/icons';
-import { activeTab, type LeagueTab } from '@/lib/nav';
+import { activeTab } from '@/lib/nav';
 
-type Tab = { id: LeagueTab; label: string; href: string; Icon: (props: IconProps) => ReactNode };
+type Tab = { id: 'standings' | 'round' | 'admin'; label: string; href: string; Icon: (props: IconProps) => ReactNode };
 
 /**
  * League navigation. Small screens: a fixed bottom bar (64px plus the iPhone home-indicator inset).

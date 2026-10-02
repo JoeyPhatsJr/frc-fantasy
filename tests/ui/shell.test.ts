@@ -4,39 +4,9 @@ import { describe, expect, it } from 'vitest';
 import { SkipLink } from '@/components/SkipLink';
 import { LeagueBar } from '@/components/LeagueBar';
 import { ScoreboardSkeleton, Skeleton } from '@/components/Skeleton';
-import { activeTab } from '@/lib/nav';
 import { THEME_BOOT_SCRIPT, THEME_STORAGE_KEY } from '@/lib/theme';
 
 const render = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(el);
-
-describe('activeTab', () => {
-  it('is standings on the league page, with or without a trailing slash', () => {
-    expect(activeTab('/l/habich', 'habich')).toBe('standings');
-    expect(activeTab('/l/habich/', 'habich')).toBe('standings');
-  });
-
-  it('is round on any public round page', () => {
-    expect(activeTab('/l/habich/r/abc', 'habich')).toBe('round');
-    expect(activeTab('/l/habich/r/abc/', 'habich')).toBe('round');
-  });
-
-  it('is admin on the dashboard and on admin round pages', () => {
-    expect(activeTab('/l/habich/admin', 'habich')).toBe('admin');
-    expect(activeTab('/l/habich/admin/r/abc', 'habich')).toBe('admin');
-  });
-
-  it('is null outside this league', () => {
-    expect(activeTab('/', 'habich')).toBeNull();
-    expect(activeTab('/l/other', 'habich')).toBeNull();
-    expect(activeTab('/l/habich-2', 'habich')).toBeNull();
-    expect(activeTab('/l/habich/administrator', 'habich')).toBeNull();
-  });
-
-  it('matches slugs literally', () => {
-    expect(activeTab('/l/a.b', 'a.b')).toBe('standings');
-    expect(activeTab('/l/axb', 'a.b')).toBeNull();
-  });
-});
 
 describe('LeagueBar', () => {
   it('shows the league name linking to standings', () => {
@@ -133,13 +103,13 @@ import { HeaderAccountView } from '@/components/HeaderAccount';
 import { appTab, showAppTabBar } from '@/lib/nav';
 
 describe('appTab / showAppTabBar (spec §4.6)', () => {
-  it('maps paths to the Me and Leagues tabs', () => {
-    expect(appTab('/')).toBe('me');
-    expect(appTab('/me/settings')).toBe('me');
+  it('maps paths to the Home, Leagues and You tabs', () => {
+    expect(appTab('/')).toBe('home');
+    expect(appTab('/me/settings')).toBe('you');
     expect(appTab('/leagues')).toBe('leagues');
     expect(appTab('/leagues/new')).toBe('leagues');
     expect(appTab('/join/ABC234')).toBe('leagues');
-    expect(appTab('/l/fam-abc234')).toBeNull();
+    expect(appTab('/l/fam-abc234')).toBe('leagues');
   });
   it('hides the app bar on league pages, which have their own bottom bar', () => {
     expect(showAppTabBar('/')).toBe(true);

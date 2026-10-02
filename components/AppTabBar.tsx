@@ -6,7 +6,7 @@ import { Trophy, UserRound } from '@/components/ui/icons';
 import { appTab, showAppTabBar } from '@/lib/nav';
 
 const TABS = [
-  { id: 'me', label: 'Me', href: '/', Icon: UserRound },
+  { id: 'home', label: 'Me', href: '/', Icon: UserRound },
   { id: 'leagues', label: 'Leagues', href: '/leagues', Icon: Trophy },
 ] as const;
 
