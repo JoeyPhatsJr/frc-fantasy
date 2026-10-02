@@ -17,8 +17,10 @@ vi.mock('next/navigation', () => ({
 import LeaguePage from '@/app/l/[slug]/page';
 import { LeagueMeCardView, leaveConfirmText } from '@/components/LeagueMeCard';
 import { LeagueMenuView, leaveConfirmText as menuLeaveConfirmText } from '@/components/shell/LeagueMenu';
+import type { SessionUser } from '@/lib/auth/session';
 import type { Repo } from '@/lib/db/repo';
 import type { LeagueRow } from '@/lib/db/types';
+import { defaultScoring } from '@/lib/scoring/config';
 import { makeUser, setUser, signInAsMember } from '../helpers/auth';
 import { seedLeague } from '../helpers/api';
 import { createMemoryRepo } from '../helpers/memoryRepo';
@@ -135,26 +137,27 @@ describe('LeagueMenuView (spec §5.3: the ⋯ menu takes over "You in this leagu
   });
 });
 
-describe('league page: the card and "(left)" names', () => {
+describe('league page: standings and "(left)" names (spec §6.3)', () => {
   let repo: Repo;
   let league: LeagueRow;
+  let commish: SessionUser;
 
   beforeEach(async () => {
     repo = createMemoryRepo();
     hoisted.repo = repo;
-    ({ league } = await seedLeague(repo, { signIn: false }));
+    ({ league, user: commish } = await seedLeague(repo, { signIn: false }));
     await repo.createPlayer(league.id, 'Grandpa'); // an unlinked former member
     setUser(null);
   });
 
-  const page = async () =>
-    renderToStaticMarkup((await LeaguePage({ params: Promise.resolve({ slug: league.slug }) })) as ReactElement);
+  const page = async (slug = league.slug) =>
+    renderToStaticMarkup((await LeaguePage({ params: Promise.resolve({ slug }) })) as ReactElement);
 
-  it('shows members their own card with their league name', async () => {
+  it('no longer shows the "You in this league" card, even to members (the ⋯ menu has it)', async () => {
     await signInAsMember(repo, league, 'Mom');
     const out = await page();
-    expect(out).toContain('You in this league');
-    expect(out).toContain('value="Mom"');
+    expect(out).not.toContain('You in this league');
+    expect(out).toContain('Mom (you)');
   });
 
   it('shows no card to signed-out visitors or signed-in non-members', async () => {
@@ -170,13 +173,60 @@ describe('league page: the card and "(left)" names', () => {
     expect(out).not.toContain('Commish (left)');
   });
 
-  it('says players join with the invite code (not that the commissioner adds them)', async () => {
+  it('says to share the invite code (not that the commissioner adds them)', async () => {
     const empty = await seedLeague(repo, { slug: 'empty-fam-cccccc', signIn: false });
     await repo.deletePlayer(empty.commissioner.id);
-    const out = renderToStaticMarkup(
-      (await LeaguePage({ params: Promise.resolve({ slug: empty.league.slug }) })) as ReactElement,
-    );
+    const out = await page(empty.league.slug);
     expect(out).not.toContain('The commissioner adds them');
-    expect(out).toContain('No players yet — people join with the league&#x27;s invite code.');
+    expect(out).toContain('No players yet — share the invite code from Admin.');
+  });
+
+  it('no events: a "No events yet" strip and empty state; commissioners get the Admin link', async () => {
+    let out = await page();
+    expect(out).toContain('role="status"');
+    expect(out.match(/No events yet/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(out).not.toContain('Add one in Admin');
+    setUser(commish);
+    out = await page();
+    expect(out).toContain('Add one in Admin');
+    expect(out).toContain(`href="/l/${league.slug}/admin"`);
+  });
+
+  it('event leagues: progress strip, season leaderboard by event, and the Events list', async () => {
+    const round = await repo.createRound({
+      leagueId: league.id, eventKey: '2026parr', eventName: 'Ramp Riot', startDate: '2026-10-24',
+      endDate: '2026-10-24', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    const out = await page();
+    expect(out).toContain('1 event · 1 to go');
+    expect(out).toContain('Standings');
+    expect(out).toContain('Events');
+    expect(out).toContain(`href="/l/${league.slug}/r/${round.id}"`);
+    expect(out).toContain('Ramp Riot');
+    expect(out).not.toContain('Live now');
+    expect(out).not.toContain('Small numbers are points per round');
+    expect(out).not.toContain('See rosters');
+  });
+
+  it('full-season leagues show the current season round with the Event layout', async () => {
+    const season = await seedLeague(repo, { slug: 'season-fam-dddddd', format: 'season', signIn: false });
+    await repo.createRound({
+      leagueId: season.league.id, kind: 'season', eventKey: null, seasonYear: 2027, eventName: '2027 Season',
+      startDate: '2027-01-01', endDate: '2027-12-31', timezone: 'America/New_York', scoring: defaultScoring(),
+    });
+    const out = await page(season.league.slug);
+    expect(out).toContain('role="status"');
+    expect(out).toContain('Leaderboard');
+    expect(out).toContain('How scoring works');
+    expect(out).toContain('Draft not set up yet');
+    expect(out).not.toContain('>Standings<');
+    expect(out).not.toContain(' to go');
+  });
+
+  it('full-season leagues with no season yet show the empty state', async () => {
+    const season = await seedLeague(repo, { slug: 'season-fam-eeeeee', format: 'season', signIn: false });
+    const out = await page(season.league.slug);
+    expect(out).toContain('No events yet');
+    expect(out).not.toContain('Leaderboard');
   });
 });

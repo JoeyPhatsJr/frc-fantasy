@@ -5,6 +5,8 @@ import { AdjustmentList } from '@/components/AdjustmentList';
 import { EventSwitcher, EventSwitcherView } from '@/components/event/EventSwitcher';
 import { PlayerBoard, seasonEventLabel } from '@/components/event/PlayerBoard';
 import { ScoringSheet, ScoringSheetView } from '@/components/event/ScoringSheet';
+import { EventList } from '@/components/standings/EventList';
+import { SeasonBoard, seasonProgress } from '@/components/standings/SeasonBoard';
 import type { PlayerRoundScore } from '@/lib/scoring/types';
 
 const p = (playerId: string, name: string, rank: number, total: number, teams: string[] = []): PlayerRoundScore => ({
@@ -132,5 +134,56 @@ describe('AdjustmentList rows', () => {
     expect(html).toContain('Team 5181 Bagel Bytes');
     expect(html).toContain('+5');
     expect(html).toContain('border-b border-border');
+  });
+});
+
+describe('seasonProgress', () => {
+  it('counts events left', () => {
+    expect(seasonProgress([])).toBe('No events yet');
+    expect(seasonProgress([{ status: 'final' }, { status: 'live' }, { status: 'upcoming' }])).toBe('3 events · 2 to go');
+    expect(seasonProgress([{ status: 'upcoming' }])).toBe('1 event · 1 to go');
+    expect(seasonProgress([{ status: 'final' }, { status: 'awaiting_final' }])).toBe('Season over');
+  });
+});
+
+describe('SeasonBoard', () => {
+  const standings = [
+    { playerId: 'a', name: 'Mom', total: 400, rank: 1, perRound: [212, 188] },
+    { playerId: 'b', name: 'Joey', total: 390, rank: 2, perRound: [198, 192] },
+  ];
+  const rounds = [{ id: 'r1', eventName: 'Ramp Riot', status: 'final' as const }, { id: 'r2', eventName: 'Brunswick Eruption', status: 'live' as const }];
+  it('expands each player to a per-event breakdown by name', () => {
+    const html = r(h(SeasonBoard, { standings, rounds, meId: 'b' }));
+    expect(html).toContain('Ramp Riot');
+    expect(html).toContain('Brunswick Eruption');
+    expect(html).toContain('198');
+    expect(html).not.toContain('Small numbers are points per round');
+    expect(html).toMatch(/<details[^>]*open=""[^>]*>[\s\S]*Joey/);
+  });
+  it('marks you, tags final and live events, and highlights nobody when signed out', () => {
+    const html = r(h(SeasonBoard, { standings, rounds, meId: 'b' }));
+    expect(html).toContain('Joey (you)');
+    expect(html).not.toContain('Mom (you)');
+    expect(html).toContain('Final');
+    expect(html).toContain('Live');
+    expect(html).toContain('400');
+    const out = r(h(SeasonBoard, { standings, rounds, meId: null }));
+    expect(out).not.toContain('(you)');
+    expect(out).not.toContain(' open=""');
+  });
+});
+
+describe('EventList', () => {
+  it('links every event and shows your rank there', () => {
+    const html = r(h(EventList, { slug: 'fam', rounds: [{ id: 'r1', eventName: 'Ramp Riot', startDate: '2026-10-24', endDate: '2026-10-24', status: 'final', myRank: 2 }] }));
+    expect(html).toContain('href="/l/fam/r/r1"');
+    expect(html).toContain('You: 2nd');
+  });
+  it('leaves the rank off when you have none, and encodes the slug', () => {
+    const html = r(h(EventList, { slug: 'a b', rounds: [{ id: 'r1', eventName: 'Ramp Riot', startDate: '2026-10-24', endDate: '2026-10-25', status: 'upcoming', myRank: null }] }));
+    expect(html).toContain('href="/l/a%20b/r/r1"');
+    expect(html).not.toContain('You:');
+    expect(html).toContain('Oct 24–25, 2026');
+    expect(html).toContain('Upcoming');
   });
 });
