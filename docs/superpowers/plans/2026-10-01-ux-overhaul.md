@@ -2075,3 +2075,366 @@ describe('joinDescription', () => {
 - [ ] **Step 6: Landing.** Restyle to the new system (band-colored hero, rows instead of cards for "How it works" and "Coming up"); same content and order; add `Button href="/signin" variant="secondary"` "Sign in" beside "Create an account". `SampleScoreboard` uses `Row` + `RankNumeral` + `Points` with blue plates.
 - [ ] **Step 7: Run** `npx vitest run && npx tsc --noEmit` → green.
 - [ ] **Step 8: Commit** — `feat(ux): join, sign-in, create-league and landing in the new style`.
+
+---
+
+## Phase 4 — Admin
+
+### Task 14: Admin step logic + event-code parsing
+
+**Files:**
+- Create: `lib/admin/steps.ts`, `lib/admin/eventInput.ts`, `tests/admin/steps.test.ts`, `tests/admin/eventInput.test.ts`
+
+**Interfaces:**
+- Consumes: `RoundStatus`.
+- Produces:
+
+```ts
+// lib/admin/steps.ts
+export type AdminStep = 1 | 2 | 3 | 4;
+export function setupDone(round: { draftOrder: string[]; rosterSize: number }, playerIds: string[]): boolean;
+export function adminStep(status: RoundStatus, setupComplete: boolean): AdminStep;
+export function stepDone(step: AdminStep, current: AdminStep): boolean;
+export const STEP_TITLE: Record<AdminStep, string>; // 1 'Set up', 2 'Run the draft', 3 'During the event', 4 'Wrap up'
+
+// lib/admin/eventInput.ts
+export function parseEventInput(raw: string): string;
+```
+
+- [ ] **Step 1: Write the failing tests** — `tests/admin/steps.test.ts`
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { adminStep, setupDone, stepDone, STEP_TITLE } from '@/lib/admin/steps';
+
+describe('setupDone', () => {
+  it('needs a roster size and every current player in the draft order', () => {
+    expect(setupDone({ draftOrder: ['a', 'b'], rosterSize: 3 }, ['a', 'b'])).toBe(true);
+    expect(setupDone({ draftOrder: ['b', 'a', 'x'], rosterSize: 3 }, ['a', 'b'])).toBe(true);
+    expect(setupDone({ draftOrder: ['a'], rosterSize: 3 }, ['a', 'b'])).toBe(false);
+    expect(setupDone({ draftOrder: [], rosterSize: 3 }, [])).toBe(false);
+    expect(setupDone({ draftOrder: ['a', 'b'], rosterSize: 0 }, ['a', 'b'])).toBe(false);
+  });
+});
+
+describe('adminStep', () => {
+  it('maps round status to the open step', () => {
+    expect(adminStep('setup', false)).toBe(1);
+    expect(adminStep('setup', true)).toBe(2);
+    expect(adminStep('drafting', false)).toBe(2);
+    expect(adminStep('drafting', true)).toBe(2);
+    expect(adminStep('upcoming', true)).toBe(3);
+    expect(adminStep('live', true)).toBe(3);
+    expect(adminStep('awaiting_final', true)).toBe(4);
+    expect(adminStep('final', true)).toBe(4);
+  });
+});
+
+describe('stepDone', () => {
+  it('earlier steps are done', () => {
+    expect(stepDone(1, 2)).toBe(true);
+    expect(stepDone(2, 2)).toBe(false);
+    expect(stepDone(4, 3)).toBe(false);
+  });
+  it('has a title for each step', () => {
+    expect(STEP_TITLE).toEqual({ 1: 'Set up', 2: 'Run the draft', 3: 'During the event', 4: 'Wrap up' });
+  });
+});
+```
+
+`tests/admin/eventInput.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { parseEventInput } from '@/lib/admin/eventInput';
+
+describe('parseEventInput', () => {
+  it('accepts a bare code in any case with spaces', () => {
+    expect(parseEventInput('2025parr')).toBe('2025parr');
+    expect(parseEventInput('  2025PARR ')).toBe('2025parr');
+  });
+  it('pulls the code out of a TBA link', () => {
+    expect(parseEventInput('https://www.thebluealliance.com/event/2025parr')).toBe('2025parr');
+    expect(parseEventInput('thebluealliance.com/event/2025parr#rankings')).toBe('2025parr');
+    expect(parseEventInput('https://www.thebluealliance.com/event/2025parr/')).toBe('2025parr');
+    expect(parseEventInput('https://www.thebluealliance.com/event/2025PARR?tab=teams')).toBe('2025parr');
+  });
+  it('leaves anything else trimmed and lowercased for the validator to reject', () => {
+    expect(parseEventInput(' Not A Code ')).toBe('not a code');
+    expect(parseEventInput('https://example.com/x')).toBe('https://example.com/x');
+  });
+});
+```
+
+- [ ] **Step 2: Run** → FAIL.
+
+- [ ] **Step 3: Implement**
+
+```ts
+// lib/admin/steps.ts
+import type { RoundStatus } from '@/lib/rounds/status';
+
+export type AdminStep = 1 | 2 | 3 | 4;
+
+export const STEP_TITLE: Record<AdminStep, string> = { 1: 'Set up', 2: 'Run the draft', 3: 'During the event', 4: 'Wrap up' };
+
+/** Setup is done when there is a roster size and every current player has a draft slot (spec §8.2). */
+export function setupDone(round: { draftOrder: string[]; rosterSize: number }, playerIds: string[]): boolean {
+  if (round.rosterSize <= 0 || round.draftOrder.length === 0) return false;
+  const order = new Set(round.draftOrder);
+  return playerIds.every((id) => order.has(id));
+}
+
+/** Which checklist step round admin opens on (spec §7.2). */
+export function adminStep(status: RoundStatus, setupComplete: boolean): AdminStep {
+  switch (status) {
+    case 'setup':
+      return setupComplete ? 2 : 1;
+    case 'drafting':
+      return 2;
+    case 'upcoming':
+    case 'live':
+      return 3;
+    case 'awaiting_final':
+    case 'final':
+      return 4;
+  }
+}
+
+export function stepDone(step: AdminStep, current: AdminStep): boolean {
+  return step < current;
+}
+```
+
+```ts
+// lib/admin/eventInput.ts
+/** "2025parr", " 2025PARR ", or a TBA event link → "2025parr". Anything else comes back trimmed and lowercased. */
+export function parseEventInput(raw: string): string {
+  const s = raw.trim();
+  const m = /thebluealliance\.com\/event\/([a-z0-9]+)/i.exec(s);
+  return (m ? m[1] : s).toLowerCase();
+}
+```
+
+- [ ] **Step 4: Run** `npx vitest run && npx tsc --noEmit` → green.
+- [ ] **Step 5: Commit** — `feat(ux): admin checklist step rules and TBA link parsing`.
+
+### Task 15: League admin page
+
+**Files:**
+- Create: `components/admin/InviteCard.tsx`, `components/admin/EventPicker.tsx`, `tests/ui/admin-v3.test.ts`
+- Modify: `components/admin/AdminDashboard.tsx`, `components/admin/DashboardParts.tsx`, `components/admin/MembersCard.tsx`, `components/admin/FollowTeamsForm.tsx` (helper text), `components/admin/ScoringForm.tsx` (restyle), `components/admin/DangerZone.tsx` (restyle), `app/l/[slug]/admin/page.tsx`
+- Modify: `tests/ui/admin-components.test.ts`
+
+**Interfaces:**
+- Consumes: `parseEventInput` (Task 14); `loadUpcomingEvents(now)` from `lib/views/landing.ts` (returns `TbaEvent[]`, already cached via `tba_cache`) — call it in the server page and pass a trimmed list down; `Row`, `Section`, `Sheet`, `Button`; existing admin client calls in `lib/admin/client.ts` and `useAdmin`/`usePending`.
+- Produces:
+
+```ts
+export function InviteCard(p: { leagueName: string; code: string; onReset: () => void; busy: boolean }): JSX.Element; // client
+export function shareOrCopy(url: string, title: string, nav: { share?: (d: ShareData) => Promise<void>; clipboard?: { writeText: (t: string) => Promise<void> } } | undefined): Promise<'shared' | 'copied' | 'failed'>;
+export function EventPicker(p: { upcoming: { key: string; name: string; startDate: string; endDate: string }[]; onPick: (eventKey: string) => void; busy: boolean }): JSX.Element; // client
+```
+
+- [ ] **Step 1: Write the failing tests** — `tests/ui/admin-v3.test.ts`
+
+```ts
+import { createElement as h } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it, vi } from 'vitest';
+import { InviteCard, shareOrCopy } from '@/components/admin/InviteCard';
+import { EventPicker } from '@/components/admin/EventPicker';
+
+const r = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(el);
+
+describe('shareOrCopy', () => {
+  it('uses the share sheet when there is one', async () => {
+    const share = vi.fn().mockResolvedValue(undefined);
+    expect(await shareOrCopy('https://x/join/AB', 'Join', { share })).toBe('shared');
+    expect(share).toHaveBeenCalledWith({ url: 'https://x/join/AB', title: 'Join' });
+  });
+  it('falls back to copying', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    expect(await shareOrCopy('u', 't', { clipboard: { writeText } })).toBe('copied');
+    expect(writeText).toHaveBeenCalledWith('u');
+  });
+  it('copies when sharing is cancelled, and reports failure with neither', async () => {
+    const share = vi.fn().mockRejectedValue(new Error('AbortError'));
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    expect(await shareOrCopy('u', 't', { share, clipboard: { writeText } })).toBe('copied');
+    expect(await shareOrCopy('u', 't', undefined)).toBe('failed');
+  });
+});
+
+describe('InviteCard', () => {
+  it('shows the code big with Share link and Reset code', () => {
+    const html = r(h(InviteCard, { leagueName: 'Family', code: 'K7Q2XP', onReset: () => {}, busy: false }));
+    expect(html).toContain('K7Q2XP');
+    expect(html).toContain('Share link');
+    expect(html).toContain('Reset code');
+    expect(html).toContain('font-display');
+  });
+});
+
+describe('EventPicker', () => {
+  it('lists upcoming events and an Other event field that accepts TBA links', () => {
+    const html = r(h(EventPicker, { upcoming: [{ key: '2026parr', name: 'Ramp Riot', startDate: '2026-10-24', endDate: '2026-10-24' }], onPick: () => {}, busy: false }));
+    expect(html).toContain('Ramp Riot');
+    expect(html).toContain('Oct 24');
+    expect(html).toContain('TBA link or event code');
+  });
+});
+```
+
+- [ ] **Step 2: Run** → FAIL.
+
+- [ ] **Step 3: Implement `InviteCard.tsx`** (`'use client'`):
+
+```ts
+type ShareNav = { share?: (d: ShareData) => Promise<void>; clipboard?: { writeText: (t: string) => Promise<void> } };
+
+export async function shareOrCopy(url: string, title: string, nav: ShareNav | undefined): Promise<'shared' | 'copied' | 'failed'> {
+  if (nav?.share) {
+    try {
+      await nav.share({ url, title });
+      return 'shared';
+    } catch {
+      // cancelled or blocked: try copying instead
+    }
+  }
+  if (nav?.clipboard?.writeText) {
+    try {
+      await nav.clipboard.writeText(url);
+      return 'copied';
+    } catch {
+      return 'failed';
+    }
+  }
+  return 'failed';
+}
+```
+
+Markup: `Section label="Invite people"` → the code in `font-display text-[40px] font-bold tracking-[.12em]`, a muted line "Share this link, or tell people the code.", `Button variant="primary"` "Share link" (calls `shareOrCopy(`${location.origin}/join/${code}`, `Join ${leagueName}`, navigator)`, shows "Link copied" after `copied`, "Couldn't share — copy the code instead" after `failed`), and `Button variant="ghost" size="sm"` "Reset code" → `onReset` (the dashboard passes the existing reset handler + confirm, moved out of `MembersCard`).
+
+- [ ] **Step 4: Implement `EventPicker.tsx`** (`'use client'`): `Section label="Add an event"`: up to 6 upcoming events as `Row`s (title name, subtitle `formatDateRange`, trailing "Add" `Button size="sm"` → `onPick(key)`), then a form "Other event": `Input label="TBA link or event code (like 2025parr)"` whose submit calls `onPick(parseEventInput(value))`. The dashboard's existing add-round flow (check → "Found" preview → add) receives the key exactly as the old `AddRoundForm` input did — extract that submit logic into a function both call; keep `AddRoundForm`'s existing tests passing (or port them).
+
+- [ ] **Step 5: Reorganize `AdminDashboard.tsx`** in this order (spec §7.1): `InviteCard` → **Events** (`Section "Events"`: one `Row` per round — `leading=<DateBlock>`, title name, subtitle "{picks} of {total} picks" / "Draft not set up", trailing `StatusBadge`, `href=/l/{slug}/admin/r/{id}`; **no Delete button on these rows**) + `EventPicker` + a collapsed `<details>` "More ways to add events" holding `AddManualRoundForm` and `FollowTeamsForm` (helper text "Follow up to 3 teams and we'll add each event they attend automatically."); for `format === 'season'` this section is **Season** with the existing season row(s) and "Start {year} season" logic → **Members** (`MembersCard` restyled: a `Row` per member with a ⋯ button opening a `Sheet` with Make commissioner / Make player / Remove — existing calls and confirms) → **Settings** (`Section "Settings"`: `RenameLeague`, the visibility control moved out of `MembersCard`, `ScoringForm` collapsed in `<details>` "Default scoring") → `DangerZone`. Drop the "View league page" / "Copy … link" header row. In `app/l/[slug]/admin/page.tsx` pass `upcoming` = `(await loadUpcomingEvents(now).catch(() => []))` mapped to `{ key, name, startDate, endDate }` (check `TbaEvent` field names in `lib/tba/types.ts`).
+- [ ] **Step 6: Update `tests/ui/admin-components.test.ts`** for moved pieces (invite code now in `InviteCard`, visibility under Settings) and add an assertion that dashboard round rows contain no "Delete".
+- [ ] **Step 7: Run** `npx vitest run && npx tsc --noEmit` → green.
+- [ ] **Step 8: Commit** — `feat(ux): league admin opens with Invite people; events picker; settings grouped`.
+
+### Task 16: Round admin checklist
+
+**Files:**
+- Create: `components/admin/RoundChecklist.tsx`
+- Modify: `components/admin/RoundAdmin.tsx`, `components/admin/RoundSetup.tsx` (drop its `<details>` wrapper), `components/admin/LiveDraftControls.tsx` (the mode select moves to a "Switch to …" link), `components/admin/DraftEntry.tsx` (title its replace-a-pick UI "Fix a pick"), `app/l/[slug]/admin/r/[roundId]/page.tsx`
+- Modify: `tests/ui/admin-components.test.ts`, `tests/ui/admin-v3.test.ts` (append)
+
+**Interfaces:**
+- Consumes: `adminStep`, `setupDone`, `STEP_TITLE`, `AdminStep` (Task 14); `SectionProps` from `RoundAdmin.tsx`; the existing PATCH `/rounds/{id}` with `{ draftMode }` (same call `LiveDraftControls` makes today).
+- Produces:
+
+```ts
+export type ChecklistStep = { step: AdminStep; summary: string; preview: string; content: ReactNode };
+export function RoundChecklistView(p: { current: AdminStep; open: AdminStep[]; steps: ChecklistStep[]; onToggle: (s: AdminStep) => void }): JSX.Element;
+export function RoundChecklist(p: { current: AdminStep; steps: ChecklistStep[] }): JSX.Element; // client; initial open = [current]
+export function stepSummaries(input: {
+  playerCount: number; rosterSize: number; picks: number; kind: RoundKind; manualResults: number; finalized: boolean;
+}): Record<AdminStep, { summary: string; preview: string }>;
+```
+
+- [ ] **Step 1: Write the failing tests** (append to `tests/ui/admin-v3.test.ts`)
+
+```ts
+import { RoundChecklistView, stepSummaries } from '@/components/admin/RoundChecklist';
+
+describe('stepSummaries', () => {
+  it('one-line summaries for done steps and previews for future ones', () => {
+    const s = stepSummaries({ playerCount: 6, rosterSize: 4, picks: 24, kind: 'tba', manualResults: 0, finalized: false });
+    expect(s[1].summary).toBe('6 players · 4 teams each');
+    expect(s[2].summary).toBe('Draft complete · 24 picks');
+    expect(s[3].preview).toBe('Scores update from The Blue Alliance automatically. Fix anything with adjustments.');
+    expect(s[4].summary).toBe('Not final yet');
+    const manual = stepSummaries({ playerCount: 2, rosterSize: 3, picks: 6, kind: 'manual', manualResults: 5, finalized: true });
+    expect(manual[3].summary).toBe('5 results entered');
+    expect(manual[4].summary).toBe('Final');
+  });
+});
+
+describe('RoundChecklistView', () => {
+  const steps = ([1, 2, 3, 4] as const).map((step) => ({ step, summary: `sum${step}`, preview: `pre${step}`, content: `content${step}` }));
+  it('numbers the steps, checks done ones, opens only the current step', () => {
+    const html = r(h(RoundChecklistView, { current: 2, open: [2], steps, onToggle: () => {} }));
+    for (const t of ['Set up', 'Run the draft', 'During the event', 'Wrap up']) expect(html).toContain(t);
+    expect(html).toContain('sum1');
+    expect(html).toContain('content2');
+    expect(html).not.toContain('content3');
+    expect(html).toContain('pre3');
+    expect(html).toMatch(/aria-current="step"/);
+    expect(html.match(/aria-expanded="true"/g)?.length).toBe(1);
+  });
+  it('any step can be opened', () => {
+    expect(r(h(RoundChecklistView, { current: 2, open: [2, 4], steps, onToggle: () => {} }))).toContain('content4');
+  });
+});
+```
+
+- [ ] **Step 2: Run** → FAIL.
+
+- [ ] **Step 3: Implement `RoundChecklist.tsx`** (`'use client'`). `stepSummaries`: step 1 summary `"{playerCount} players · {rosterSize} teams each"`, preview "Roster size, draft order and the team pool"; step 2 summary `"Draft complete · {picks} picks"`, preview "Live draft on everyone's phones, or enter picks yourself"; step 3 summary `kind === 'manual' ? "{manualResults} results entered" : 'Scores came from The Blue Alliance'`, preview `kind === 'manual' ? 'Enter results as the event happens. Fix anything with adjustments.' : 'Scores update from The Blue Alliance automatically. Fix anything with adjustments.'`; step 4 summary `finalized ? 'Final' : 'Not final yet'`, preview "Mark the round final when the event ends". `RoundChecklistView`: an `<ol>`; each step an `<li>` with a header `<button type="button" aria-expanded aria-controls>` (min-h-11) holding the step circle (done: ✓ on `bg-success text-on-success`; current: number in a gold ring `border-2 border-accent`; future: number in a muted ring) + `STEP_TITLE[step]` + a muted one-liner (done → summary + " · Edit"; future → preview; current → nothing); the current `<li>` gets `aria-current="step"` and the gold inset bar `shadow-[inset_4px_0_0_var(--color-accent)] bg-surface`; open steps render `content` below in a region with the matching id. `RoundChecklist` holds `open` state (initially `[current]`), toggling on header click.
+- [ ] **Step 4: Rebuild `RoundAdmin.tsx`** as: header ("‹ Admin" link to `/l/{slug}/admin`, event name, dates, `StatusBadge`, key line) → sticky error/notice (unchanged) → `RoundChecklist` with:
+  - step 1 content: `RoundSetup` (without its `<details>` wrapper);
+  - step 2 content: `round.draftMode === 'live'` → `LiveDraftControls` (timer + Start/Pause/Resume + "Open draft room"), else → `DraftEntry`; plus `Button variant="ghost" size="sm"` "Switch to {entering picks by hand | a live draft}" calling the same PATCH `{ draftMode }` the old select used, disabled under the same rule (`started || picks.length > 0`) with the hint "You can't switch once the draft has started."; once the draft is complete, `DraftEntry`'s replace-a-pick UI titled "Fix a pick";
+  - step 3 content: "Refresh from TBA" (non-manual), `ManualResultsEditor` (manual), `AdjustmentEditor`;
+  - step 4 content: the existing finalize nudge copy + Mark round final / Reopen round.
+  Below the checklist, a muted "Delete this event" `Button variant="danger" size="sm"` with the existing delete call and confirm (moved from the dashboard), returning to `/l/{slug}/admin` on success. `current = adminStep(status, setupDone(round, playerIds))` — compute from whatever `detail` carries (check `RoundAdmin`'s `detail` type for status, players and manual results count).
+- [ ] **Step 5: Update `tests/ui/admin-components.test.ts`** for the restructure (the mode select no longer lives in `LiveDraftControls`; `RoundSetup` has no `<details>`).
+- [ ] **Step 6: Run** `npx vitest run && npx tsc --noEmit` → green.
+- [ ] **Step 7: Commit** — `feat(ux): round admin as a four-step checklist`.
+
+---
+
+## Phase 5 — Polish and verify
+
+### Task 17: Remove replaced UI and update docs
+
+**Files:**
+- Remove (each only after `grep -rn "<Name>" app components lib tests` shows no importers other than its own tests): `components/AppTabBar.tsx`, `components/TabBar.tsx`, `components/LeagueBar.tsx`, `components/HeaderAccount.tsx`, `components/ThemeToggle.tsx`, `components/LeagueMeCard.tsx`, `components/Leaderboard.tsx`, `components/RosterList.tsx`, `components/me/MeHome.tsx`, `components/draft/LiveDraftBanner.tsx`, `components/draft/DraftRosters.tsx`, `lib/views/me.ts` (move its `seasonSummary` test cases to `tests/views/home.test.ts`; drop `matchLabel`/`nextMatchLabel`/`loadMePage` cases with the code)
+- Modify: `lib/nav.ts` (drop the deprecated `activeTab`/`showAppTabBar`), tests that only covered removed components, `CLAUDE.md`, `README.md`
+
+- [ ] **Step 1:** For each file above, grep for importers; remove the file and its orphaned test cases with `git rm`; tests covering behavior that moved should already import from the new location.
+- [ ] **Step 2:** Drop the deprecated compatibility exports from `lib/nav.ts`.
+- [ ] **Step 3:** `CLAUDE.md` "Current status": add "UX overhaul (branch `ux-overhaul`, 2026-10-01): Home/Leagues/You bottom bar, league top tabs (Standings · Event · Draft · Admin), broadcast-scoreboard style; spec `docs/superpowers/specs/2026-10-01-ux-overhaul-design.md`." and make "Tabled" list only auto-finalize. `README.md`: update anything mentioning the Me tab, `/me/settings` or the old Round tab.
+- [ ] **Step 4: Run** `npx vitest run && npx tsc --noEmit && npx next build` → green (the build catches server/client boundary mistakes tests miss).
+- [ ] **Step 5: Commit** — `chore(ux): remove replaced components; docs`.
+
+### Task 18: E2E — live draft update, navigation spec, screenshots script
+
+**Files:**
+- Modify: `e2e/live-draft.spec.ts`, `e2e/helpers.ts` (if selectors live there)
+- Create: `e2e/navigation.spec.ts`, `scripts/screens.ts`
+
+**Interfaces:**
+- Consumes: local dev server + the real dev Supabase project (as v2's E2E did), `POST /api/test/login` with `Authorization: Bearer $E2E_AUTH_SECRET`, `scripts/seed-demo.ts`.
+
+- [ ] **Step 1:** Read `e2e/live-draft.spec.ts`, `e2e/helpers.ts` and `playwright.config.*`. Update selectors: draft tabs are `role="tab"` "Pool", "My queue", "Board" (no "Rosters"); auto-draft is `role="switch"` named "Auto-draft"; Pause/Resume/Undo are inside `aria-label="Commissioner controls"` (no "Draft options" disclosure); "Start draft" lives in round admin step 2 "Run the draft" (open by default once setup is complete); confirm text "Draft {n} · Projected …?".
+- [ ] **Step 2:** Create `e2e/navigation.spec.ts`: sign in via the test login route; create a league with one round using the same helpers/APIs the live-draft spec uses; visit `/` → expect `nav[aria-label="App"]` and the "Your leagues" section; click the league row → expect `nav[aria-label="League"]` with Standings `aria-current="page"`; click "Event" → URL `/l/{slug}/r/{id}`, `role="status"` strip visible; click "Draft" → URL ends `/draft`; click "Standings"; click "Home" in the bottom bar → `/`. Assert the bottom bar is visible at every step. Start the live draft via the API and assert the pill ("Draft is live") appears on `/` and links to the draft room. Clean up the league the way the live-draft spec does.
+- [ ] **Step 3:** Create `scripts/screens.ts` (`npx tsx scripts/screens.ts`): Playwright Chromium at 390×844, logs in via the test route, and for `/`, `/leagues`, `/you`, `/leagues/new`, the demo league's `/l/{slug}`, `/l/{slug}/r/{id}`, `/l/{slug}/r/{id}/draft`, `/l/{slug}/admin`, `/l/{slug}/admin/r/{id}`, plus signed-out `/signin` and `/`, saves light and dark full-page PNGs (set `localStorage['frcf:theme']` via `addInitScript`) to `.superpowers/sdd/2026-10-01-ux-overhaul/screens/{name}-{theme}.png`. Also 360px-wide shots of the Event and round-admin pages. The script exits non-zero if `document.documentElement.scrollWidth > window.innerWidth` on any page (no sideways scroll).
+- [ ] **Step 4: Run** `npm run e2e` (with the dev server per the config) and `npx tsx scripts/screens.ts`; fix failures. If the dev Supabase project is paused/unreachable, record it in the ledger and `final-review-notes.md` and continue — never fake a pass.
+- [ ] **Step 5: Commit** — `test(ux): navigation E2E, updated live-draft E2E, screenshot script`.
+
+### Task 19: Accessibility and visual pass (controller-run)
+
+**Files:** whatever the findings touch.
+
+- [ ] **Step 1:** Run the `web-design-guidelines` skill over the changed UI (`components/**`, `app/**/page.tsx`, `app/layout.tsx`).
+- [ ] **Step 2:** Review every Task 18 screenshot in both themes: no card-in-card; plates blue; gold only on leader / current step / active tab / pill; long names truncate; bottom bar and pill never cover the last row; focus rings visible.
+- [ ] **Step 3:** Fix findings; re-run `npx vitest run && npx tsc --noEmit && npx next build` and the screenshots.
+- [ ] **Step 4: Commit** — `fix(ux): accessibility and visual polish`.
+
+---
+
+## After the tasks
+
+1. One comprehensive whole-branch review on the most capable model (Joey's standing preference) with `final-review-notes.md` as input; one fix wave.
+2. Push `ux-overhaul` and open a PR (Vercel preview). **Do not merge** — Joey checks it on his phone first.
