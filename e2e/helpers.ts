@@ -1,6 +1,7 @@
 import type { BrowserContext } from '@playwright/test';
 import { createSupabaseClient, createSupabaseRepo } from '@/lib/db/supabaseRepo';
 import { defaultScoring } from '@/lib/scoring/config';
+import { pickerFor } from '@/lib/scoring/round';
 
 export async function signIn(context: BrowserContext, email: string, name: string): Promise<string> {
   const secret = process.env.E2E_AUTH_SECRET;
@@ -14,11 +15,11 @@ export async function signIn(context: BrowserContext, email: string, name: strin
 }
 
 /** A league where Joey (commissioner) and Mom (player) have a live, not-yet-started Ramp Riot round. */
-export async function seedDraft(joeyId: string, momId: string) {
+export async function seedDraft(joeyId: string, momId: string, name = 'E2E Draft') {
   const db = createSupabaseClient();
   const repo = createSupabaseRepo(db);
-  const slug = `e2e-${Date.now().toString(36)}`;
-  const inserted = await db.from('leagues').insert({ slug, name: 'E2E Draft', default_scoring: defaultScoring() }).select().single();
+  const slug = `e2e-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const inserted = await db.from('leagues').insert({ slug, name, default_scoring: defaultScoring() }).select().single();
   if (inserted.error) throw new Error(inserted.error.message);
   const leagueId = inserted.data.id as string;
   const joey = await repo.createMember({ leagueId, userId: joeyId, name: 'Joey E2E', role: 'commissioner' });
@@ -29,6 +30,24 @@ export async function seedDraft(joeyId: string, momId: string) {
   });
   await repo.updateRound(round.id, { draftOrder: [joey.id, mom.id], rosterSize: 3, draftMode: 'live', pickSeconds: 30 });
   return { slug, leagueId, roundId: round.id };
+}
+
+/**
+ * The same league, with the Ramp Riot draft already finished (picks entered by the commissioner), so the
+ * Standings and Event tabs have scores. Snake order Joey, Mom, Mom, Joey, Joey, Mom over six teams
+ * of the event.
+ */
+export async function seedFinishedDraft(joeyId: string, momId: string, name = 'E2E Scored') {
+  const seed = await seedDraft(joeyId, momId, name);
+  const repo = createSupabaseRepo(createSupabaseClient());
+  await repo.updateRound(seed.roundId, { draftMode: 'commissioner' });
+  const round = await repo.getRound(seed.roundId);
+  if (!round) throw new Error('seeded round vanished');
+  const teams = ['frc1218', 'frc2607', 'frc341', 'frc5181', 'frc1712', 'frc2539'];
+  for (let n = 0; n < teams.length; n++) {
+    await repo.insertPick({ roundId: seed.roundId, pickNumber: n, playerId: pickerFor(n, round.draftOrder), teamKey: teams[n] });
+  }
+  return seed;
 }
 
 export async function cleanup(leagueId: string, userIds: string[]) {

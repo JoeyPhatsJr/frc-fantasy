@@ -5,6 +5,7 @@ import { AppHeader } from '@/components/shell/AppHeader';
 import { BottomBar } from '@/components/shell/BottomBar';
 import { LiveDraftPill } from '@/components/shell/LiveDraftPill';
 import { getUser } from '@/lib/auth/session';
+import { footerPadding } from '@/lib/nav';
 import { THEME_BOOT_SCRIPT } from '@/lib/theme';
 import { safeLiveDrafts } from '@/lib/views/liveDrafts';
 import './globals.css';
@@ -80,7 +81,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {signedIn ? <BottomBar /> : null}
 
         <footer
-          className={`mx-auto w-full max-w-2xl px-4 text-center ${signedIn ? 'pb-24' : 'pb-6'}`}
+          className={`mx-auto w-full max-w-2xl px-4 text-center ${footerPadding(signedIn, drafts.length > 0)}`}
         >
           <p className="py-3 text-sm leading-6 text-fg-muted">
             Made by students on FRC Team 5181.{' '}

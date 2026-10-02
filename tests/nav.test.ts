@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appTab, leagueTab, leagueTabHref, leagueTabs, showLiveDraftPill } from '@/lib/nav';
+import { appTab, footerPadding, leagueTab, leagueTabHref, leagueTabs, showLiveDraftPill } from '@/lib/nav';
 
 describe('appTab', () => {
   it('home is the root only', () => {
@@ -70,5 +70,14 @@ describe('showLiveDraftPill', () => {
     expect(showLiveDraftPill('/l/fam/draft')).toBe(false);
     expect(showLiveDraftPill('/l/fam/r/1/draft')).toBe(false);
     expect(showLiveDraftPill('/signin')).toBe(false);
+  });
+});
+
+describe('footerPadding', () => {
+  it('clears the bottom bar when signed in, and the live-draft pill above it too', () => {
+    expect(footerPadding(false, false)).toBe('pb-6');
+    expect(footerPadding(true, false)).toBe('pb-24');
+    // Task 18 screenshots: with pb-24 the pill (72px up, 44px tall) covered the "Data from The Blue Alliance" link.
+    expect(footerPadding(true, true)).toBe('pb-36');
   });
 });

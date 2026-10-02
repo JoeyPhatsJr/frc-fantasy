@@ -61,3 +61,12 @@ export function showLiveDraftPill(pathname: string): boolean {
   if (p === '/signin') return false;
   return !/^\/l\/[^/]+(\/r\/[^/]+)?\/draft$/.test(p);
 }
+
+/**
+ * Bottom padding for the root footer: signed in it clears the fixed bottom bar, and with a live draft the
+ * gold pill floating above the bar too (pill top edge ≈ 116px up), so it never covers the footer's link.
+ */
+export function footerPadding(signedIn: boolean, pill: boolean): 'pb-6' | 'pb-24' | 'pb-36' {
+  if (!signedIn) return 'pb-6';
+  return pill ? 'pb-36' : 'pb-24';
+}
