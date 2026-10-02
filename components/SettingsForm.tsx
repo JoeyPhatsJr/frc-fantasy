@@ -3,10 +3,10 @@
 import { useState } from 'react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
+import { Section } from '@/components/ui/Section';
 
-/** /me/settings (spec §4.2): display name, "My FRC team", sign out, delete account. */
+/** The Profile and Account sections of /you: display name, "My FRC team", sign out, delete account. */
 export function SettingsForm({ profile }: { profile: { displayName: string; frcTeam: number | null } }) {
   const [displayName, setDisplayName] = useState(profile.displayName);
   const [team, setTeam] = useState(profile.frcTeam === null ? '' : String(profile.frcTeam));
@@ -56,34 +56,44 @@ export function SettingsForm({ profile }: { profile: { displayName: string; frcT
   }
 
   return (
-    <div className="space-y-6">
-      <Card title="Your profile" className="space-y-4">
-        <form onSubmit={save} className="space-y-4">
-          <Input label="Display name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={40} required />
+    <div className="space-y-8">
+      <Section label="Profile">
+        <form onSubmit={save} className="space-y-4 px-4 py-4">
+          <Input
+            label="Display name"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            maxLength={40}
+            required
+            hint="Shown in every league. You can also set a different name inside a league from its ⋯ menu."
+          />
           <Input
             label="My FRC team (optional)"
             inputMode="numeric"
             value={team}
             onChange={(e) => setTeam(e.target.value.replace(/\D/g, ''))}
             maxLength={5}
-            hint="New leagues use your display name. To change your name in one league, open that league and use “You in this league”."
           />
           {message ? <Alert tone={message.tone}>{message.text}</Alert> : null}
           <Button type="submit" busy={busy === 'save'} disabled={busy !== null}>
             Save
           </Button>
         </form>
-      </Card>
-      <Card title="Account" className="space-y-3">
-        <form action="/auth/signout" method="post">
-          <Button type="submit" variant="secondary">
-            Sign out
-          </Button>
-        </form>
-        <Button type="button" variant="danger" busy={busy === 'delete'} disabled={busy !== null} onClick={deleteAccount}>
-          Delete account
-        </Button>
-      </Card>
+      </Section>
+      <Section label="Account">
+        <div className="px-4 py-4">
+          <form action="/auth/signout" method="post">
+            <Button type="submit" variant="secondary">
+              Sign out
+            </Button>
+          </form>
+          <div className="mt-8 border-t border-border pt-6">
+            <Button type="button" variant="danger" busy={busy === 'delete'} disabled={busy !== null} onClick={deleteAccount}>
+              Delete account
+            </Button>
+          </div>
+        </div>
+      </Section>
     </div>
   );
 }

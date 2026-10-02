@@ -146,7 +146,7 @@ describe('InviteCodeBox and SettingsForm', () => {
     expect(out).toContain('value="5181"');
     expect(out).toContain('Sign out');
     expect(out).toContain('Delete account');
-    expect(out).toContain('To change your name in one league, open that league and use “You in this league”.');
+    expect(out).toContain('Shown in every league. You can also set a different name inside a league from its ⋯ menu.');
   });
   it('InviteCodeBox input has keyboard attributes for codes', () => {
     const html = render(h(InviteCodeBox, {}));
