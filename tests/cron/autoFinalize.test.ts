@@ -126,7 +126,9 @@ describe('autoFinalizeRounds (spec 2026-10-02 §5)', () => {
 });
 
 describe('DAILY_JOBS', () => {
-  it('runs auto-finalize first (cheap and bounded)', () => {
-    expect(DAILY_JOBS[0].name).toBe('auto-finalize');
+  it('runs auto-finalize after season-dates (fresh season end dates) and before team-stats', () => {
+    const names = DAILY_JOBS.map((j) => j.name);
+    expect(names.indexOf('auto-finalize')).toBeGreaterThan(names.indexOf('season-dates'));
+    expect(names.indexOf('auto-finalize')).toBeLessThan(names.indexOf('team-stats'));
   });
 });

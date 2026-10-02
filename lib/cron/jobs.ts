@@ -11,15 +11,16 @@ export type DailyJob = { name: string; run(now: Date, deadline: number): Promise
 export type JobResult = { name: string; ok: boolean; skipped: boolean; error?: string; ms: number };
 
 /**
- * Everything /api/cron/daily does, in order. Order matters only for who gets the time budget first:
- * the cheap, bounded jobs (auto-finalize: one DB read, then at most two cached TBA reads per
- * just-ended TBA round; follow-a-team sync: one TBA list per follow; season-round dates: one per
- * year) run before team-stats, which may use the whole budget during build season (final review I5).
+ * Everything /api/cron/daily does, in order. The cheap, bounded jobs (follow-a-team sync: one TBA list
+ * per follow; season-round dates: one per year; auto-finalize: one DB read, then at most two cached TBA
+ * reads per just-ended TBA round) run before team-stats, which may use the whole budget during build
+ * season (final review I5). Auto-finalize runs after season-dates so season rounds are judged by a
+ * fresh end_date (auto-finalize review M2).
  */
 export const DAILY_JOBS: DailyJob[] = [
-  autoFinalizeJob,
   followSyncJob,
   seasonDatesJob,
+  autoFinalizeJob,
   {
     name: 'team-stats',
     async run(now, deadline) {
