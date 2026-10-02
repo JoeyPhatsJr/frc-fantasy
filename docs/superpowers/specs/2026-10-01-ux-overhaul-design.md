@@ -173,7 +173,7 @@ export function appTab(pathname: string): AppTab | null;          // §5.2 rules
 export type LeagueTab = 'standings' | 'event' | 'draft' | 'admin';
 export function leagueTab(pathname: string, slug: string): LeagueTab | null;
 //  /l/s → standings · /l/s/r/x → event · /l/s/r/x/draft and /l/s/draft → draft · /l/s/admin* → admin
-export function leagueTabs(kind: LeagueKind, isCommissioner: boolean): LeagueTab[];
+export function leagueTabs(format: LeagueFormat, isCommissioner: boolean): LeagueTab[];
 export function showLiveDraftPill(pathname: string): boolean;     // false on any /draft page
 ```
 
@@ -181,6 +181,100 @@ export function showLiveDraftPill(pathname: string): boolean;     // false on an
 
 ### 5.5 Live-draft pill
 
-When the signed-in user is a member of any league with a draft in phase `live` or `paused`, a gold pill sits just above the bottom bar on every page except draft pages: **"● Draft is live — {league} · Join"** (paused: "Draft paused — {league}"), linking to that round's draft room. More than one → the first by league name, with "+1".
+When the signed-in user is a member of any league with a draft in phase `live` or `paused`, a gold pill sits just above the bottom bar on every page except draft pages: **"● Draft is live — {league} · Join"** (paused: "Draft paused — {league}"; when `onClockPlayer` (`lib/draft/live.ts`) is the user: **"● Your pick! — {league}"**), linking to that round's draft room. More than one → the first by league name, with "+1".
 
 Data: a new `loadMyLiveDrafts(userId)` in `lib/views/` that uses **only existing repo methods** (the user's leagues → their rounds → picks for rounds still drafting) and `liveDraftsOf` from `lib/draft/liveBanner.ts`. It must not call TBA or `loadLeaguePage`. Rendered from the root layout; failures render nothing (never block the page). It replaces the per-page `LiveDraftBanner` on Standings/Event.
+
+## 6. Player screens (Phase 3)
+
+### 6.1 Home `/` (signed in)
+
+1. **Up next** — one hero card (the only card on the page), picked by `upNext()` (§8.1) across all the user's leagues:
+
+| Kind | Title | Detail | Action |
+|---|---|---|---|
+| `draft-live` | "Your pick!" if on the clock, else "Draft is live" (paused: "Draft paused") | "{event} · {league}" | **Open draft room** (accent) |
+| `event-live` | "You're {ordinal} at {event}" (no picks: "{event} is live") | "{points} pts · {league}" | **See scores** |
+| `results` | "You finished {ordinal} at {event}" + 🥇/🥈/🥉 for top 3 | "{winner} won · {league}" | **See results** |
+| `event-soon` | "{event} starts {Mon D}" | "Your teams: 5181, 2539, …" (plates) | **See your teams** |
+| `draft-soon` | "{event} draft coming up" | "{Mon D} · {league}" | **Open draft room** |
+| none | "Nothing on right now" | "Your next event will show up here." | — |
+
+2. **Your leagues** — `Section` of `Row`s: league name, one-line status from that league's most relevant round ("Ramp Riot · drafting", "2026 season · 4 events left", "No events yet"), trailing rank `#2` (or `—`). Commissioner label inline. Error rows say "Couldn't load" (as today).
+3. Zero leagues: the hero becomes "Welcome! Join your family's league with the invite code, or start one." with the invite-code box and **Create a league**.
+
+"My season" stats move to You. The team list (`MeTeam`) is dropped from Home (your teams appear in the Up next detail and on the Event tab). `AutoRefresh` runs on Home only while an `event-live` or `draft-live` card is showing.
+
+### 6.2 Leagues `/leagues`
+
+The same league `Row`s as Home (shared `LeagueRows` component), then **Create a league** (primary button) and **Join with a code** (the invite-code box). Copy: "Create a league" everywhere (not "Create league").
+
+### 6.3 Standings `/l/[slug]` (event-by-event leagues)
+
+1. `StatusStrip`: "{n} events · {k} to go" (or "Season over" when all final; "No events yet" when none).
+2. **Season leaderboard** — `Row` per player: rank numeral, name ("(you)" suffix + highlight for the viewer), total (26px). Each row **expands** to a per-event breakdown: one line per round, "{event name} · {points}" (+ "Final"/"Live" tag), replacing today's bare space-separated numbers and footnote.
+3. **Events** — `Row` per round, date order: date block, event name, status badge, and the viewer's rank at that event when drafted ("You: 2nd"). Links to `/l/slug/r/id`.
+4. Empty states: "No players yet — share the invite code from Admin." (commissioners get a link) / "No events yet." + commissioner link "Add one in Admin".
+
+Removed from Standings: the per-live-round "Live now" leaderboards (Up next + Event tab cover it), `LeagueMeCard` (moved to the ⋯ menu), `LiveDraftBanner` (pill).
+
+### 6.4 Full-season leagues
+
+Tabs are **Standings · Draft · Admin**. `/l/slug` renders the **current season round** with the Event-tab layout (§6.5) in season mode: rows expand player → events → teams (today's `RosterList` season nesting, restyled), plus an **Events** section listing the season calendar (date, event, status). A **season switcher** in the `StatusStrip` ("2026 season ▾") lists past seasons, linking to `/l/slug/r/{id}`. "Current season" = `targetRound` over the league's season rounds.
+
+### 6.5 Event `/l/[slug]/r/[roundId]`
+
+1. `StatusStrip` by status, holding the **event switcher** ("{event} ▾", a `Sheet` listing the league's rounds) and freshness:
+
+| Status | Tone | Title | Detail / action |
+|---|---|---|---|
+| setup | neutral | "Draft not set up yet" | "{dates}" |
+| drafting | drafting | "Draft in progress" | **Open draft room** |
+| upcoming | neutral | "Starts {Mon D}" | "{dates}" |
+| live | live (green ● LIVE) | "{event}" | "updated {ago}" (from `freshnessText`) |
+| awaiting_final | final | "Event over · results may still change" | "updated {ago}" |
+| final | final | "Final · {winner} wins" | — |
+
+2. **Leaderboard** — `Row` per player with rank, name, points; **expandable**; the viewer's row is expanded by default. Expanded content = that player's teams, one line each: plate, plain stats from today's roster lines (e.g. "6–2 · rank 4"), points. Lines use `lineText`/existing breakdown data — no new scoring. Setup/drafting: the list shows players with "—" and expanded rows show picks so far. Season rounds nest events (§6.4).
+3. **Notes** — today's three alerts ("Event hasn't started", "OPR bonus: after quals", "RP data unavailable") become one-line muted notes under the strip, using glossary labels; plus a **How scoring works** link opening a `Sheet` that summarizes the round's scoring config in plain words.
+4. **Adjustments** — shown only when the round has any.
+5. External link "View on The Blue Alliance" moves into the event switcher sheet.
+
+Removed: separate Rosters section, Draft board (→ Draft tab), "‹ Standings" back link, `LiveDraftBanner`.
+
+### 6.6 Draft `/l/[slug]/r/[roundId]/draft`
+
+- **`draftMode === 'live'`** → the draft room for every phase:
+  - **setup:** banner "Draft hasn't started" + "You pick {ordinal} of {n}" + snake explainer (`Info snake`); tabs Pool · My queue · Board so players can queue early.
+  - **live/paused:** sticky `DraftRoomBanner` — "On the clock: {name} · 0:42" / **"Your pick!"** / "You're up in {n} picks" / "Paused by the commissioner".
+  - **done:** banner "Draft complete"; default tab Board.
+  - **Auto-draft** is a visible switch in the banner area with the glossary one-liner (replaces the collapsed "Draft options").
+  - **Commissioner strip** (commissioners only), always visible under the banner: Pause / Resume / Undo last pick.
+  - Tabs: **Pool · My queue ({n}) · Board**. The Rosters tab is removed (Board shows each player's column). Watchers: Pool · Board, plus "You're watching — only league members can draft."
+  - Pool rows: plate, team name, "Projected 52 · Robot rating 38" (glossary labels), queue toggle, Draft button. Sort labels: "Projected", "Robot rating", "Team number".
+- **`draftMode === 'commissioner'`** → the **draft board** (`DraftBoard`) with the strip "The commissioner enters picks for this event" (done: "Draft complete"). Replaces "No live draft for this round".
+- No back link (tabs cover it). Logic untouched: `useDraftRoom`, `ConfirmSheet` behavior, pick APIs.
+
+### 6.7 You `/you`
+
+Sections: **Profile** (Display name, My FRC team — today's `SettingsForm` fields) · **My season** (labeled: "{total} points in {year}", "Best pick: {team} at {event} (+{pts})", "Average finish: {n}" — from `seasonSummary`) · **Appearance** (Light / Dark segmented control, replacing the header toggle) · **Account** (Sign out; Delete account visually separated at the bottom, `danger`).
+
+### 6.8 Join `/join/[code]`
+
+Card: "You're invited to **{league}**", then a plain line describing it — event-by-event: "Event by event · next up {event}, {Mon D}" (or "No events yet"); full-season: "Full {year} season" — then "Run by {commissioner} · {n} players", then Join (or inline sign-up when signed out, as today). Error states unchanged in logic, restyled.
+
+### 6.9 Sign in `/signin`
+
+Restyled. Forgot-password line: **"Forgot your password? Ask the league commissioner to reset it."**
+
+### 6.10 Create a league `/leagues/new`
+
+Same fields and API. Plain helper text under each choice:
+- Visibility: "Anyone with the link can watch" / "Only members can see it".
+- Event by event: "Draft new teams for each event." Follow teams: "Follow up to 3 teams and we'll add each event they attend automatically."
+- Full season: "Draft once and score every official event all year."
+After create, land on `/l/slug/admin` (as today) — which now opens with **Invite people** (§7.1).
+
+### 6.11 Landing `/` (signed out)
+
+Same story and sections (hero, match lineup, sample scoreboard, how it works, coming up), restyled to the new system. Adds a visible **Sign in** button beside "Create an account". `SampleScoreboard` uses the new leaderboard rows.
