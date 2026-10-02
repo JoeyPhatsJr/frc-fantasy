@@ -1,8 +1,9 @@
+import { seasonEventLabel } from '@/components/event/PlayerBoard';
 import { BumperPlate } from '@/components/ui/BumperPlate';
 import { ChevronDown } from '@/components/ui/icons';
 import { formatDateRange, signed } from '@/lib/format';
 import type { Line, PlayerRoundScore } from '@/lib/scoring/types';
-import type { SeasonEventScore, SeasonTeamDetail } from '@/lib/season/score';
+import type { SeasonTeamDetail } from '@/lib/season/score';
 import { teamLabel } from '@/lib/teams';
 
 /** First character of the name, for the avatar circle. Array.from keeps emoji whole. */
@@ -29,9 +30,8 @@ function LineItem({ line }: { line: Line }) {
   );
 }
 
-export function seasonEventLabel(e: SeasonEventScore): string {
-  return `${formatDateRange(e.startDate, e.endDate)} · ${e.name}`;
-}
+// Moved to the Event tab's PlayerBoard (UX overhaul Task 10); re-exported until RosterList is deleted.
+export { seasonEventLabel };
 
 /** Season rounds (spec §5.5): the team's season total → one row per event → that event's v1 lines. */
 function SeasonBreakdown({ detail, adjustments }: { detail: SeasonTeamDetail; adjustments: Line[] }) {
