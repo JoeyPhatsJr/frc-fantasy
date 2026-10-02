@@ -256,7 +256,7 @@ export function DraftEntry({ detail, busy, run, api, playerNames }: SectionProps
 
       {picks.length > 0 ? (
         <div className="space-y-2">
-          <h3 className={SUBHEAD}>Replace a pick</h3>
+          <h3 className={SUBHEAD}>Fix a pick</h3>
           <p className="text-[13px] leading-[18px] text-fg-muted">
             For a team that withdrew. The pick keeps its number and owner.
           </p>

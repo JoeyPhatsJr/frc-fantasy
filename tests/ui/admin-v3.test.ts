@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { InviteCard, shareOrCopy } from '@/components/admin/InviteCard';
 import { EventPicker } from '@/components/admin/EventPicker';
+import { RoundChecklistView, stepSummaries } from '@/components/admin/RoundChecklist';
 
 const r = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(el);
 
@@ -67,5 +68,35 @@ describe('EventPicker', () => {
     const html = r(h(EventPicker, { upcoming: [], onPick: () => {}, busy: false }));
     expect(html).toContain('TBA link or event code (like 2025parr)');
     expect(html).toMatch(/<button[^>]*type="submit"[^>]*>[^<]*Check<\/button>/);
+  });
+});
+
+describe('stepSummaries', () => {
+  it('one-line summaries for done steps and previews for future ones', () => {
+    const s = stepSummaries({ playerCount: 6, rosterSize: 4, picks: 24, kind: 'tba', manualResults: 0, finalized: false });
+    expect(s[1].summary).toBe('6 players · 4 teams each');
+    expect(s[2].summary).toBe('Draft complete · 24 picks');
+    expect(s[3].preview).toBe('Scores update from The Blue Alliance automatically. Fix anything with adjustments.');
+    expect(s[4].summary).toBe('Not final yet');
+    const manual = stepSummaries({ playerCount: 2, rosterSize: 3, picks: 6, kind: 'manual', manualResults: 5, finalized: true });
+    expect(manual[3].summary).toBe('5 results entered');
+    expect(manual[4].summary).toBe('Final');
+  });
+});
+
+describe('RoundChecklistView', () => {
+  const steps = ([1, 2, 3, 4] as const).map((step) => ({ step, summary: `sum${step}`, preview: `pre${step}`, content: `content${step}` }));
+  it('numbers the steps, checks done ones, opens only the current step', () => {
+    const html = r(h(RoundChecklistView, { current: 2, open: [2], steps, onToggle: () => {} }));
+    for (const t of ['Set up', 'Run the draft', 'During the event', 'Wrap up']) expect(html).toContain(t);
+    expect(html).toContain('sum1');
+    expect(html).toContain('content2');
+    expect(html).not.toContain('content3');
+    expect(html).toContain('pre3');
+    expect(html).toMatch(/aria-current="step"/);
+    expect(html.match(/aria-expanded="true"/g)?.length).toBe(1);
+  });
+  it('any step can be opened', () => {
+    expect(r(h(RoundChecklistView, { current: 2, open: [2, 4], steps, onToggle: () => {} }))).toContain('content4');
   });
 });

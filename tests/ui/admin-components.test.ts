@@ -7,7 +7,11 @@ import { MembersCardView, memberActions, removeConfirmText } from '@/components/
 import { DashboardBody } from '@/components/admin/AdminDashboard';
 import { AddRoundForm, RoundRows } from '@/components/admin/DashboardParts';
 import { FollowTeamsForm } from '@/components/admin/FollowTeamsForm';
-import { bannerParts, pickFontSize } from '@/components/admin/DraftEntry';
+import { bannerParts, DraftEntry, pickFontSize } from '@/components/admin/DraftEntry';
+import { DraftModeSwitch, LiveDraftControls } from '@/components/admin/LiveDraftControls';
+import { RoundAdminView, type SectionProps } from '@/components/admin/RoundAdmin';
+import { RoundSetup } from '@/components/admin/RoundSetup';
+import type { AdminRoundDetail } from '@/lib/api/types';
 import { ScoringForm } from '@/components/admin/ScoringForm';
 import { draftBanner } from '@/lib/draft';
 import { DEFAULT_SCORING } from '@/lib/scoring/config';
@@ -292,5 +296,185 @@ describe('DangerZone', () => {
     const out = render(h(DangerZone, { leagueName: 'Habich Fam', busy: false, onDelete: noop }));
     expect(out).toContain('Type Habich Fam to confirm');
     expect(out).toMatch(/<button[^>]*disabled=""[^>]*>[^<]*Delete league/);
+  });
+});
+
+describe('Round admin (spec §7.2: a four-step checklist)', () => {
+  const players = [
+    { id: 'p1', name: 'Joey' },
+    { id: 'p2', name: 'Mom' },
+  ];
+  const pool = ['frc5181', 'frc341', 'frc1712', 'frc225'].map((teamKey) => ({
+    teamKey,
+    label: teamKey.slice(3),
+    nickname: null,
+    manual: false,
+  }));
+  const detailOf = (
+    over: Partial<Omit<AdminRoundDetail, 'round'>> & { round?: Partial<AdminRoundDetail['round']> } = {},
+  ): AdminRoundDetail => {
+    const { round, ...rest } = over;
+    return {
+      round: {
+        id: 'r1',
+        eventKey: '2026parr',
+        kind: 'tba',
+        seasonYear: null,
+        poolFilter: null,
+        eventName: 'Ramp Riot',
+        startDate: '2026-10-24',
+        endDate: '2026-10-24',
+        timezone: 'America/New_York',
+        rosterSize: 2,
+        draftOrder: ['p1', 'p2'],
+        scoring: DEFAULT_SCORING,
+        finalizedAt: null,
+        draftMode: 'commissioner',
+        pickSeconds: null,
+        draftStartedAt: null,
+        draftPausedAt: null,
+        ...round,
+      },
+      draftPhase: 'setup',
+      status: 'setup',
+      nudgeFinalize: false,
+      players,
+      pool,
+      poolStale: false,
+      poolEmptyMessage: null,
+      picks: [],
+      adjustments: [],
+      maxRosterSize: 2,
+      manualResults: null,
+      ...rest,
+    };
+  };
+  const sectionOf = (detail: AdminRoundDetail): SectionProps => ({
+    detail,
+    busy: false,
+    run: async () => {},
+    api: (async () => ({})) as unknown as SectionProps['api'],
+    playerNames: { p1: 'Joey', p2: 'Mom' },
+  });
+  const page = (detail: AdminRoundDetail) =>
+    render(
+      h(RoundAdminView, {
+        slug: 'fam',
+        section: sectionOf(detail),
+        error: null,
+        notice: null,
+        onNotice: noop,
+        onDismiss: noop,
+      }),
+    );
+  const fourPicks = [
+    { pickNumber: 0, playerId: 'p1', teamKey: 'frc5181' },
+    { pickNumber: 1, playerId: 'p2', teamKey: 'frc341' },
+    { pickNumber: 2, playerId: 'p2', teamKey: 'frc1712' },
+    { pickNumber: 3, playerId: 'p1', teamKey: 'frc225' },
+  ];
+
+  it('has a ‹ Admin back link and no old card titles', () => {
+    const html = page(detailOf());
+    expect(html).toMatch(/<a[^>]*href="\/l\/fam\/admin"[^>]*>.*Admin<\/a>/);
+    expect(html).not.toContain('>Dashboard<');
+    expect(html).not.toContain('Data and status');
+  });
+
+  it('opens step 1 while setup is unfinished, with RoundSetup shown without a <details> wrapper', () => {
+    const html = page(detailOf({ round: { draftOrder: ['p1'] } }));
+    expect(html).toMatch(/<li[^>]*aria-current="step"[^>]*>[\s\S]*?Set up/);
+    expect(html).toContain('Save draft setup');
+    expect(html).not.toContain('Roster size, draft order, team pool, scoring');
+    expect(html).not.toContain('Start draft');
+  });
+
+  it('opens step 2 once setup is done; commissioner mode shows only DraftEntry and a switch to a live draft', () => {
+    const html = page(detailOf());
+    expect(html).not.toContain('Save draft setup');
+    expect(html).toContain('Search available teams');
+    expect(html).toContain('Switch to a live draft');
+    expect(html).not.toContain('Pick timer');
+    expect(html).not.toContain('How picks are made');
+  });
+
+  it('live mode shows only the live controls, and a switch to entering picks by hand', () => {
+    const html = page(detailOf({ round: { draftMode: 'live' } }));
+    expect(html).toContain('Start draft');
+    expect(html).toContain('Open draft room');
+    expect(html).toContain('Switch to entering picks by hand');
+    expect(html).not.toContain('Search available teams');
+  });
+
+  it('a finished live draft also shows DraftEntry for "Fix a pick"', () => {
+    const html = page(
+      detailOf({ round: { draftMode: 'live', draftStartedAt: '2026-10-23T23:00:00Z' }, picks: fourPicks, status: 'drafting', draftPhase: 'done' }),
+    );
+    expect(html).toContain('Fix a pick');
+    expect(html).not.toContain('Replace a pick');
+  });
+
+  it('puts Delete this event below the checklist', () => {
+    const html = page(detailOf({ status: 'final', round: { finalizedAt: '2026-10-25T00:00:00Z' }, picks: fourPicks }));
+    expect(html.indexOf('Delete this event')).toBeGreaterThan(html.indexOf('Wrap up'));
+    expect(html).toContain('Reopen round');
+    expect(html).toContain('2 players · 2 teams each · Edit');
+    expect(html).toContain('Draft complete · 4 picks · Edit');
+  });
+
+  it('step 4 carries the finalize nudge; step 3 has Refresh from TBA and Adjustments', () => {
+    const html = page(detailOf({ status: 'awaiting_final', nudgeFinalize: true, picks: fourPicks }));
+    expect(html).toContain('mark final once results look complete');
+    expect(html).toContain('Mark round final');
+    expect(html).not.toContain('Refresh from TBA'); // step 3 is closed
+  });
+});
+
+describe('Round admin pieces after the restructure', () => {
+  const base = {
+    id: 'r1', eventKey: '2026parr', kind: 'tba' as const, seasonYear: null, poolFilter: null, eventName: 'Ramp Riot',
+    startDate: '2026-10-24', endDate: '2026-10-24', timezone: 'America/New_York', rosterSize: 2, draftOrder: ['p1', 'p2'],
+    scoring: DEFAULT_SCORING, finalizedAt: null, draftMode: 'live' as const, pickSeconds: null, draftStartedAt: null,
+    draftPausedAt: null,
+  };
+  const detail = (over: Partial<AdminRoundDetail> = {}, round: Partial<AdminRoundDetail['round']> = {}): AdminRoundDetail => ({
+    round: { ...base, ...round }, draftPhase: 'setup', status: 'setup', nudgeFinalize: false,
+    players: [{ id: 'p1', name: 'Joey' }, { id: 'p2', name: 'Mom' }],
+    pool: [{ teamKey: 'frc5181', label: '5181', nickname: null, manual: false }], poolStale: false,
+    poolEmptyMessage: null, picks: [], adjustments: [], maxRosterSize: 1, manualResults: null, ...over,
+  });
+  const section = (d: AdminRoundDetail): SectionProps => ({
+    detail: d, busy: false, run: async () => {}, api: (async () => ({})) as unknown as SectionProps['api'],
+    playerNames: { p1: 'Joey', p2: 'Mom' },
+  });
+
+  it('LiveDraftControls no longer holds the draft-mode select', () => {
+    const html = render(h(LiveDraftControls, { ...section(detail()), slug: 'fam' }));
+    expect(html).not.toContain('How picks are made');
+    expect(html).toContain('Pick timer');
+  });
+
+  it('DraftModeSwitch is enabled before the draft, disabled with a hint once started or picked', () => {
+    const before = render(h(DraftModeSwitch, section(detail())));
+    expect(before).toMatch(/<button[^>]*>Switch to entering picks by hand<\/button>/);
+    expect(before).not.toContain('disabled=""');
+    const started = render(h(DraftModeSwitch, section(detail({}, { draftStartedAt: '2026-10-23T23:00:00Z' }))));
+    expect(started).toMatch(/<button[^>]*disabled=""[^>]*>Switch to/);
+    expect(started).toContain('You can&#x27;t switch once the draft has started.');
+    const picked = render(
+      h(DraftModeSwitch, section(detail({ picks: [{ pickNumber: 0, playerId: 'p1', teamKey: 'frc5181' }] }, { draftMode: 'commissioner' }))),
+    );
+    expect(picked).toMatch(/<button[^>]*disabled=""[^>]*>Switch to a live draft/);
+  });
+
+  it('RoundSetup renders without a <details> wrapper of its own', () => {
+    const html = render(h(RoundSetup, section(detail())));
+    expect(html.startsWith('<details')).toBe(false);
+    expect(html).toContain('Draft order and roster size');
+  });
+
+  it('DraftEntry titles its replace-a-pick list "Fix a pick"', () => {
+    const html = render(h(DraftEntry, section(detail({ picks: [{ pickNumber: 0, playerId: 'p1', teamKey: 'frc5181' }] }))));
+    expect(html).toContain('Fix a pick');
   });
 });
