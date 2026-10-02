@@ -1086,7 +1086,7 @@ describe('LeagueHeaderView', () => {
 
 - [ ] **Step 5: Implement `LeagueMenu.tsx`** (`'use client'`): `⋯` icon button (`aria-label="League menu"`, 44px) opening a `Sheet` titled the league name, containing: (a) "Your name in this league" form (move the rename form + `renameMe` call from `LeagueMeCard`, same validation, `NAME_MAX`, success/danger message), (b) "Copy league link" (`CopyButton` with `${location.origin}/l/${slug}` — compute in an effect, or use `CopyButton` with a relative→absolute helper), (c) "Leave league" `Button variant="danger"` with the same two-step confirm text from `leaveConfirmText(name)` and `leaveLeague` call, then `router.push('/leagues')`. Export a `LeagueMenuView` for tests mirroring `LeagueMeCardView`'s props; move/port `tests/ui/league-me.test.ts` cases to the new view (same behaviors: rename, leave confirm text, busy states).
 
-- [ ] **Step 6: Rewire `app/l/[slug]/layout.tsx`.** Extend `loadShell` (database only — no TBA) to also return `format: league.format`, `isMember` (`access.member !== null` — check `LeagueAccess` in `lib/auth/roles.ts` for the member field name), `myName` (the member's display name in this league from `repo.listPlayers` / `withPublicNames`, or null), and `myLeagues` (if signed in: `repo.listLeaguesForUser(user.id)` minus this league, mapped to `{ slug, name }`; wrap in try/catch → `[]` on failure, Review Focus 5). Replace `<LeagueBar/>` + `<TabBar/>` with `<LeagueHeader {...} />`. Keep the existing error fallback (`return children`) and `canView` behavior.
+- [ ] **Step 6: Rewire `app/l/[slug]/layout.tsx`.** Extend `loadShell` (database only — no TBA) to also return `format: league.format`, `isMember` (`access.player !== null`; `LeagueAccess` in `lib/auth/roles.ts` is `{ user, league, player, canView, isCommissioner }`), `myName` (`access.player`'s name in this league — check `PlayerRow`'s name field in `lib/db/types.ts` — or null), and `myLeagues` (if signed in: `repo.listLeaguesForUser(user.id)` minus this league, mapped to `{ slug, name }`; wrap in try/catch → `[]` on failure, Review Focus 5). Replace `<LeagueBar/>` + `<TabBar/>` with `<LeagueHeader {...} />`. Keep the existing error fallback (`return children`) and `canView` behavior.
 
 - [ ] **Step 7: `app/l/[slug]/draft/page.tsx`**
 
@@ -1149,7 +1149,7 @@ export function LiveDraftPillView(p: { drafts: MyLiveDraft[]; pathname: string }
 export function LiveDraftPill(p: { drafts: MyLiveDraft[] }): JSX.Element | null; // client wrapper
 ```
 
-- [ ] **Step 1: Write the failing tests** — `tests/views/liveDrafts.test.ts`. Use the in-memory repo the other view tests use (`tests/helpers/memoryRepo.ts` + `tests/helpers/builders.ts`; read `tests/views/views.test.ts` for how a repo is installed — mirror it exactly). Cases:
+- [ ] **Step 1: Write the failing tests** — `tests/views/liveDrafts.test.ts`. Install the in-memory repo exactly like `tests/views/me.test.ts` does: `const h = vi.hoisted(() => ({ repo: undefined as unknown }));` + `vi.mock('@/lib/db', () => ({ getRepo: () => h.repo }));` and `h.repo = createMemoryRepo(...)` from `tests/helpers/memoryRepo.ts` (read that file and `tests/helpers/builders.ts` for how leagues/players/rounds/picks are seeded). Cases:
   1. User in a league whose round has `draftMode: 'live'`, `draftStartedAt` set, 0 picks → one entry, `phase: 'live'`, `myTurn` true when the user's player is first in `draftOrder`.
   2. Paused draft → `phase: 'paused'`.
   3. A `commissioner`-mode round, a not-started live round, and a finished draft → no entries.
@@ -1204,3 +1204,414 @@ export async function loadMyLiveDrafts(userId: string): Promise<MyLiveDraft[]> {
 - [ ] **Step 7: Run** `npx vitest run && npx tsc --noEmit` → green.
 
 - [ ] **Step 8: Commit** — `feat(ux): app-wide live-draft pill`.
+
+---
+
+## Phase 3 — Player screens
+
+### Task 8: `upNext`, league status lines, `loadHome`, date helpers
+
+**Files:**
+- Create: `lib/views/upNext.ts`, `lib/views/home.ts`, `tests/views/upNext.test.ts`, `tests/views/home.test.ts`
+- Modify: `lib/format.ts` (add `shortDate`, `ordinal`), `tests/format.test.ts`
+
+**Interfaces:**
+- Consumes: `RoundStatus` (`@/lib/rounds/status`), `DraftPhase`, `draftPhase`, `onClockPlayer` (`@/lib/draft/live`), `loadLeaguePage` (`@/lib/views/league`), `seasonSummary`/`SeasonInput`/`MeSeason` (move from `lib/views/me.ts` into `lib/views/home.ts`; leave `lib/views/me.ts` re-exporting them until Task 17).
+- Produces:
+
+```ts
+// lib/format.ts
+export function shortDate(ymd: string): string;            // '2026-10-24' → 'Oct 24'
+export function ordinal(n: number): string;                // 1 → '1st', 2 → '2nd', 3 → '3rd', 4 → '4th', 11 → '11th', 12 → '12th', 13 → '13th', 21 → '21st', 22 → '22nd', 101 → '101st', 111 → '111th'
+
+// lib/views/upNext.ts
+export type UpNextInput = {
+  leagueSlug: string; leagueName: string;
+  roundId: string; eventName: string; startDate: string; endDate: string;
+  status: RoundStatus; draftMode: 'live' | 'commissioner'; draftPhase: DraftPhase; myTurn: boolean;
+  myRank: number | null; myPoints: number | null; winnerName: string | null; myTeams: string[];
+};
+export type UpNextKind = 'draft-live' | 'event-live' | 'results' | 'event-soon' | 'draft-soon';
+export type UpNext = { kind: UpNextKind; item: UpNextInput } | null;
+export function upNext(items: UpNextInput[], today: string): UpNext;
+export function leagueStatusLine(view: { eventName: string; status: RoundStatus; startDate: string } | null): string;
+
+// lib/views/home.ts
+export type HomeLeague = { slug: string; name: string; isCommissioner: boolean; rank: number | null; total: number; line: string; error: boolean };
+export type HomePage = { leagues: HomeLeague[]; upNext: UpNext; season: MeSeason };
+export async function loadHome(userId: string, now: Date): Promise<HomePage>;
+```
+
+- [ ] **Step 1: Write the failing tests** — `tests/views/upNext.test.ts`
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { leagueStatusLine, upNext, type UpNextInput } from '@/lib/views/upNext';
+
+const item = (o: Partial<UpNextInput>): UpNextInput => ({
+  leagueSlug: 'fam', leagueName: 'Family', roundId: 'r', eventName: 'Ramp Riot',
+  startDate: '2026-10-24', endDate: '2026-10-24', status: 'upcoming', draftMode: 'live',
+  draftPhase: 'done', myTurn: false, myRank: null, myPoints: null, winnerName: null, myTeams: [], ...o,
+});
+const TODAY = '2026-10-20';
+
+describe('upNext', () => {
+  it('is null with nothing going on', () => {
+    expect(upNext([], TODAY)).toBeNull();
+    expect(upNext([item({ status: 'final', endDate: '2026-01-01' })], TODAY)).toBeNull();
+  });
+  it('a live draft beats everything, and my turn beats other live drafts', () => {
+    const items = [
+      item({ roundId: 'live', status: 'live' }),
+      item({ roundId: 'd1', leagueName: 'A', status: 'drafting', draftPhase: 'live' }),
+      item({ roundId: 'd2', leagueName: 'B', status: 'drafting', draftPhase: 'live', myTurn: true }),
+    ];
+    expect(upNext(items, TODAY)).toEqual({ kind: 'draft-live', item: items[2] });
+  });
+  it('a paused draft still counts as a live draft', () => {
+    const i = item({ status: 'drafting', draftPhase: 'paused' });
+    expect(upNext([i], TODAY)?.kind).toBe('draft-live');
+  });
+  it('a live event beats recent results and upcoming events', () => {
+    const items = [item({ roundId: 'u' }), item({ roundId: 'f', status: 'final', endDate: '2026-10-19' }), item({ roundId: 'l', status: 'live' })];
+    expect(upNext(items, TODAY)?.item.roundId).toBe('l');
+  });
+  it('shows results for 3 days after the event ends, most recent first', () => {
+    const a = item({ roundId: 'a', status: 'final', endDate: '2026-10-17' });
+    const b = item({ roundId: 'b', status: 'awaiting_final', endDate: '2026-10-18' });
+    expect(upNext([a, b], TODAY)).toEqual({ kind: 'results', item: b });
+    expect(upNext([item({ status: 'final', endDate: '2026-10-16' })], TODAY)).toBeNull();
+  });
+  it('then the soonest upcoming event, then the soonest draft to come', () => {
+    const later = item({ roundId: 'later', startDate: '2026-11-01', endDate: '2026-11-01' });
+    const sooner = item({ roundId: 'sooner', startDate: '2026-10-25', endDate: '2026-10-25' });
+    expect(upNext([later, sooner], TODAY)).toEqual({ kind: 'event-soon', item: sooner });
+    const setup = item({ roundId: 's', status: 'setup', draftPhase: 'setup' });
+    expect(upNext([setup], TODAY)).toEqual({ kind: 'draft-soon', item: setup });
+  });
+  it('ignores drafts for events that already ended', () => {
+    expect(upNext([item({ status: 'setup', draftPhase: 'setup', endDate: '2026-10-01' })], TODAY)).toBeNull();
+  });
+  it('breaks ties by start date, then league name', () => {
+    const b = item({ roundId: 'b', leagueName: 'B', status: 'live' });
+    const a = item({ roundId: 'a', leagueName: 'A', status: 'live' });
+    expect(upNext([b, a], TODAY)?.item.roundId).toBe('a');
+  });
+});
+
+describe('leagueStatusLine', () => {
+  it('says what the most relevant round is doing', () => {
+    expect(leagueStatusLine(null)).toBe('No events yet');
+    expect(leagueStatusLine({ eventName: 'Ramp Riot', status: 'setup', startDate: '2026-10-24' })).toBe('Ramp Riot · draft not set up');
+    expect(leagueStatusLine({ eventName: 'Ramp Riot', status: 'drafting', startDate: '2026-10-24' })).toBe('Ramp Riot · drafting');
+    expect(leagueStatusLine({ eventName: 'Ramp Riot', status: 'upcoming', startDate: '2026-10-24' })).toBe('Ramp Riot · starts Oct 24');
+    expect(leagueStatusLine({ eventName: 'Ramp Riot', status: 'live', startDate: '2026-10-24' })).toBe('Ramp Riot · live now');
+    expect(leagueStatusLine({ eventName: 'Ramp Riot', status: 'awaiting_final', startDate: '2026-10-24' })).toBe('Ramp Riot · event over');
+    expect(leagueStatusLine({ eventName: 'Ramp Riot', status: 'final', startDate: '2026-10-24' })).toBe('Ramp Riot · final');
+  });
+});
+```
+
+Append to `tests/format.test.ts`:
+
+```ts
+import { ordinal, shortDate } from '@/lib/format';
+describe('shortDate / ordinal', () => {
+  it('formats dates without timezone drift', () => {
+    expect(shortDate('2026-10-24')).toBe('Oct 24');
+    expect(shortDate('2026-01-01')).toBe('Jan 1');
+  });
+  it('handles English ordinals', () => {
+    expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 101, 111].map(ordinal)).toEqual(['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd', '23rd', '101st', '111th']);
+  });
+});
+```
+
+(Merge the import into the file's existing import from `@/lib/format`.)
+
+- [ ] **Step 2: Run** → FAIL.
+
+- [ ] **Step 3: Implement the helpers in `lib/format.ts`**
+
+```ts
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** 'YYYY-MM-DD' → 'Oct 24', read as a calendar date (no timezone shift). */
+export function shortDate(ymd: string): string {
+  const [, m, d] = ymd.split('-').map(Number);
+  return `${MONTHS[m - 1]} ${d}`;
+}
+
+export function ordinal(n: number): string {
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
+  return `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th'}`;
+}
+```
+
+- [ ] **Step 4: Implement `lib/views/upNext.ts`**
+
+```ts
+import type { DraftPhase } from '@/lib/draft/live';
+import { shortDate } from '@/lib/format';
+import { addDays, type RoundStatus } from '@/lib/rounds/status';
+
+export type UpNextInput = {
+  leagueSlug: string; leagueName: string;
+  roundId: string; eventName: string; startDate: string; endDate: string;
+  status: RoundStatus; draftMode: 'live' | 'commissioner'; draftPhase: DraftPhase; myTurn: boolean;
+  myRank: number | null; myPoints: number | null; winnerName: string | null; myTeams: string[];
+};
+export type UpNextKind = 'draft-live' | 'event-live' | 'results' | 'event-soon' | 'draft-soon';
+export type UpNext = { kind: UpNextKind; item: UpNextInput } | null;
+
+const byStartThenLeague = (a: UpNextInput, b: UpNextInput) =>
+  a.startDate.localeCompare(b.startDate) || a.leagueName.localeCompare(b.leagueName);
+
+/** The single most useful thing to show on Home, across all the user's leagues (spec §8.1). */
+export function upNext(items: UpNextInput[], today: string): UpNext {
+  const first = (kind: UpNextKind, list: UpNextInput[], order = byStartThenLeague): UpNext =>
+    list.length > 0 ? { kind, item: [...list].sort(order)[0] } : null;
+
+  const drafting = items.filter((i) => i.draftPhase === 'live' || i.draftPhase === 'paused');
+  if (drafting.length > 0) {
+    return first('draft-live', drafting, (a, b) => Number(b.myTurn) - Number(a.myTurn) || byStartThenLeague(a, b));
+  }
+  const live = first('event-live', items.filter((i) => i.status === 'live'));
+  if (live) return live;
+  const results = first(
+    'results',
+    items.filter((i) => (i.status === 'final' || i.status === 'awaiting_final') && today <= addDays(i.endDate, 3)),
+    (a, b) => b.endDate.localeCompare(a.endDate) || a.leagueName.localeCompare(b.leagueName),
+  );
+  if (results) return results;
+  const soon = first('event-soon', items.filter((i) => i.status === 'upcoming'));
+  if (soon) return soon;
+  return first('draft-soon', items.filter((i) => (i.status === 'setup' || i.status === 'drafting') && i.endDate >= today));
+}
+
+const PHRASE: Record<RoundStatus, (startDate: string) => string> = {
+  setup: () => 'draft not set up',
+  drafting: () => 'drafting',
+  upcoming: (d) => `starts ${shortDate(d)}`,
+  live: () => 'live now',
+  awaiting_final: () => 'event over',
+  final: () => 'final',
+};
+
+/** "Ramp Riot · drafting" — the one-line status under a league's name (spec §6.1). */
+export function leagueStatusLine(view: { eventName: string; status: RoundStatus; startDate: string } | null): string {
+  if (!view) return 'No events yet';
+  return `${view.eventName} · ${PHRASE[view.status](view.startDate)}`;
+}
+```
+
+- [ ] **Step 5: Implement `lib/views/home.ts`.** Move `SeasonInput`, `MeSeason`, `seasonSummary` here verbatim from `lib/views/me.ts` (and make `me.ts` re-export them so `tests/views/me.test.ts` keeps compiling until Task 17). Then:
+
+```ts
+export type HomeLeague = { slug: string; name: string; isCommissioner: boolean; rank: number | null; total: number; line: string; error: boolean };
+export type HomePage = { leagues: HomeLeague[]; upNext: UpNext; season: MeSeason };
+
+/** Everything Home and You show. Leagues load in parallel; one failing league doesn't break the page. */
+export async function loadHome(userId: string, now: Date): Promise<HomePage> {
+  const memberships = await getRepo().listLeaguesForUser(userId);
+  const results = await Promise.allSettled(memberships.map((m) => loadLeaguePage(m.league.slug, now)));
+  const today = localDate(now, 'America/New_York');
+  const leagues: HomeLeague[] = [];
+  const items: UpNextInput[] = [];
+  const seasonRounds: SeasonInput[] = [];
+
+  memberships.forEach(({ league, player }, i) => {
+    const base = { slug: league.slug, name: league.name, isCommissioner: player.role === 'commissioner' };
+    const result = results[i];
+    if (result.status === 'rejected' || result.value === null) {
+      if (result.status === 'rejected') console.error(result.reason);
+      leagues.push({ ...base, rank: null, total: 0, line: "Couldn't load", error: true });
+      return;
+    }
+    const page = result.value;
+    const row = page.standings.find((s) => s.playerId === player.id);
+    const targetId = targetRound(page.rounds.map((v) => ({ id: v.round.id, startDate: v.round.startDate, status: v.status })), today);
+    const target = page.rounds.find((v) => v.round.id === targetId) ?? null;
+    leagues.push({
+      ...base,
+      rank: row?.rank ?? null,
+      total: row?.total ?? 0,
+      line: leagueStatusLine(target && { eventName: target.round.eventName, status: target.status, startDate: target.round.startDate }),
+      error: false,
+    });
+    for (const view of page.rounds) {
+      const me = view.scores.find((s) => s.playerId === player.id) ?? null;
+      const winner = view.scores.find((s) => s.rank === 1) ?? null;
+      items.push({
+        leagueSlug: league.slug, leagueName: league.name,
+        roundId: view.round.id, eventName: view.round.eventName,
+        startDate: view.round.startDate, endDate: view.round.endDate,
+        status: view.status, draftMode: view.round.draftMode,
+        draftPhase: draftPhase(view.round, view.picks.length),
+        myTurn: onClockPlayer(view.round, view.picks.length) === player.id && draftPhase(view.round, view.picks.length) === 'live',
+        myRank: me?.rank ?? null, myPoints: me?.total ?? null,
+        winnerName: winner?.name ?? null,
+        myTeams: view.picks.filter((p) => p.playerId === player.id).sort((a, b) => a.pickNumber - b.pickNumber).map((p) => p.teamKey),
+      });
+      seasonRounds.push({
+        eventName: view.round.eventName,
+        startDate: view.round.startDate,
+        finalized: view.round.finalizedAt !== null,
+        me: me && { total: me.total, rank: me.rank, teams: me.teams.map((t) => ({ teamKey: t.teamKey, total: t.total })) },
+      });
+    }
+  });
+  return { leagues, upNext: upNext(items, today), season: seasonSummary(seasonRounds, today.slice(0, 4)) };
+}
+```
+
+(Check `PickRow`'s pick-number field name in `lib/db/types.ts` and `RoundRow.draftMode`'s type; adjust.)
+
+Write `tests/views/home.test.ts` modeled on the `loadMePage` tests in `tests/views/me.test.ts` (same `vi.hoisted` repo + `getTba` mocks and seeding helpers): (1) zero leagues → `{ leagues: [], upNext: null }` and season total 0; (2) one league with an upcoming round → a league row with `line` `"{event} · starts {Mon D}"` and `upNext.kind === 'event-soon'` with `myTeams` in pick order; (3) a league whose page load throws → `error: true`, `line: "Couldn't load"`, other leagues still present.
+
+- [ ] **Step 6: Run** `npx vitest run && npx tsc --noEmit` → green.
+
+- [ ] **Step 7: Commit** — `feat(ux): upNext priority, league status lines and the Home loader`.
+
+### Task 9: Home, Leagues and You pages
+
+**Files:**
+- Create: `components/home/UpNextCard.tsx`, `components/you/MySeason.tsx`, `tests/ui/home.test.ts`
+- Modify: `app/page.tsx`, `app/leagues/page.tsx`, `app/you/page.tsx`, `components/me/LeagueRows.tsx`, `components/InviteCodeBox.tsx` (restyle only)
+
+**Interfaces:**
+- Consumes: `loadHome`, `HomeLeague`, `UpNext` (Task 8); `Row`, `Section`, `RankNumeral`, `Points` (Task 3); `Button`, `BumperPlate`; `shortDate`, `ordinal`; `teamLabel` from `@/lib/teams` (team key → number shown on plate).
+- Produces:
+  - `export function UpNextCard({ next }: { next: UpNext }): JSX.Element` (server)
+  - `export function upNextCopy(next: Exclude<UpNext, null>): { eyebrow: string; title: string; detail: string; action: { label: string; href: string } | null }` (pure, exported for tests)
+  - `export function LeagueRows({ leagues }: { leagues: HomeLeague[] })` (server; replaces the old props)
+  - `export function MySeason({ season, year }: { season: MeSeason; year: string })`
+
+- [ ] **Step 1: Write the failing tests** — `tests/ui/home.test.ts`
+
+```ts
+import { createElement as h } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it } from 'vitest';
+import { UpNextCard, upNextCopy } from '@/components/home/UpNextCard';
+import { LeagueRows } from '@/components/me/LeagueRows';
+import { MySeason } from '@/components/you/MySeason';
+import type { UpNextInput } from '@/lib/views/upNext';
+
+const item = (o: Partial<UpNextInput>): UpNextInput => ({
+  leagueSlug: 'fam', leagueName: 'Family', roundId: 'r1', eventName: 'Ramp Riot',
+  startDate: '2026-10-24', endDate: '2026-10-24', status: 'upcoming', draftMode: 'live',
+  draftPhase: 'done', myTurn: false, myRank: null, myPoints: null, winnerName: null, myTeams: [], ...o,
+});
+const r = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(el);
+
+describe('upNextCopy', () => {
+  it('live draft, my turn', () => {
+    const c = upNextCopy({ kind: 'draft-live', item: item({ draftPhase: 'live', myTurn: true }) });
+    expect(c.title).toBe('Your pick!');
+    expect(c.action).toEqual({ label: 'Open draft room', href: '/l/fam/r/r1/draft' });
+  });
+  it('live draft, someone else / paused', () => {
+    expect(upNextCopy({ kind: 'draft-live', item: item({ draftPhase: 'live' }) }).title).toBe('Draft is live');
+    expect(upNextCopy({ kind: 'draft-live', item: item({ draftPhase: 'paused' }) }).title).toBe('Draft paused');
+  });
+  it('live event with and without a rank', () => {
+    const c = upNextCopy({ kind: 'event-live', item: item({ status: 'live', myRank: 2, myPoints: 198 }) });
+    expect(c.title).toBe("You're 2nd at Ramp Riot");
+    expect(c.detail).toBe('198 pts · Family');
+    expect(c.action).toEqual({ label: 'See scores', href: '/l/fam/r/r1' });
+    expect(upNextCopy({ kind: 'event-live', item: item({ status: 'live' }) }).title).toBe('Ramp Riot is live');
+  });
+  it('results with a medal for the podium', () => {
+    const c = upNextCopy({ kind: 'results', item: item({ status: 'final', myRank: 1, winnerName: 'Joey' }) });
+    expect(c.title).toBe('You finished 1st at Ramp Riot 🥇');
+    expect(c.detail).toBe('Joey won · Family');
+    expect(upNextCopy({ kind: 'results', item: item({ status: 'final', myRank: 4, winnerName: 'Mom' }) }).title).toBe('You finished 4th at Ramp Riot');
+  });
+  it('event soon and draft soon', () => {
+    expect(upNextCopy({ kind: 'event-soon', item: item({}) }).title).toBe('Ramp Riot starts Oct 24');
+    const d = upNextCopy({ kind: 'draft-soon', item: item({ status: 'setup', draftPhase: 'setup' }) });
+    expect(d.title).toBe('Ramp Riot draft coming up');
+    expect(d.detail).toBe('Oct 24 · Family');
+    expect(d.action?.href).toBe('/l/fam/r/r1/draft');
+  });
+});
+
+describe('UpNextCard', () => {
+  it('renders the empty state when there is nothing', () => {
+    expect(r(h(UpNextCard, { next: null }))).toContain('Nothing on right now');
+  });
+  it('shows your teams as blue plates for an upcoming event', () => {
+    const html = r(h(UpNextCard, { next: { kind: 'event-soon', item: item({ myTeams: ['frc5181', 'frc2539'] }) } }));
+    expect(html).toContain('Team 5181');
+    expect(html).toContain('Team 2539');
+    expect(html).not.toContain('bg-red-alliance');
+  });
+});
+
+describe('LeagueRows', () => {
+  it('links each league with its status line and rank', () => {
+    const html = r(h(LeagueRows, { leagues: [
+      { slug: 'fam', name: 'Family', isCommissioner: true, rank: 2, total: 198, line: 'Ramp Riot · live now', error: false },
+      { slug: 'x', name: 'Broken', isCommissioner: false, rank: null, total: 0, line: "Couldn't load", error: true },
+    ] }));
+    expect(html).toContain('href="/l/fam"');
+    expect(html).toContain('Ramp Riot · live now');
+    expect(html).toContain('#2');
+    expect(html).toContain('Commissioner');
+    expect(html).toContain('Couldn&#x27;t load');
+  });
+});
+
+describe('MySeason', () => {
+  it('labels every number', () => {
+    const html = r(h(MySeason, { year: '2026', season: { total: 1284, bestPick: { teamKey: 'frc341', eventName: 'Ramp Riot', points: 62 }, averageFinish: 2.3 } }));
+    expect(html).toContain('1,284');
+    expect(html).toContain('points in 2026');
+    expect(html).toContain('Best pick');
+    expect(html).toContain('341 at Ramp Riot');
+    expect(html).toContain('Average finish');
+  });
+});
+```
+
+- [ ] **Step 2: Run** → FAIL.
+
+- [ ] **Step 3: Implement `UpNextCard.tsx`.** `upNextCopy` per spec §6.1 table exactly (eyebrow = `UP NEXT · {LEAGUE NAME}` uppercased; medals 🥇🥈🥉 for ranks 1–3; draft hrefs `/l/{slug}/r/{roundId}/draft`, event hrefs `/l/{slug}/r/{roundId}`; `event-soon` action `{ label: 'See your teams', href: event href }`; when `myRank` is null for `results`, title `"{event} is final"` and detail `"{winner} won · {league}"`). `UpNextCard` renders a `rounded-card border border-accent bg-surface p-4` card: eyebrow (`text-[11px] font-bold uppercase tracking-[.12em] text-accent-text`), title (`font-display text-[28px] font-bold leading-8`), detail (`text-fg-muted`), plates (`BumperPlate size="sm"` with `teamLabel(key)`) for `event-soon` and `draft-soon` when `myTeams` non-empty, and the action as `Button variant="accent"` full width. `next === null` → the card with title "Nothing on right now" and detail "Your next event will show up here."
+
+- [ ] **Step 4: Rewrite `LeagueRows.tsx`** to take `HomeLeague[]` and render one `Row` per league: `href=/l/{slug}`, `title=name` (+ Commissioner label as in Task 6), `subtitle=line`, `trailing` = `#{rank}` in `font-display text-[22px] font-bold` or `—`. Error rows: no href, subtitle "Couldn't load". Wrap in nothing (callers wrap in `Section`). Update `tests/ui/me.test.ts` cases for LeagueRows to the new props (or delete those cases if covered above).
+
+- [ ] **Step 5: `MySeason.tsx`** — three `Row`s: "{total formatted with toLocaleString('en-US')} points in {year}"; "Best pick" with subtitle `"{number} at {event} (+{points})"` or "—"; "Average finish" with trailing `averageFinish.toFixed(1)` or "—".
+
+- [ ] **Step 6: `app/page.tsx`** — signed out unchanged (Landing). Signed in: `const home = await loadHome(user.id, new Date())`; render:
+
+```tsx
+<main id="main" className="space-y-8">
+  {home.upNext && (home.upNext.kind === 'event-live' || home.upNext.kind === 'draft-live') ? <AutoRefresh seconds={60} /> : null}
+  {home.leagues.length === 0 ? (
+    <div className="space-y-4 rounded-card border border-accent bg-surface p-4">
+      <h1 className="font-display text-[28px] font-bold leading-8">Welcome!</h1>
+      <p className="text-fg-muted">Join your family&apos;s league with the invite code, or start one.</p>
+      <InviteCodeBox label="Have an invite code?" />
+      <Button href="/leagues/new" variant="secondary" className="w-full">Create a league</Button>
+    </div>
+  ) : (
+    <>
+      <h1 className="sr-only">Home</h1>
+      <UpNextCard next={home.upNext} />
+      <Section label="Your leagues"><LeagueRows leagues={home.leagues} /></Section>
+    </>
+  )}
+</main>
+```
+
+Keep whatever error handling `app/page.tsx` has today around the loader (DbAsleep etc.).
+
+- [ ] **Step 7: `app/leagues/page.tsx`** — `h1` "Leagues"; `Section label="Your leagues"` with `LeagueRows` (from `loadHome(...).leagues`), or "You're not in any leagues yet." when empty; then `Button href="/leagues/new"` "Create a league" and a `Section label="Join with a code"` holding `InviteCodeBox`. Restyle `InviteCodeBox` to the new input/button styles (logic unchanged).
+
+- [ ] **Step 8: `/you`** — insert `<Section label="My season"><MySeason season={home.season} year={...} /></Section>` above Appearance, loading `loadHome(user.id, now)` (wrap in try/catch: on failure omit the section).
+
+- [ ] **Step 9: Run** `npx vitest run && npx tsc --noEmit` → green. `components/me/MeHome.tsx` is now unused (deleted in Task 17).
+
+- [ ] **Step 10: Commit** — `feat(ux): Home up-next card, Leagues list and My season on You`.
