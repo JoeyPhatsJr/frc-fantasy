@@ -12,10 +12,11 @@ describe('pool formatters', () => {
     expect(formatOprRank(41.2, null)).toBe('OPR 41.2');
     expect(formatOprRank(null, 7)).toBe('#7');
     expect(formatOprRank(null, null)).toBe('—');
+    expect(formatOprRank(41.23, 3, 'Robot rating (OPR)')).toBe('Robot rating (OPR) 41.2 · #3');
   });
 
   it("labels every best finish and keeps SP4's footnote wording", () => {
     expect(BEST_FINISH_LABEL).toEqual({ winner: 'Event winner', finalist: 'Finalist', captain: 'Captain', picked: 'Picked' });
-    expect(POOL_FOOTNOTE).toBe('Proj. uses standard scoring.');
+    expect(POOL_FOOTNOTE).toBe('Projected points use standard scoring.');
   });
 });

@@ -1,5 +1,6 @@
 import { Badge } from '@/components/ui/Badge';
 import type { PoolEntry } from '@/lib/pool/entries';
+import { GLOSSARY } from '@/lib/glossary';
 import { BEST_FINISH_LABEL, formatOprRank, formatProj, formatRecord, POOL_FOOTNOTE } from '@/lib/pool/format';
 
 /** Shown instead of a projection for teams with no results in the last two seasons. */
@@ -8,7 +9,8 @@ export function NewChip() {
 }
 
 /**
- * The stat line of a pool row (spec §6.3): Proj (or New) · W-L-T · best finish · OPR / rank.
+ * The stat line of a pool row (spec §6.3): Projected (or New) · W-L-T · best finish · Robot rating (OPR) / rank.
+ * Labels come from the glossary (UX §4.7).
  * It wraps onto a second line instead of scrolling sideways on a 360 px phone.
  */
 export function PoolStatCells({ entry }: { entry: PoolEntry }) {
@@ -21,7 +23,7 @@ export function PoolStatCells({ entry }: { entry: PoolEntry }) {
         <NewChip />
       ) : (
         <span className="whitespace-nowrap">
-          <span className="font-semibold">Proj</span>{' '}
+          <span className="font-semibold">{GLOSSARY.proj.label}</span>{' '}
           <span className="font-display text-[17px] font-bold text-fg tabular-nums">{formatProj(entry.proj)}</span>
         </span>
       )}
@@ -31,7 +33,7 @@ export function PoolStatCells({ entry }: { entry: PoolEntry }) {
         <Badge tone={entry.bestFinish === 'winner' ? 'warning' : 'neutral'}>{BEST_FINISH_LABEL[entry.bestFinish]}</Badge>
       ) : null}
       {entry.opr !== null || entry.rank !== null ? (
-        <span className="whitespace-nowrap tabular-nums">{formatOprRank(entry.opr, entry.rank)}</span>
+        <span className="whitespace-nowrap tabular-nums">{formatOprRank(entry.opr, entry.rank, GLOSSARY.opr.label)}</span>
       ) : null}
     </div>
   );

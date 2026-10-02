@@ -8,6 +8,7 @@ import { BumperPlate } from '@/components/ui/BumperPlate';
 import { Button } from '@/components/ui/Button';
 import { Trophy, X } from '@/components/ui/icons';
 import { signed } from '@/lib/format';
+import { GLOSSARY } from '@/lib/glossary';
 import { BEST_FINISH_LABEL, formatProj, formatRecord } from '@/lib/pool/format';
 import type { TeamSheetData, TeamSheetSeason } from '@/lib/stats/pool';
 import { teamLabel } from '@/lib/teams';
@@ -80,7 +81,7 @@ export function TeamSheetBody({ data, nickname }: { data: TeamSheetData; nicknam
             <NewChip />
           ) : (
             <p className="text-[13px] font-semibold leading-[18px] text-fg-muted">
-              Proj{' '}
+              {GLOSSARY.proj.label}{' '}
               <span className="font-display text-[22px] font-bold leading-none text-fg tabular-nums">
                 {formatProj(data.proj)}
               </span>

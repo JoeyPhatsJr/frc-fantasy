@@ -3,6 +3,8 @@ import {
   actionNotice,
   autodraftShown,
   confirmTarget,
+  defaultDraftTab,
+  draftTabs,
   MAX_QUEUE,
   submitPick,
   toggledQueue,
@@ -120,5 +122,21 @@ describe('autodraftShown: the optimistic auto-draft checkbox (review I4)', () =>
     expect(autodraftShown(false, saved, 150)).toBe(true); // old state, fetched before the save landed
     expect(autodraftShown(true, saved, 250)).toBe(true);
     expect(autodraftShown(false, saved, 250)).toBe(false); // e.g. an undo turned it off again since
+  });
+});
+
+describe('draftTabs', () => {
+  it('members get Pool · My queue · Board; watchers get Pool · Board; no Rosters tab', () => {
+    expect(draftTabs(true, 0).map((t) => t.label)).toEqual(['Pool', 'My queue', 'Board']);
+    expect(draftTabs(true, 3).map((t) => t.label)).toEqual(['Pool', 'My queue (3)', 'Board']);
+    expect(draftTabs(false, 0).map((t) => t.key)).toEqual(['pool', 'board']);
+  });
+});
+describe('defaultDraftTab', () => {
+  it('opens the board once the draft is done', () => {
+    expect(defaultDraftTab('done')).toBe('board');
+    expect(defaultDraftTab('setup')).toBe('pool');
+    expect(defaultDraftTab('live')).toBe('pool');
+    expect(defaultDraftTab('paused')).toBe('pool');
   });
 });

@@ -10,9 +10,9 @@ export function formatRecord(record: [number, number, number] | null): string {
   return record ? `${record[0]}-${record[1]}-${record[2]}` : '—';
 }
 
-/** Latest OPR and rank, e.g. "OPR 41.2 · #3"; either half drops out when missing. */
-export function formatOprRank(opr: number | null, rank: number | null): string {
-  const parts = [opr === null ? null : `OPR ${opr.toFixed(1)}`, rank === null ? null : `#${rank}`].filter(Boolean);
+/** Latest OPR and rank, e.g. "OPR 41.2 · #3"; either half drops out when missing. `label` names the OPR half. */
+export function formatOprRank(opr: number | null, rank: number | null, label = 'OPR'): string {
+  const parts = [opr === null ? null : `${label} ${opr.toFixed(1)}`, rank === null ? null : `#${rank}`].filter(Boolean);
   return parts.length > 0 ? parts.join(' · ') : '—';
 }
 
@@ -23,5 +23,5 @@ export const BEST_FINISH_LABEL: Record<BestFinish, string> = {
   picked: 'Picked',
 };
 
-/** Spec §6.3. SP4's PoolList test already checks this wording. */
-export const POOL_FOOTNOTE = 'Proj. uses standard scoring.';
+/** Spec §6.3, in the UX overhaul's plain words (the label is GLOSSARY.proj's "Projected"). */
+export const POOL_FOOTNOTE = 'Projected points use standard scoring.';

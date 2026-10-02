@@ -3,6 +3,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({ repo: undefined as unknown, roundLoads: 0 }));
+// Hand-entered rounds load the round page view, which asks TBA (here: an event with no data yet).
+vi.mock('@/lib/tba/client', () => ({ getTba: async () => ({ data: null, fetchedAt: null, stale: false }) }));
 vi.mock('@/lib/db', () => ({
   getRepo: () =>
     new Proxy(h.repo as object, {
@@ -23,7 +25,7 @@ vi.mock('next/navigation', () => ({
 
 import DraftRoomPage from '@/app/l/[slug]/r/[roundId]/draft/page';
 import type { Repo } from '@/lib/db/repo';
-import type { LeagueRow, RoundRow } from '@/lib/db/types';
+import type { LeagueRow, PlayerRow, RoundRow } from '@/lib/db/types';
 import { defaultScoring } from '@/lib/scoring/config';
 import { seedLeague } from '../helpers/api';
 import { makeUser, setUser, signInAsMember } from '../helpers/auth';
@@ -31,12 +33,13 @@ import { createMemoryRepo } from '../helpers/memoryRepo';
 
 let repo: Repo;
 let league: LeagueRow;
+let commissioner: PlayerRow;
 let round: RoundRow;
 
 async function setup(visibility: 'link' | 'members') {
   repo = createMemoryRepo();
   h.repo = repo;
-  ({ league } = await seedLeague(repo, { visibility, signIn: false }));
+  ({ league, commissioner } = await seedLeague(repo, { visibility, signIn: false }));
   round = await repo.createRound({
     leagueId: league.id, eventKey: '2025parr', eventName: 'Ramp Riot', startDate: '2025-10-25',
     endDate: '2025-10-25', timezone: 'America/New_York', scoring: defaultScoring(),
@@ -82,19 +85,47 @@ describe('/l/{slug}/r/{roundId}/draft (spec §7.6)', () => {
   describe('link league', () => {
     beforeEach(() => setup('link'));
 
-    it('lets signed-out visitors watch, with a back link to the round page', async () => {
+    it('lets signed-out visitors watch; the league tabs replace the old back link', async () => {
       const out = await render(league.slug, round.id);
-      expect(out).toContain('Ramp Riot draft');
+      expect(out).toMatch(/<h1 class="sr-only">Ramp Riot draft<\/h1>/);
       expect(out).toContain('Loading the draft');
-      expect(out).toContain(`href="/l/${league.slug}/r/${round.id}"`);
+      expect(out).not.toContain(`href="/l/${league.slug}/r/${round.id}"`);
     });
 
-    it('points commissioner-mode rounds back to the round page', async () => {
-      await repo.updateRound(round.id, { draftMode: 'commissioner' });
-      const out = await render(league.slug, round.id);
-      expect(out).toContain('No live draft for this round');
-      expect(out).toContain('See the draft board');
-      expect(out).not.toContain('Loading the draft');
+    describe('hand-entered rounds show the draft board (UX §6.6)', () => {
+      async function handEntered(picks: number) {
+        const mom = await repo.createMember({ leagueId: league.id, userId: (await makeUser(repo, 'Mom')).id, name: 'Mom', role: 'player' });
+        round = await repo.updateRound(round.id, {
+          draftMode: 'commissioner', draftOrder: [commissioner.id, mom.id], rosterSize: 2,
+        });
+        const order = [commissioner.id, mom.id, mom.id, commissioner.id];
+        const teams = ['frc341', 'frc254', 'frc25', 'frc5181'];
+        for (let n = 0; n < picks; n++) {
+          await repo.insertPick({ roundId: round.id, pickNumber: n, playerId: order[n]!, teamKey: teams[n]! });
+        }
+      }
+
+      it('while picks are being entered: the commissioner strip, the count, and the board', async () => {
+        await handEntered(1);
+        const out = await render(league.slug, round.id);
+        expect(out).toMatch(/<h1 class="sr-only">Ramp Riot draft<\/h1>/);
+        expect(out).toContain('The commissioner enters picks for this event');
+        expect(out).toContain('1 of 4 picks');
+        expect(out).toContain('aria-label="Team 341"');
+        expect(out).toContain('Commish');
+        expect(out).toContain('Mom');
+        for (const gone of ['No live draft for this round', 'See the draft board', 'Loading the draft']) {
+          expect(out).not.toContain(gone);
+        }
+      });
+
+      it('once every pick is in: "Draft complete"', async () => {
+        await handEntered(4);
+        const out = await render(league.slug, round.id);
+        expect(out).toContain('Draft complete');
+        expect(out).toContain('4 of 4 picks');
+        expect(out).not.toContain('The commissioner enters picks for this event');
+      });
     });
 
     it('404s an unknown league, a malformed round id, a missing round, and another league’s round', async () => {
