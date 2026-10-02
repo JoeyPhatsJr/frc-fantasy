@@ -23,7 +23,7 @@ describe('roundStrip', () => {
   it('live shows freshness from TBA', () => {
     const s = roundStrip(base, NOW);
     expect(s.tone).toBe('live');
-    expect(s.title).toBe('Ramp Riot');
+    expect(s.title).toBe('Live now');
     expect(s.detail).toBe(freshnessText('2026-10-24T14:59:00Z', false, NOW));
   });
   it('manual rounds say who enters scores instead of TBA freshness', () => {

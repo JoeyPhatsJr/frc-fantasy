@@ -60,6 +60,13 @@ export function EventSwitcherView({ slug, currentId, currentName, rounds, tbaUrl
 /** Event switcher inside the Event tab's status strip (spec §6.5). */
 export function EventSwitcher(props: Props) {
   const [open, setOpen] = useState(false);
-  if (props.rounds.length <= 1 && !props.tbaUrl) return null;
+  if (props.rounds.length <= 1 && !props.tbaUrl) {
+    // Nothing to switch to: show the round name as a plain label, not a button.
+    return (
+      <span className="flex min-h-11 max-w-full items-center truncate rounded-full border border-border px-3 text-sm font-semibold text-fg">
+        <span className="min-w-0 truncate">{props.currentName}</span>
+      </span>
+    );
+  }
   return <EventSwitcherView {...props} open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} />;
 }

@@ -22,7 +22,7 @@ export function roundStrip(i: StripInput, now: Date): Strip {
     case 'upcoming':
       return { tone: 'neutral', title: `Starts ${shortDate(i.startDate)}`, detail: dates, action: null };
     case 'live':
-      return { tone: 'live', title: i.eventName, detail: fresh, action: null };
+      return { tone: 'live', title: 'Live now', detail: fresh, action: null };
     case 'awaiting_final':
       return { tone: 'final', title: 'Event over · results may still change', detail: fresh, action: null };
     case 'final':

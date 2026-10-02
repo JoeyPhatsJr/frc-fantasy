@@ -109,7 +109,10 @@ describe('EventSwitcher', () => {
     expect(open).toContain('View on The Blue Alliance');
   });
   it('renders nothing with one round and no TBA link', () => {
-    expect(r(h(EventSwitcher, { slug: 's', currentId: 'r1', currentName: 'Ramp Riot', rounds: rounds.slice(0, 1), tbaUrl: null }))).toBe('');
+    const html = r(h(EventSwitcher, { slug: 's', currentId: 'r1', currentName: 'Ramp Riot', rounds: rounds.slice(0, 1), tbaUrl: null }));
+    expect(html).toContain('Ramp Riot');
+    expect(html).not.toContain('aria-haspopup');
+    expect(html).not.toContain('<button');
     expect(r(h(EventSwitcher, { slug: 's', currentId: 'r1', currentName: 'Ramp Riot', rounds: rounds.slice(0, 1), tbaUrl: 'https://x' }))).toContain('Ramp Riot');
   });
 });
