@@ -89,6 +89,13 @@
     var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
 }
 
+/* A dark band that sits in the content column but paints out to the window edges, so on wide
+   screens it meets the full-width header instead of floating as a box. The border-image outset is
+   ink overflow only: no horizontal scroll, and (unlike clip-path) it doesn't clip fixed-position sheets. */
+@utility full-bleed-band {
+  border-image: conic-gradient(var(--color-band) 0 0) fill 0 / / 0 100vmax;
+}
+
 /* The rolled bottom edge of bumper fabric; a neutral shade that works on any fill. */
 @utility shadow-plate {
   box-shadow: inset 0 -3px 0 rgb(0 0 0 / 0.22);

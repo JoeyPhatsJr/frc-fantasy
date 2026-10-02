@@ -37,7 +37,7 @@ export function LeagueHeaderView(p: LeagueHeaderProps & { pathname: string }) {
     href: leagueTabHref(t, p.slug, p.targetRoundId),
   }));
   return (
-    <div className="-mx-4 -mt-6 mb-4 bg-band px-4 pt-3 text-on-band [border-image:conic-gradient(var(--color-band)_0_0)_fill_0//0_100vmax]">
+    <div className="-mx-4 -mt-6 mb-4 bg-band px-4 pt-3 text-on-band full-bleed-band">
       <div className="flex items-center gap-2">
         {/* The Commissioner label sits under the name so a long name keeps its width at 360px. */}
         <div className="min-w-0 flex-1">

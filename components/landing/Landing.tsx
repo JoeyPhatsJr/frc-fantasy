@@ -55,9 +55,9 @@ function signupHref(next: string): string {
 export function Landing({ upcoming, authError, next }: { upcoming: TbaEvent[]; authError: boolean; next: string }) {
   return (
     <main id="main" className="space-y-8 pb-4">
-      {/* Broadcast band: full-bleed to the edges of the content column. -mt-6 cancels the content
+      {/* Broadcast band: full-bleed to the window edges (full-bleed-band). -mt-6 cancels the content
           wrapper's top padding, so it meets the dark app header with no strip of page between them. */}
-      <section data-hero className="-mx-4 -mt-6 space-y-8 bg-band px-4 py-8 text-on-band">
+      <section data-hero className="-mx-4 -mt-6 space-y-8 bg-band px-4 py-8 text-on-band full-bleed-band">
         <div className="space-y-4">
           <h1 className="text-balance font-display text-[44px] font-bold leading-[44px] tracking-[-0.01em] text-on-band md:text-[64px] md:leading-[64px]">
             <span className="block">Draft FRC teams.</span>

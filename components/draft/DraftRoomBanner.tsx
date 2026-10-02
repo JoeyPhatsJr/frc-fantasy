@@ -72,7 +72,7 @@ export function DraftRoomBanner({
   const b = bannerLines(state, remainingMs, meId, myPosition, playerCount);
   const mine = b.sub === 'Your pick!';
   return (
-    <div className="sticky top-14 z-20 -mx-4 bg-band px-4 py-3 text-on-band space-y-1 -mt-4">
+    <div className="sticky top-14 z-20 -mx-4 bg-band px-4 py-3 text-on-band full-bleed-band space-y-1 -mt-4">
       {reconnecting ? <Alert tone="warning">Reconnecting…</Alert> : null}
       {/* The ticking clock stays out of the live region so screen readers aren't read every second. */}
       <p className="sr-only" aria-live="polite">
