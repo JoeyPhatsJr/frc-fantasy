@@ -1615,3 +1615,463 @@ Keep whatever error handling `app/page.tsx` has today around the loader (DbAslee
 - [ ] **Step 9: Run** `npx vitest run && npx tsc --noEmit` → green. `components/me/MeHome.tsx` is now unused (deleted in Task 17).
 
 - [ ] **Step 10: Commit** — `feat(ux): Home up-next card, Leagues list and My season on You`.
+
+### Task 10: Event tab — status strip, expandable leaderboard, switcher, scoring sheet
+
+**Files:**
+- Create: `lib/views/roundStrip.ts`, `lib/views/scoringSummary.ts` (not under `lib/scoring`, which is read-only), `components/event/PlayerBoard.tsx`, `components/event/EventSwitcher.tsx`, `components/event/ScoringSheet.tsx`, `components/event/EventBody.tsx`, `tests/views/roundStrip.test.ts`, `tests/views/scoringSummary.test.ts`, `tests/ui/event.test.ts`
+- Modify: `app/l/[slug]/r/[roundId]/page.tsx` (rewrite), `components/AdjustmentList.tsx` (restyle to rows)
+
+**Interfaces:**
+- Consumes: `RoundView`, `loadRoundPage` (`lib/views/round.ts`); `freshnessText`, `formatDateRange`, `shortDate`, `lineText`, `tbaEventUrl`, `teamName` (`lib/format.ts`); `teamLabel` (`lib/teams.ts`); `StatusStrip`, `StripTone`, `Row`, `RankNumeral`, `Points`, `Section`, `Sheet`, `BumperPlate`, `InfoTip`, `GLOSSARY`; `ScoringConfig`, `DEFAULT_SCORING` (`lib/scoring/config.ts`); `SeasonTeamDetail`, `SeasonEventScore` (`lib/season/score.ts`); `seasonEventLabel` (move from `components/RosterList.tsx` into `PlayerBoard.tsx`; RosterList re-exports it until Task 17).
+- Produces:
+
+```ts
+// lib/views/roundStrip.ts
+export type StripInput = {
+  slug: string; roundId: string; eventName: string; startDate: string; endDate: string;
+  status: RoundStatus; kind: RoundKind; fetchedAt: string | null; stale: boolean; winnerName: string | null;
+};
+export type Strip = { tone: StripTone; title: string; detail: string | null; action: { label: string; href: string } | null };
+export function roundStrip(input: StripInput, now: Date): Strip;
+
+// lib/views/scoringSummary.ts
+export function scoringSummary(config: ScoringConfig): string[]; // plain-English lines, e.g. "Each qualification win: 2 pts"
+
+// components/event/PlayerBoard.tsx
+export type PlayerBoardProps = {
+  scores: PlayerRoundScore[]; meId: string | null; teamNames: Record<string, string>;
+  status: RoundStatus; season: Record<string, SeasonTeamDetail> | null;
+};
+export function PlayerBoard(p: PlayerBoardProps): JSX.Element;
+export function seasonEventLabel(e: SeasonEventScore): string;
+
+// components/event/EventSwitcher.tsx ('use client')
+export function EventSwitcher(p: { slug: string; currentId: string; currentName: string; rounds: { id: string; eventName: string; startDate: string }[]; tbaUrl: string | null }): JSX.Element | null;
+
+// components/event/ScoringSheet.tsx ('use client')
+export function ScoringSheet(p: { lines: string[] }): JSX.Element;
+
+// components/event/EventBody.tsx (server) — shared by the Event tab and season-league Standings
+export type EventBodyProps = {
+  slug: string; view: RoundView; rounds: { id: string; eventName: string; startDate: string }[];
+  meId: string | null; playerNames: Record<string, string>; now: Date;
+};
+export function EventBody(p: EventBodyProps): JSX.Element;
+```
+
+- [ ] **Step 1: Write the failing tests** — `tests/views/roundStrip.test.ts`
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { freshnessText } from '@/lib/format';
+import { roundStrip, type StripInput } from '@/lib/views/roundStrip';
+
+const NOW = new Date('2026-10-24T15:00:00Z');
+const base: StripInput = {
+  slug: 'fam', roundId: 'r1', eventName: 'Ramp Riot', startDate: '2026-10-24', endDate: '2026-10-24',
+  status: 'live', kind: 'tba', fetchedAt: '2026-10-24T14:59:00Z', stale: false, winnerName: null,
+};
+
+describe('roundStrip', () => {
+  it('setup', () => {
+    expect(roundStrip({ ...base, status: 'setup' }, NOW)).toMatchObject({ tone: 'neutral', title: 'Draft not set up yet', action: null });
+  });
+  it('drafting points at the draft room', () => {
+    expect(roundStrip({ ...base, status: 'drafting' }, NOW)).toMatchObject({
+      tone: 'drafting', title: 'Draft in progress', action: { label: 'Open draft room', href: '/l/fam/r/r1/draft' },
+    });
+  });
+  it('upcoming names the start date', () => {
+    expect(roundStrip({ ...base, status: 'upcoming' }, NOW).title).toBe('Starts Oct 24');
+  });
+  it('live shows freshness from TBA', () => {
+    const s = roundStrip(base, NOW);
+    expect(s.tone).toBe('live');
+    expect(s.title).toBe('Ramp Riot');
+    expect(s.detail).toBe(freshnessText('2026-10-24T14:59:00Z', false, NOW));
+  });
+  it('manual rounds say who enters scores instead of TBA freshness', () => {
+    expect(roundStrip({ ...base, kind: 'manual' }, NOW).detail).toBe('Scores entered by the commissioner');
+  });
+  it('awaiting final warns results may change', () => {
+    expect(roundStrip({ ...base, status: 'awaiting_final' }, NOW)).toMatchObject({ tone: 'final', title: 'Event over · results may still change' });
+  });
+  it('final names the winner', () => {
+    expect(roundStrip({ ...base, status: 'final', winnerName: 'Mom' }, NOW).title).toBe('Final · Mom wins');
+    expect(roundStrip({ ...base, status: 'final' }, NOW).title).toBe('Final');
+  });
+  it('encodes the slug in links', () => {
+    expect(roundStrip({ ...base, slug: 'a b', status: 'drafting' }, NOW).action?.href).toBe('/l/a%20b/r/r1/draft');
+  });
+});
+```
+
+`tests/views/scoringSummary.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { DEFAULT_SCORING } from '@/lib/scoring/config';
+import { scoringSummary } from '@/lib/views/scoringSummary';
+
+/** Adds 7 to the first numeric leaf (depth-first), so the test doesn't hard-code the config shape. */
+function bumpFirstNumber(o: Record<string, unknown>): boolean {
+  for (const [k, v] of Object.entries(o)) {
+    if (typeof v === 'number' && v > 0) { o[k] = v + 7; return true; }
+    if (Array.isArray(v) && typeof v[0] === 'number') { (v as number[])[0] += 7; return true; }
+    if (v && typeof v === 'object' && bumpFirstNumber(v as Record<string, unknown>)) return true;
+  }
+  return false;
+}
+
+describe('scoringSummary', () => {
+  it('describes the scoring rules in plain words', () => {
+    const lines = scoringSummary(DEFAULT_SCORING);
+    expect(lines.length).toBeGreaterThanOrEqual(6);
+    for (const l of lines) {
+      expect(l).toMatch(/\bpts?\b/);
+      expect(l).not.toMatch(/\bRP\b/);
+    }
+  });
+  it('reflects a changed value', () => {
+    const before = scoringSummary(DEFAULT_SCORING).join('\n');
+    const changed = structuredClone(DEFAULT_SCORING);
+    expect(bumpFirstNumber(changed as unknown as Record<string, unknown>)).toBe(true);
+    expect(scoringSummary(changed).join('\n')).not.toBe(before);
+  });
+});
+```
+
+`tests/ui/event.test.ts` (PlayerBoard):
+
+```ts
+import { createElement as h } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it } from 'vitest';
+import { PlayerBoard } from '@/components/event/PlayerBoard';
+import type { PlayerRoundScore } from '@/lib/scoring/types';
+
+const p = (playerId: string, name: string, rank: number, total: number, teams: string[] = []): PlayerRoundScore => ({
+  playerId, name, rank, total, adjustments: [],
+  teams: teams.map((teamKey, i) => ({ teamKey, total: 10 * (i + 1), lines: [{ label: 'Qual wins', points: 10 * (i + 1) }] })),
+});
+const scores = [p('a', 'Mom', 1, 212, ['frc254']), p('b', 'Joey', 2, 198, ['frc5181', 'frc2539']), p('c', 'Grandpa (left)', 3, 150)];
+const r = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(el);
+
+describe('PlayerBoard', () => {
+  it('one row per player with rank and points; yours is open and highlighted', () => {
+    const html = r(h(PlayerBoard, { scores, meId: 'b', teamNames: { frc5181: 'Bagel Bytes' }, status: 'live', season: null }));
+    expect(html.match(/<details/g)?.length).toBe(3);
+    expect(html).toMatch(/<details[^>]*open=""[^>]*>[\s\S]*Joey/);
+    expect(html).toContain('(you)');
+    expect(html).toContain('212');
+    expect(html).toContain('Team 5181');
+    expect(html).toContain('Bagel Bytes');
+  });
+  it('never highlights anyone for a signed-out viewer', () => {
+    const html = r(h(PlayerBoard, { scores, meId: null, teamNames: {}, status: 'live', season: null }));
+    expect(html).not.toContain('(you)');
+    expect(html).not.toContain(' open=""');
+    expect(html).not.toContain('var(--color-primary-fill)');
+  });
+  it('shows dashes instead of zeros before the event', () => {
+    const html = r(h(PlayerBoard, { scores: [p('a', 'Mom', 1, 0, ['frc254'])], meId: null, teamNames: {}, status: 'upcoming', season: null }));
+    expect(html).toContain('—');
+  });
+  it('a player with no teams says so', () => {
+    expect(r(h(PlayerBoard, { scores, meId: null, teamNames: {}, status: 'live', season: null }))).toContain('No teams yet');
+  });
+  it('plates are blue', () => {
+    expect(r(h(PlayerBoard, { scores, meId: 'b', teamNames: {}, status: 'live', season: null }))).not.toContain('bg-red-alliance');
+  });
+});
+```
+
+- [ ] **Step 2: Run** → FAIL.
+
+- [ ] **Step 3: Implement `lib/views/roundStrip.ts`**
+
+```ts
+import type { StripTone } from '@/components/ui/StatusStrip';
+import type { RoundKind } from '@/lib/db/types';
+import { formatDateRange, freshnessText, shortDate } from '@/lib/format';
+import type { RoundStatus } from '@/lib/rounds/status';
+
+export type StripInput = {
+  slug: string; roundId: string; eventName: string; startDate: string; endDate: string;
+  status: RoundStatus; kind: RoundKind; fetchedAt: string | null; stale: boolean; winnerName: string | null;
+};
+export type Strip = { tone: StripTone; title: string; detail: string | null; action: { label: string; href: string } | null };
+
+/** What the top of the Event tab says for each round status (spec §6.5). */
+export function roundStrip(i: StripInput, now: Date): Strip {
+  const dates = formatDateRange(i.startDate, i.endDate);
+  const fresh = i.kind === 'manual' ? 'Scores entered by the commissioner' : freshnessText(i.fetchedAt, i.stale, now);
+  const draftHref = `/l/${encodeURIComponent(i.slug)}/r/${i.roundId}/draft`;
+  switch (i.status) {
+    case 'setup':
+      return { tone: 'neutral', title: 'Draft not set up yet', detail: dates, action: null };
+    case 'drafting':
+      return { tone: 'drafting', title: 'Draft in progress', detail: dates, action: { label: 'Open draft room', href: draftHref } };
+    case 'upcoming':
+      return { tone: 'neutral', title: `Starts ${shortDate(i.startDate)}`, detail: dates, action: null };
+    case 'live':
+      return { tone: 'live', title: i.eventName, detail: fresh, action: null };
+    case 'awaiting_final':
+      return { tone: 'final', title: 'Event over · results may still change', detail: fresh, action: null };
+    case 'final':
+      return { tone: 'final', title: i.winnerName ? `Final · ${i.winnerName} wins` : 'Final', detail: dates, action: null };
+  }
+}
+```
+
+- [ ] **Step 4: Implement `lib/views/scoringSummary.ts`.** Read `lib/scoring/config.ts` (`scoringConfigSchema`, `DEFAULT_SCORING`) and emit one plain line per rule, in glossary wording, e.g. "Each qualification win: 2 pts", "Each tie: 1 pt", "Each ranking point: 1 pt", rank tiers ("Ranked 1st–8th after qualification matches: +N pts"), alliance selection ("Alliance captain: …", "First pick: …"), "Each playoff match win: …", "Event winner: …", "Finalist: …", awards, "Top 3 robot ratings (OPR) after qualification matches: +a / +b / +c pts". Use `pt` for exactly 1, `pts` otherwise. Skip zero-valued rules.
+
+- [ ] **Step 5: Implement `PlayerBoard.tsx`** (server). For each score a `Row`: `leading=<RankNumeral rank />`, `title` = name + (isMe ? ' (you)' : ''), `trailing=<Points value={preEvent ? null : total} />` where `preEvent = status === 'setup' || status === 'drafting' || status === 'upcoming'`, `highlight={isMe}`, `defaultOpen={isMe}`, and `expanded`:
+  - no teams → `<p className="py-1 text-sm text-fg-muted">No teams yet</p>`;
+  - else one line per team (pick order): `<BumperPlate size="sm" number={teamLabel(teamKey)} />`, `teamName(teamKey, teamNames)` (truncate), a muted one-line breakdown `lines.map(lineText).join(' · ')` (truncate), and the team total `<Points size="md" value={preEvent ? null : total} />`;
+  - season rounds (`season !== null`): under each team, its events from `season[teamKey]?.events` as indented muted lines via `seasonEventLabel`, and "Next: {name} · {shortDate(startDate)}" from `.next`;
+  - player-targeted adjustments (`score.adjustments`) as a final muted line each: `Adjustment: ${lineText(line)}`.
+  `isMe = meId !== null && score.playerId === meId`.
+
+- [ ] **Step 6: Implement `EventSwitcher.tsx`** (`'use client'`): chip button `{currentName} ▾` (`min-h-11 max-w-full truncate rounded-full border border-border px-3 text-sm font-semibold`, `aria-haspopup="dialog"`) opening a `Sheet` titled "Events": one `Row href=/l/{slug}/r/{id}` per round (title event name, subtitle `shortDate(startDate)`, `highlight` on the current one), then, when `tbaUrl`, an external link row "View on The Blue Alliance" (`target="_blank" rel="noopener noreferrer"`, sr-only "(opens in a new tab)"). When `rounds.length <= 1 && !tbaUrl` return null.
+
+- [ ] **Step 7: Implement `ScoringSheet.tsx`** (`'use client'`): `Button variant="ghost" size="sm"` "How scoring works" → `Sheet` "How scoring works" with `<ul className="space-y-2">` of `lines`.
+
+- [ ] **Step 8: Implement `EventBody.tsx` and rewrite the round page.**
+
+```tsx
+export function EventBody({ slug, view, rounds, meId, playerNames, now }: EventBodyProps) {
+  const { round } = view;
+  const winner = view.scores.find((s) => s.rank === 1)?.name ?? null;
+  const strip = roundStrip({ slug, roundId: round.id, eventName: round.eventName, startDate: round.startDate, endDate: round.endDate,
+    status: view.status, kind: round.kind, fetchedAt: view.fetchedAt, stale: view.stale, winnerName: winner }, now);
+  const season = round.kind === 'season';
+  const preDraft = view.status === 'setup' || view.status === 'drafting';
+  const notes = [
+    !view.hasEventData && !preDraft
+      ? round.kind === 'manual' ? 'No results entered yet.' : season ? 'No events yet this season.' : "The event hasn't started yet."
+      : null,
+    view.hasEventData && !view.qualsComplete && !season ? `${GLOSSARY.opr.label} bonus is added after qualification matches.` : null,
+    view.hasRankings && view.rpMethod === 'none' && !season ? `${GLOSSARY.rp.label} aren't available for this event.` : null,
+  ].filter((n): n is string => n !== null);
+  return (
+    <>
+      <StatusStrip tone={strip.tone} title={strip.title} detail={strip.detail}
+        action={strip.action ? <Button href={strip.action.href} variant="accent" size="sm">{strip.action.label}</Button> : undefined}
+        switcher={<EventSwitcher slug={slug} currentId={round.id} currentName={round.eventName} rounds={rounds}
+          tbaUrl={round.eventKey ? tbaEventUrl(round.eventKey) : null} />} />
+      {notes.length > 0 ? <ul className="space-y-1 text-sm text-fg-muted">{notes.map((n) => <li key={n}>{n}</li>)}</ul> : null}
+      <Section label="Leaderboard" action={<ScoringSheet lines={scoringSummary(round.scoring)} />}>
+        <PlayerBoard scores={view.scores} meId={meId} teamNames={view.teamNames} status={view.status} season={view.season} />
+      </Section>
+      {view.adjustments.length > 0 ? (
+        <Section label={GLOSSARY.adjust.label}>
+          <AdjustmentList adjustments={view.adjustments} playerNames={playerNames} teamNames={view.teamNames} />
+        </Section>
+      ) : null}
+    </>
+  );
+}
+```
+
+(Check the real field name for the round's scoring config on `RoundRow` and `AdjustmentList`'s real props, and adapt.)
+
+The round page:
+
+```tsx
+export default async function RoundPage({ params }: Props) {
+  const { slug, roundId } = await params;
+  const access = await leagueAccess(slug);
+  if (!access) notFound();
+  if (!access.canView) return <PrivateLeague signedIn={access.user !== null} next={`/l/${slug}/r/${roundId}`} />;
+  if (roundId === 'none') return <NoEvents slug={slug} isCommissioner={access.isCommissioner} />;
+  const now = new Date();
+  const [page, allRounds] = await Promise.all([loadRoundPage(slug, roundId, now), getRepo().listRounds(access.league.id)]);
+  if (!page) notFound();
+  return (
+    <main id="main" className="space-y-6">
+      <AutoRefresh seconds={60} />
+      <h1 className="sr-only">{page.view.round.eventName}</h1>
+      <EventBody slug={slug} view={page.view} now={now} meId={access.player?.id ?? null} playerNames={page.playerNames}
+        rounds={allRounds.map((r) => ({ id: r.id, eventName: r.eventName, startDate: r.startDate }))} />
+    </main>
+  );
+}
+```
+
+`NoEvents` (same file): `<h1>` "No events yet", "When the commissioner adds an event, it shows up here.", and for commissioners `Button href=/l/{slug}/admin` "Add one in Admin". Keep `export const dynamic` and `maxDuration`. Restyle `AdjustmentList` to `Row`s (title reason, subtitle target, trailing `signed(points)`), logic unchanged.
+
+- [ ] **Step 9: Run** `npx vitest run && npx tsc --noEmit` → green. Update/remove cases in `tests/ui/round-components.test.ts` and `tests/ui/pages.test.ts` that assert the old round page sections (Rosters, Draft board, back link); keep `seasonEventLabel` tests by importing it from the new location.
+
+- [ ] **Step 10: Commit** — `feat(ux): Event tab with status strip and expandable leaderboard`.
+
+### Task 11: Standings — event leagues and full-season leagues
+
+**Files:**
+- Create: `components/standings/SeasonBoard.tsx`, `components/standings/EventList.tsx`
+- Modify: `app/l/[slug]/page.tsx` (rewrite)
+- Modify: `tests/ui/event.test.ts` (append)
+
+**Interfaces:**
+- Consumes: `loadLeaguePage` → `LeaguePage` (`standings: SeasonRow[]`, `rounds: RoundView[]`, `anyLive`, `fetchedAt`, `stale`); `EventBody` (Task 10); `targetRound`; `Row`, `Section`, `StatusStrip`, `RankNumeral`, `Points`, `DateBlock`, `StatusBadge`, `ordinal`, `formatDateRange`, `freshnessText`.
+- Produces:
+
+```ts
+export function SeasonBoard(p: { standings: SeasonRow[]; rounds: { id: string; eventName: string; status: RoundStatus }[]; meId: string | null }): JSX.Element;
+export function seasonProgress(rounds: { status: RoundStatus }[]): string;
+export function EventList(p: { slug: string; rounds: { id: string; eventName: string; startDate: string; endDate: string; status: RoundStatus; myRank: number | null }[] }): JSX.Element;
+```
+
+- [ ] **Step 1: Write the failing tests** (append to `tests/ui/event.test.ts`)
+
+```ts
+import { EventList } from '@/components/standings/EventList';
+import { SeasonBoard, seasonProgress } from '@/components/standings/SeasonBoard';
+
+describe('seasonProgress', () => {
+  it('counts events left', () => {
+    expect(seasonProgress([])).toBe('No events yet');
+    expect(seasonProgress([{ status: 'final' }, { status: 'live' }, { status: 'upcoming' }])).toBe('3 events · 2 to go');
+    expect(seasonProgress([{ status: 'upcoming' }])).toBe('1 event · 1 to go');
+    expect(seasonProgress([{ status: 'final' }, { status: 'awaiting_final' }])).toBe('Season over');
+  });
+});
+
+describe('SeasonBoard', () => {
+  const standings = [
+    { playerId: 'a', name: 'Mom', total: 400, rank: 1, perRound: [212, 188] },
+    { playerId: 'b', name: 'Joey', total: 390, rank: 2, perRound: [198, 192] },
+  ];
+  const rounds = [{ id: 'r1', eventName: 'Ramp Riot', status: 'final' as const }, { id: 'r2', eventName: 'Brunswick Eruption', status: 'live' as const }];
+  it('expands each player to a per-event breakdown by name', () => {
+    const html = r(h(SeasonBoard, { standings, rounds, meId: 'b' }));
+    expect(html).toContain('Ramp Riot');
+    expect(html).toContain('Brunswick Eruption');
+    expect(html).toContain('198');
+    expect(html).not.toContain('Small numbers are points per round');
+    expect(html).toMatch(/<details[^>]*open=""[^>]*>[\s\S]*Joey/);
+  });
+});
+
+describe('EventList', () => {
+  it('links every event and shows your rank there', () => {
+    const html = r(h(EventList, { slug: 'fam', rounds: [{ id: 'r1', eventName: 'Ramp Riot', startDate: '2026-10-24', endDate: '2026-10-24', status: 'final', myRank: 2 }] }));
+    expect(html).toContain('href="/l/fam/r/r1"');
+    expect(html).toContain('You: 2nd');
+  });
+});
+```
+
+- [ ] **Step 2: Run** → FAIL.
+
+- [ ] **Step 3: Implement.** `SeasonBoard`: one `Row` per standing (rank numeral; name + " (you)" when `meId` matches; total `Points`), `expanded` = one line per round in order: event name · `perRound[i]` pts · a small "Final"/"Live" tag for those statuses; `highlight`/`defaultOpen` for `meId`. `seasonProgress`: no rounds → "No events yet"; all rounds `final`/`awaiting_final` → "Season over"; else `"{n} event(s) · {k} to go"` with k = rounds not `final`/`awaiting_final`. `EventList`: `Row href=/l/{encodeURIComponent(slug)}/r/{id}`, `leading=<DateBlock date={startDate} />`, title event name, subtitle `formatDateRange(...)` + (myRank !== null ? ` · You: ${ordinal(myRank)}` : ''), trailing `<StatusBadge status />`.
+
+- [ ] **Step 4: Rewrite `app/l/[slug]/page.tsx`.** Keep the access/private checks and `loadLeaguePage`; `const meId = access.player?.id ?? null`.
+  - **`access.league.format === 'event'`:** `AutoRefresh` only when `page.anyLive`; `<StatusStrip tone="neutral" title={seasonProgress(page.rounds)} detail={page.anyLive ? freshnessText(page.fetchedAt, page.stale, now) : undefined} />`; `Section "Standings"` → `SeasonBoard` (or "No players yet — share the invite code from Admin." + commissioner link); `Section "Events"` → `EventList` (`myRank` from each view's `scores` for `meId`) or "No events yet." + commissioner `Button href=/l/{slug}/admin` "Add one in Admin".
+  - **`format === 'season'`:** current season round = `targetRound` over `page.rounds`; render `<EventBody … rounds={season rounds} />` (its `EventSwitcher` is the season switcher) and then `Section "Events this season"`: the union of events from `view.season` details (dedupe by `eventKey`, sort by `startDate`) as `Row`s (date block, name, `formatDateRange`). No rounds → the "No events yet" empty state. `AutoRefresh` when that round is live.
+  - Remove `LeagueMeCard`, the "Live now" per-round leaderboards and the per-round number footnote.
+
+- [ ] **Step 5: Run** `npx vitest run && npx tsc --noEmit` → green; update `tests/ui/pages.test.ts` standings cases.
+
+- [ ] **Step 6: Commit** — `feat(ux): standings with per-event breakdowns; season leagues show the season`.
+
+### Task 12: Draft tab — draft room and hand-entered board
+
+**Files:**
+- Modify: `components/draft/DraftRoom.tsx`, `DraftRoomBanner.tsx`, `PoolList.tsx`, `QueueList.tsx`, `ConfirmSheet.tsx` (copy only), `components/pool/PoolStats.tsx`, `components/pool/TeamSheet.tsx` (labels), `components/DraftBoard.tsx` (restyle), `app/l/[slug]/r/[roundId]/draft/page.tsx`
+- Modify: `tests/ui/draft-room.test.ts`, `tests/ui/draft-components.test.ts`, `tests/ui/draft-page.test.ts`, `tests/ui/pool-stats.test.ts`, `tests/ui/team-sheet.test.ts`
+
+**Interfaces:**
+- Consumes: `useDraftRoom` (read-only — do not edit), `PageTabs` (Task 3), `InfoTip`/`GLOSSARY` (Task 2), `StatusStrip`, `DraftBoard`, `ordinal`.
+- Produces: `DraftRoom` keeps `({ slug, roundId, eventName })`. Tab union becomes `'pool' | 'queue' | 'board'`. New pure exports:
+
+```ts
+export function draftTabs(isMember: boolean, queueCount: number): { key: 'pool' | 'queue' | 'board'; label: string }[];
+export function defaultDraftTab(phase: 'setup' | 'live' | 'paused' | 'done'): 'pool' | 'board';
+```
+
+- [ ] **Step 1: Write the failing tests** (append to `tests/ui/draft-room.test.ts`)
+
+```ts
+import { defaultDraftTab, draftTabs } from '@/components/draft/DraftRoom';
+
+describe('draftTabs', () => {
+  it('members get Pool · My queue · Board; watchers get Pool · Board; no Rosters tab', () => {
+    expect(draftTabs(true, 0).map((t) => t.label)).toEqual(['Pool', 'My queue', 'Board']);
+    expect(draftTabs(true, 3).map((t) => t.label)).toEqual(['Pool', 'My queue (3)', 'Board']);
+    expect(draftTabs(false, 0).map((t) => t.key)).toEqual(['pool', 'board']);
+  });
+});
+describe('defaultDraftTab', () => {
+  it('opens the board once the draft is done', () => {
+    expect(defaultDraftTab('done')).toBe('board');
+    expect(defaultDraftTab('setup')).toBe('pool');
+    expect(defaultDraftTab('live')).toBe('pool');
+    expect(defaultDraftTab('paused')).toBe('pool');
+  });
+});
+```
+
+Banner tests (adapt the existing `DraftRoomBanner` cases in `tests/ui/draft-components.test.ts`; read its current props first, keep them, and add only `myPosition: number | null` and `playerCount: number`): setup → "Draft hasn't started" and, when `myPosition` is 2 of 6, "You pick 2nd of 6"; live + my turn → "Your pick!"; paused → "Paused by the commissioner"; done → "Draft complete". `ConfirmSheet`'s `confirmText` → `Draft 341 · Projected 38.2?` (update its test).
+
+- [ ] **Step 2: Run** → FAIL.
+
+- [ ] **Step 3: Restructure `DraftRoom.tsx`** (hook calls and handlers untouched):
+  - Tabs from `draftTabs(me !== null, queueCount)` (queueCount = untaken queue length, as today); initial tab `defaultDraftTab(state.phase)` the first time state loads (don't switch tabs on the user later).
+  - Remove the Rosters tab and the `DraftRosters` import.
+  - Replace the hand-rolled tab buttons with `<PageTabs label="Draft room" … />`.
+  - Remove the "‹ {event}" back link and visible heading; keep `<h1 className="sr-only">{eventName} draft</h1>`.
+  - Replace the collapsed "Draft options" `<details>` with: an **auto-draft switch** row (members only) right under the banner — `GLOSSARY.autodraft.label` + `<InfoTip term="autodraft" />` + a `role="switch" aria-checked` button (44px) wired to the existing toggle handler and `autodraftShown` logic — and a **commissioner strip** (commissioners only) `aria-label="Commissioner controls"` with the existing Pause / Resume / Undo last pick buttons (`size="sm"`, same handlers and disabled rules).
+  - Watchers: muted line "You're watching — only league members can draft."
+- [ ] **Step 4: `DraftRoomBanner.tsx`** — sticky (`sticky top-14 z-20`), full-bleed band strip (`-mx-4 bg-band px-4 py-3 text-on-band`): setup "Draft hasn't started" + "You pick {ordinal(myPosition)} of {playerCount}" + `GLOSSARY.snake.label` + `<InfoTip term="snake" />`; live "On the clock: {name} · 0:42" (existing timer) plus "Your pick!" (24px, `text-accent`) or "You're up in {n} picks"; paused "Paused by the commissioner"; done "Draft complete". Keep the countdown and aria-live behavior. Compute `myPosition` (1-based index of `state.me.playerId` in the draft order, or null) and `playerCount` in `DraftRoom` from `state` — check `DraftState` (`lib/draft/state.ts`) for where draft order lives.
+- [ ] **Step 5: Pool labels.** `PoolList.tsx`, `PoolStats.tsx`, `TeamSheet.tsx`: display labels "Proj" → `GLOSSARY.proj.label`, "OPR" → `GLOSSARY.opr.label` (numbers/formatting unchanged); sort options "Projected", "Robot rating", "Team number" (values unchanged); `InfoTip term="proj"` beside the sort control. Pool rows in the `Row` style (hairline, no card): plate, team name, "Projected 52 · Robot rating 38", queue toggle, Draft button `size="sm"`.
+- [ ] **Step 6: Hand-entered rounds.** In `app/l/[slug]/r/[roundId]/draft/page.tsx`, replace the "No live draft for this round" branch with:
+
+```tsx
+<main id="main" className="space-y-4">
+  <h1 className="sr-only">{round.eventName} draft</h1>
+  <StatusStrip tone={done ? 'final' : 'neutral'} title={done ? 'Draft complete' : 'The commissioner enters picks for this event'} detail={`${picks.length} of ${total} picks`} />
+  <DraftBoard picks={picks} draftOrder={round.draftOrder} rosterSize={round.rosterSize} playerNames={playerNames} teamNames={teamNames} />
+</main>
+```
+
+Use `loadRoundPage(slug, roundId, now)` for `round`, `picks`, `playerNames`, `teamNames` if the page doesn't already have them; `total = round.draftOrder.length * round.rosterSize`; `done = total > 0 && picks.length >= total`. Restyle `DraftBoard`: blue plates, no card wrapper, wrapped in `overflow-x-auto` (the board may be wider than 360px — the one allowed sideways scroll, inside its own container).
+- [ ] **Step 7: Run** `npx vitest run && npx tsc --noEmit` → green.
+- [ ] **Step 8: Commit** — `feat(ux): draft room with visible auto-draft, commissioner strip and plain labels`.
+
+### Task 13: Join, Sign in, Create a league, Landing
+
+**Files:**
+- Modify: `components/JoinView.tsx`, `app/join/[code]/page.tsx`, `components/SignInForm.tsx`, `app/signin/page.tsx`, `components/CreateLeagueForm.tsx`, `components/landing/Landing.tsx`, `components/landing/SampleScoreboard.tsx`
+- Modify/Create: `tests/ui/join.test.ts`, `tests/ui/landing.test.ts`, `tests/ui/signInForm.test.ts`, `tests/ui/signin-page.test.ts`
+
+**Interfaces:**
+- Consumes: `shortDate`, `Row`, `RankNumeral`, `Points`, `Section`, `Button`, `BumperPlate`.
+- Produces: `export function joinDescription(league: { format: LeagueFormat; seasonYear?: number | null }, next: { eventName: string; startDate: string } | null): string` in `JoinView.tsx`.
+
+- [ ] **Step 1: Write the failing tests.** `tests/ui/join.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { joinDescription } from '@/components/JoinView';
+
+describe('joinDescription', () => {
+  it('describes the league in plain words', () => {
+    expect(joinDescription({ format: 'event' }, { eventName: 'Ramp Riot', startDate: '2026-10-24' })).toBe('Event by event · next up Ramp Riot, Oct 24');
+    expect(joinDescription({ format: 'event' }, null)).toBe('Event by event · no events yet');
+    expect(joinDescription({ format: 'season', seasonYear: 2026 }, null)).toBe('Full 2026 season');
+    expect(joinDescription({ format: 'season', seasonYear: null }, null)).toBe('Full season');
+  });
+});
+```
+
+`tests/ui/signInForm.test.ts`: the rendered form contains `Forgot your password? Ask the league commissioner to reset it.` and not `site admin`. `tests/ui/landing.test.ts`: the signed-out landing contains `href="/signin?mode=signup"` and `href="/signin"` with text "Sign in".
+
+- [ ] **Step 2: Run** → FAIL.
+- [ ] **Step 3: Join.** `app/join/[code]/page.tsx`: also load (database only) the league's rounds; `next` = the first round (by `startDate`) with `startDate >= today`, else null; for season leagues `seasonYear` from the latest season round (`round.seasonYear`). Pass `description` and player count to `JoinView`, which renders a card: "You're invited to **{league}**", `description`, "Run by {commissioner} · {n} players", then Join / inline sign-up (logic unchanged).
+- [ ] **Step 4: Sign in.** Restyle `SignInForm`; replace the forgot-password sentence with the exact copy.
+- [ ] **Step 5: Create a league.** Helper text per spec §6.10 exactly: visibility "Anyone with the link can watch" / "Only members can see it"; Event by event "Draft new teams for each event."; Follow teams "Follow up to 3 teams and we'll add each event they attend automatically."; Full season "Draft once and score every official event all year." The format choice becomes two large native-radio option rows (label wraps the input, ≥44px, selected = `border-fg`). Field names, validation, API call unchanged.
+- [ ] **Step 6: Landing.** Restyle to the new system (band-colored hero, rows instead of cards for "How it works" and "Coming up"); same content and order; add `Button href="/signin" variant="secondary"` "Sign in" beside "Create an account". `SampleScoreboard` uses `Row` + `RankNumeral` + `Points` with blue plates.
+- [ ] **Step 7: Run** `npx vitest run && npx tsc --noEmit` → green.
+- [ ] **Step 8: Commit** — `feat(ux): join, sign-in, create-league and landing in the new style`.
