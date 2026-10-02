@@ -278,3 +278,84 @@ After create, land on `/l/slug/admin` (as today) — which now opens with **Invi
 ### 6.11 Landing `/` (signed out)
 
 Same story and sections (hero, match lineup, sample scoreboard, how it works, coming up), restyled to the new system. Adds a visible **Sign in** button beside "Create an account". `SampleScoreboard` uses the new leaderboard rows.
+
+## 7. Admin (Phase 4)
+
+`AdminGate` behavior is unchanged. All forms keep their existing API calls (`useAdmin`, `usePending`).
+
+### 7.1 League admin `/l/[slug]/admin`
+
+Top to bottom:
+
+1. **Invite people** — invite code in large condensed type; **Share link** (Web Share API `navigator.share` with the `/join/{code}` URL, falling back to copy-to-clipboard); small "Reset code" (existing confirm). Visibility moves to Settings.
+2. **Events** (event-by-event) — `Row` per round: date block, event name, status badge, "{picks} of {total} picks" / "Draft not set up", chevron → **Manage** (`/admin/r/id`). **No Delete here** (moved into round admin §7.2).
+   - **Add an event:** a pick-list of upcoming TBA events (from `loadUpcomingEvents`, the landing page's source; tapping one fills the existing add-round flow and shows its "Found" preview), plus **"Other event"**: one input labeled "TBA link or event code (like 2025parr)" — a pasted `thebluealliance.com/event/{key}` URL is reduced to the key client-side before the existing check/add calls.
+   - Secondary, collapsed: **Manual event** (existing `AddManualRoundForm`) and **Follow teams** (existing `FollowTeamsForm`, with the §6.10 helper text).
+   - **Full-season leagues:** this section is **Season** — the current season row (→ Manage) and "Start {year} season" / note (existing logic).
+3. **Members** — `Row` per member (name, Commissioner label); a ⋯ menu per row: Make commissioner / Make player / Remove (existing calls, existing confirms).
+4. **Settings** — League name (existing `RenameLeague`), Who can see it (existing visibility control), Default scoring (`ScoringForm`, collapsed).
+5. **Danger zone** — existing `DangerZone`.
+
+The "View league page" / "Copy … link" header row is dropped (the league tabs and Share link cover it).
+
+### 7.2 Round admin `/l/[slug]/admin/r/[roundId]`
+
+Header: "‹ Admin" back link (this is a sub-page), event name, dates, status badge, key line. Then the **checklist** — four numbered steps, one open at a time by default (the one from `adminStep()`, §8.2); done steps show ✓ and a one-line summary with **Edit**; future steps show a muted one-line preview. **Any step can be opened at any time** (tapping the header toggles it) — nothing is locked.
+
+| Step | Summary line when done | Content when open |
+|---|---|---|
+| 1 · Set up | "{n} players · {r} teams each · {snake/linear} order" | `RoundSetup` (roster size, draft order, team pool, scoring), restyled; the `<details>` wrapper is removed |
+| 2 · Run the draft | "Draft complete · {picks} picks" | **Only the chosen method:** `draftMode === 'live'` → `LiveDraftControls` (timer, Start/Pause/Resume, **Open draft room**); `'commissioner'` → `DraftEntry`. A small link "Switch to {other method}" changes `draftMode` (existing PATCH, existing guards: disabled once started/picks exist). After the draft: "Fix a pick" (`DraftEntry`'s replace-a-pick). |
+| 3 · During the event | "Scores came from TBA" / "{n} results entered" (manual) | **Refresh from TBA** (TBA/season rounds), `ManualResultsEditor` (manual rounds), `AdjustmentEditor` |
+| 4 · Wrap up | "Final" | Today's finalize nudge copy, **Mark round final** / **Reopen round** (existing) |
+
+Below the checklist, muted: **Delete this event** (existing delete call + confirm), moved here from the dashboard row.
+
+## 8. New pure logic (unit-tested)
+
+### 8.1 `upNext()` — `lib/views/upNext.ts`
+
+```ts
+export type UpNextInput = {
+  leagueSlug: string; leagueName: string;
+  roundId: string; eventName: string; startDate: string; endDate: string;
+  status: RoundStatus;                       // lib/rounds/status.ts
+  draftMode: 'live' | 'commissioner';
+  draftPhase: DraftPhase;                    // lib/draft/live.ts
+  myTurn: boolean;                           // onClockPlayer === my player id
+  myRank: number | null; myPoints: number | null;
+  winnerName: string | null;                 // rank-1 player when final/awaiting
+  myTeams: string[];                         // team keys, draft order
+};
+export type UpNext = { kind: 'draft-live' | 'event-live' | 'results' | 'event-soon' | 'draft-soon'; item: UpNextInput } | null;
+export function upNext(items: UpNextInput[], today: string): UpNext;
+```
+
+First matching rule wins; ties break by earliest `startDate`, then league name:
+
+1. `draftPhase` is `live` or `paused` → `draft-live` (a `myTurn` item beats others).
+2. `status === 'live'` → `event-live`.
+3. `status` is `final` or `awaiting_final` and `today ≤ endDate + 3 days` → `results` (most recent `endDate` first).
+4. `status === 'upcoming'` → `event-soon`.
+5. `status` is `setup` or `drafting` and `endDate ≥ today` → `draft-soon`.
+6. otherwise `null`.
+
+Built by a `loadHome(userId, now)` view loader that reuses `loadMePage`'s league loading (no extra TBA calls beyond what Home makes today).
+
+### 8.2 `adminStep()` — `lib/admin/steps.ts`
+
+```ts
+export type AdminStep = 1 | 2 | 3 | 4;
+export function setupDone(round: { draftOrder: string[]; rosterSize: number }, playerIds: string[]): boolean;
+//  true when rosterSize > 0, draftOrder is non-empty, and every current player id is in draftOrder
+export function adminStep(status: RoundStatus, setupComplete: boolean): AdminStep;
+//  setup && !setupComplete → 1 · setup | drafting → 2 · upcoming | live → 3 · awaiting_final | final → 4
+export function stepDone(step: AdminStep, current: AdminStep): boolean;   // step < current
+```
+
+### 8.3 Others
+
+- `lib/nav.ts` (§5.4).
+- `lib/glossary.ts` (§4.7) — test that every key has a non-empty label and short text.
+- `parseEventInput(s)` in `lib/admin/` — accepts `2025parr`, ` 2025PARR `, `https://www.thebluealliance.com/event/2025parr`, `.../event/2025parr#rankings` → `2025parr`; anything else returned trimmed/lowercased for the existing validator to reject.
+- `shareOrCopy(url, title)` — client helper; not unit-tested beyond a fallback test with a stubbed `navigator`.
