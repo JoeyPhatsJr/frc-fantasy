@@ -132,3 +132,55 @@ One map of term → `{ label, short }`, used by `Info` and by every stat label s
 | `commish` | Commissioner | The person who runs the league. |
 
 Wording of `queue`/`autodraft`/`snake`/`proj` must match what the draft engine and pool stats actually do — the implementer verifies against `lib/draft/*` and `lib/pool/*` before finalizing copy and corrects the table if needed.
+
+## 5. Shell and navigation (Phase 2)
+
+### 5.1 Routes
+
+| Route | Today | New |
+|---|---|---|
+| `/` | Me (signed in) / Landing | **Home** (signed in) / Landing — unchanged split |
+| `/leagues` | Leagues | Leagues (manage list + create + join) |
+| `/you` | — | **New.** Profile, My season, Appearance, Sign out, Delete account. Signed-out → redirect `/signin?next=/you` |
+| `/me/settings` | Settings | **Redirect** → `/you` (keep the route file as a redirect so old links work) |
+| `/l/[slug]` | Standings | Standings (event-by-event) / **season view** (full-season, §6.4) |
+| `/l/[slug]/r/[roundId]` | Round | Event tab content |
+| `/l/[slug]/draft` | — | **New.** Server redirect to `/l/[slug]/r/{target}/draft` using `targetRound` (`lib/rounds/target.ts`); no rounds → empty state |
+| `/l/[slug]/r/[roundId]/draft` | Draft room (live only) | Draft tab content for **both** draft modes (§6.6) |
+| `/l/[slug]/admin`, `/l/[slug]/admin/r/[roundId]` | Admin | Admin (§7) |
+| `/join/[code]`, `/signin`, `/leagues/new` | — | restyled + copy (§6.8–6.10) |
+
+### 5.2 Bottom bar (`BottomBar`)
+
+Signed-in users see it on **every** page: **Home** `/` · **Leagues** `/leagues` · **You** `/you`. Active state: Home on `/`; Leagues on `/leagues*`, `/join/*` **and every `/l/*` page**; You on `/you`. Signed-out users get no bottom bar. It replaces `AppTabBar` and `TabBar`'s phone mode.
+
+### 5.3 App header
+
+- **Outside a league:** slim band header — hex-nut logo + "FRC FANTASY" (links `/`). Signed out: a "Sign in" button on the right. Signed in: nothing on the right (the avatar `HeaderAccount` and the header `ThemeToggle` go away; theme moves to You).
+- **Inside a league (`LeagueHeader`):** the band holds the league name, a **Switch ▾** chip (signed-in members with >1 league; opens a `Sheet` listing their leagues), a **⋯** menu (members: "Your name in this league", "Copy league link", "Leave league" — the actions from today's `LeagueMeCard`), the Commissioner label if applicable, and the **league tabs**:
+  - Event-by-event: **Standings · Event · Draft · Admin**
+  - Full-season: **Standings · Draft · Admin** (§6.4)
+  - Admin only for commissioners. Event tab → `/l/slug/r/{targetRound}`; when the league has no rounds the tab still shows and renders the empty state. Draft tab → `/l/slug/draft`.
+  - Active tab: white label + 3px `accent` underline.
+
+### 5.4 `lib/nav.ts`
+
+Rewritten as pure functions with unit tests:
+
+```ts
+export type AppTab = 'home' | 'leagues' | 'you';
+export function appTab(pathname: string): AppTab | null;          // §5.2 rules
+export type LeagueTab = 'standings' | 'event' | 'draft' | 'admin';
+export function leagueTab(pathname: string, slug: string): LeagueTab | null;
+//  /l/s → standings · /l/s/r/x → event · /l/s/r/x/draft and /l/s/draft → draft · /l/s/admin* → admin
+export function leagueTabs(kind: LeagueKind, isCommissioner: boolean): LeagueTab[];
+export function showLiveDraftPill(pathname: string): boolean;     // false on any /draft page
+```
+
+`showAppTabBar` is deleted (the bar is always shown when signed in).
+
+### 5.5 Live-draft pill
+
+When the signed-in user is a member of any league with a draft in phase `live` or `paused`, a gold pill sits just above the bottom bar on every page except draft pages: **"● Draft is live — {league} · Join"** (paused: "Draft paused — {league}"), linking to that round's draft room. More than one → the first by league name, with "+1".
+
+Data: a new `loadMyLiveDrafts(userId)` in `lib/views/` that uses **only existing repo methods** (the user's leagues → their rounds → picks for rounds still drafting) and `liveDraftsOf` from `lib/draft/liveBanner.ts`. It must not call TBA or `loadLeaguePage`. Rendered from the root layout; failures render nothing (never block the page). It replaces the per-page `LiveDraftBanner` on Standings/Event.
