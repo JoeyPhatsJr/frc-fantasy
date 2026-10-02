@@ -3,11 +3,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { ConfirmSheet, confirmText, trappedFocusIndex } from '@/components/draft/ConfirmSheet';
 import { bannerLines, DraftRoomBanner } from '@/components/draft/DraftRoomBanner';
-import { DraftRosters } from '@/components/draft/DraftRosters';
 import { PoolList } from '@/components/draft/PoolList';
 import { QueueList } from '@/components/draft/QueueList';
 import { LiveDraftControls } from '@/components/admin/LiveDraftControls';
-import { LiveDraftBanner } from '@/components/draft/LiveDraftBanner';
 import { DraftBoard } from '@/components/DraftBoard';
 import type { AdminRoundDetail } from '@/lib/api/types';
 import type { DraftState } from '@/lib/draft/state';
@@ -185,16 +183,7 @@ describe('ConfirmSheet', () => {
   });
 });
 
-describe('DraftRosters and DraftBoard highlight', () => {
-  it('lists each player with their teams', () => {
-    const t = text(renderToStaticMarkup(h(DraftRosters, {
-      order: state().order, picks: [{ pickNumber: 0, playerId: 'joey', teamKey: 'frc341', auto: true }], rosterSize: 2, teamNames: {},
-    })));
-    expect(t).toContain('Joey');
-    expect(t).toContain('341');
-    expect(t).toContain('auto');
-    expect(t).toContain('Mom');
-  });
+describe('DraftBoard highlight', () => {
   it('rings the newest pick on the board', () => {
     const html = renderToStaticMarkup(h(DraftBoard, {
       picks: [{ pickNumber: 0, playerId: 'joey', teamKey: 'frc341' }], draftOrder: ['joey', 'mom'], rosterSize: 1,
@@ -225,15 +214,6 @@ describe('DraftRosters and DraftBoard highlight', () => {
     expect(cells[2]).toContain('#4 · Dad');
     expect(cells[2]).toContain('Team 25');
     expect(cells[0]).toContain('#6 · Joey');
-  });
-});
-
-describe('LiveDraftBanner', () => {
-  it('links members to the draft room', () => {
-    const html = renderToStaticMarkup(h(LiveDraftBanner, { slug: 'fam', drafts: [{ roundId: 'r1', eventName: 'Ramp Riot', phase: 'live' }] }));
-    expect(html).toContain('href="/l/fam/r/r1/draft"');
-    expect(text(html)).toContain('Draft is live — join');
-    expect(renderToStaticMarkup(h(LiveDraftBanner, { slug: 'fam', drafts: [] }))).toBe('');
   });
 });
 

@@ -6,7 +6,7 @@ vi.mock('@/lib/tba/client', () => ({ getTba: (...a: unknown[]) => h.getTba(...a)
 
 import type { Repo } from '@/lib/db/repo';
 import { defaultScoring } from '@/lib/scoring/config';
-import { loadHome } from '@/lib/views/home';
+import { loadHome, seasonSummary } from '@/lib/views/home';
 import { createMemoryRepo } from '../helpers/memoryRepo';
 
 describe('loadHome', () => {
@@ -66,5 +66,24 @@ describe('loadHome', () => {
     ]);
     expect(log).toHaveBeenCalled();
     log.mockRestore();
+  });
+});
+
+describe('seasonSummary (spec §4.6 My season)', () => {
+  it('totals this year, finds the best pick, averages finished rounds only', () => {
+    const out = seasonSummary(
+      [
+        { eventName: 'Ramp Riot', startDate: '2026-10-24', finalized: true, me: { total: 120, rank: 2, teams: [{ teamKey: 'frc341', total: 62 }, { teamKey: 'frc5181', total: 58 }] } },
+        { eventName: 'Brunswick Eruption', startDate: '2026-11-07', finalized: true, me: { total: 80, rank: 1, teams: [{ teamKey: 'frc1', total: 40 }] } },
+        { eventName: 'Next Up', startDate: '2026-12-05', finalized: false, me: { total: 10, rank: 4, teams: [] } },
+        { eventName: 'Last Year', startDate: '2025-10-25', finalized: true, me: { total: 999, rank: 1, teams: [{ teamKey: 'frc9', total: 500 }] } },
+        { eventName: 'Not in it', startDate: '2026-10-01', finalized: true, me: null },
+      ],
+      '2026',
+    );
+    expect(out).toEqual({ total: 210, bestPick: { teamKey: 'frc341', eventName: 'Ramp Riot', points: 62 }, averageFinish: 1.5 });
+  });
+  it('is empty-safe', () => {
+    expect(seasonSummary([], '2026')).toEqual({ total: 0, bestPick: null, averageFinish: null });
   });
 });

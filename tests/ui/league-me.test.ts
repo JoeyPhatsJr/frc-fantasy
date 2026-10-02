@@ -15,8 +15,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 import LeaguePage from '@/app/l/[slug]/page';
-import { LeagueMeCardView, leaveConfirmText } from '@/components/LeagueMeCard';
-import { LeagueMenuView, leaveConfirmText as menuLeaveConfirmText } from '@/components/shell/LeagueMenu';
+import { LeagueMenuView, leaveConfirmText } from '@/components/shell/LeagueMenu';
 import type { SessionUser } from '@/lib/auth/session';
 import type { Repo } from '@/lib/db/repo';
 import type { LeagueRow } from '@/lib/db/types';
@@ -39,40 +38,6 @@ const base = {
   message: null,
   saveDisabled: false,
 } as const;
-
-describe('LeagueMeCardView (spec §4.3 rename self / leave)', () => {
-  it('shows the name field, Save, and Leave league', () => {
-    const out = renderToStaticMarkup(h(LeagueMeCardView, base));
-    expect(out).toContain('You in this league');
-    expect(out).toContain('Your name in this league');
-    expect(out).toContain('value="Joey Habich"');
-    expect(out).toContain('maxLength="40"');
-    expect(out).toContain('Save name');
-    expect(out).toContain('Leave league');
-    expect(out).not.toContain('Yes, leave');
-  });
-
-  it('asks to confirm before leaving', () => {
-    const out = renderToStaticMarkup(h(LeagueMeCardView, { ...base, confirming: true }));
-    expect(out).toContain(leaveConfirmText('Habich Fam').replace(/"/g, '&quot;'));
-    expect(out).toContain('Yes, leave');
-    expect(out).toContain('Cancel');
-    expect(out).not.toContain('>Leave league<');
-  });
-
-  it('shows the server message, e.g. the last-commissioner 409', () => {
-    const text = 'A league needs at least one commissioner. Make someone else commissioner first.';
-    const out = renderToStaticMarkup(h(LeagueMeCardView, { ...base, message: { tone: 'danger', text } }));
-    expect(out).toContain(text);
-    expect(out).toContain('role="alert"');
-  });
-
-  it('confirm text says history stays', () => {
-    expect(leaveConfirmText('Habich Fam')).toBe(
-      'Leave Habich Fam? If you have picks, you stay in past standings marked "(left)". You can only rejoin as a new player.',
-    );
-  });
-});
 
 const menuBase = {
   ...base,
@@ -130,10 +95,6 @@ describe('LeagueMenuView (spec §5.3: the ⋯ menu takes over "You in this leagu
     expect(saving).toMatch(/<button(?=[^>]*disabled="")[^>]*>\s*Leave league/);
     const leaving = renderToStaticMarkup(h(LeagueMenuView, { ...menuBase, confirming: true, busy: 'leave' }));
     expect(leaving).toMatch(/<button(?=[^>]*aria-busy="true")[^>]*>[\s\S]*?Yes, leave/);
-  });
-
-  it('LeagueMeCard re-exports the same confirm text (until Task 17 deletes the card)', () => {
-    expect(menuLeaveConfirmText).toBe(leaveConfirmText);
   });
 });
 

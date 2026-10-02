@@ -61,13 +61,3 @@ export function showLiveDraftPill(pathname: string): boolean {
   if (p === '/signin') return false;
   return !/^\/l\/[^/]+(\/r\/[^/]+)?\/draft$/.test(p);
 }
-
-/** @deprecated removed in Task 17 — old league TabBar/AppTabBar only. */
-export function activeTab(pathname: string, slug: string): 'standings' | 'round' | 'admin' | null {
-  const t = leagueTab(pathname, slug);
-  return t === 'event' ? 'round' : t === 'draft' ? 'round' : t;
-}
-/** @deprecated removed in Task 17. */
-export function showAppTabBar(pathname: string): boolean {
-  return !pathname.startsWith('/l/');
-}

@@ -82,10 +82,9 @@ describe('PlayerBoard details', () => {
 });
 
 describe('seasonEventLabel', () => {
-  it('dates then name, and RosterList still re-exports it', async () => {
+  it('dates then name', () => {
     const e = { eventKey: 'k', name: 'Chesapeake', startDate: '2027-03-05', endDate: '2027-03-07', total: 0, lines: [], stale: false };
     expect(seasonEventLabel(e)).toBe('Mar 5–7, 2027 · Chesapeake');
-    expect((await import('@/components/RosterList')).seasonEventLabel).toBe(seasonEventLabel);
   });
 });
 

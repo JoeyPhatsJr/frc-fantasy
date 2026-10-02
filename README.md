@@ -102,7 +102,7 @@ no emails are ever sent. (Google/Discord sign-in code exists but is switched off
    SP1**, or every request will fail. Never put `E2E_AUTH_SECRET` on Vercel.
 
 Check it: `npm run dev`, create an account with an email and password, and you should land back on `/`
-signed in. Sign out from `/me/settings` and sign back in.
+signed in. Sign out from the **You** tab (`/you`; the old `/me/settings` link redirects there) and sign back in.
 
 ## Checks
 
@@ -181,8 +181,8 @@ Production: https://frc-fantasy-5181.vercel.app (Vercel, deploys automatically f
 ## Design
 
 The look and feel lives in `design-system/frc-fantasy/`. Start with `OVERHAUL.md` (the current
-direction: dark-first with a light toggle, bumper-plate team numbers, scoreboard leaderboards, the
-app shell with the bottom tab bar). `BRIEF.md` is the original v1 light-theme brief and `MASTER.md`
+direction: light by default with a dark toggle, bumper-plate team numbers, scoreboard leaderboards, the
+app shell with the Home / Leagues / You bottom bar and the league tabs Standings · Event · Draft · Admin). `BRIEF.md` is the original v1 light-theme brief and `MASTER.md`
 the generated token reference; `OVERHAUL.md` wins where they disagree.
 
 The theme is remembered per device in `localStorage['frcf:theme']` and follows the system setting
