@@ -9,3 +9,6 @@ next-env.d.ts
 .playwright-mcp/
 /test-results
 /playwright-report
+
+# brainstorm mockups (local only)
+.superpowers/

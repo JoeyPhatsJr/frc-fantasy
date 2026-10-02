@@ -1,3 +1,7 @@
+> **Superseded in part (2026-10-01):** palette, card usage and navigation are now defined by
+> `docs/superpowers/specs/2026-10-01-ux-overhaul-design.md` §4–§5. Bumper plates, Barlow type and the
+> scoreboard idea carry over.
+
 # FRC Fantasy — UI overhaul brief ("make it a real app")
 
 Supersedes BRIEF.md where they conflict. Behaviour, API, copy strings asserted by tests, and the

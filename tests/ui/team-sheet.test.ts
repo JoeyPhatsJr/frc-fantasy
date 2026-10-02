@@ -29,7 +29,7 @@ describe('TeamSheetBody', () => {
   it('shows the team, the projection, and each season newest first', () => {
     const t = text(renderToStaticMarkup(h(TeamSheetBody, { data, nickname: 'Miss Daisy' })));
     expect(t).toContain('Miss Daisy');
-    expect(t).toContain('38.2');
+    expect(t).toContain('Projected 38.2');
     expect(t.indexOf('2026')).toBeLessThan(t.indexOf('2025'));
     expect(t).toContain('8-2-0');
   });
@@ -62,7 +62,7 @@ describe('TeamSheetBody', () => {
   });
 
   it('includes the standard-scoring footnote', () => {
-    expect(text(renderToStaticMarkup(h(TeamSheetBody, { data, nickname: null })))).toContain('Proj. uses standard scoring');
+    expect(text(renderToStaticMarkup(h(TeamSheetBody, { data, nickname: null })))).toContain('Projected points use standard scoring');
   });
 });
 

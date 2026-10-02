@@ -61,3 +61,17 @@ export function tbaEventUrl(eventKey: string): string {
 export function roundKeyLine(round: { eventKey: string | null; kind: RoundKind; seasonYear: number | null }): string {
   return round.eventKey ?? (round.kind === 'manual' ? 'Manual event' : `${round.seasonYear} season`);
 }
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** 'YYYY-MM-DD' → 'Oct 24', read as a calendar date (no timezone shift). */
+export function shortDate(ymd: string): string {
+  const [, m, d] = ymd.split('-').map(Number);
+  return `${MONTHS[m - 1]} ${d}`;
+}
+
+export function ordinal(n: number): string {
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
+  return `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th'}`;
+}

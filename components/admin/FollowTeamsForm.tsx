@@ -38,10 +38,10 @@ export function FollowTeamsForm({
         label="Follow teams (up to 3)"
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="5181, 341"
+        placeholder="e.g. 5181, 341"
         autoComplete="off"
         error={error}
-        hint="Their events this year are added as rounds automatically. Delete one and it stays deleted."
+        hint="Follow up to 3 teams and we'll add each event they attend automatically. Delete one and it stays deleted."
       />
       <Button type="submit" variant="secondary" busy={saving} disabled={busy}>
         Save followed teams

@@ -12,7 +12,8 @@ export const metadata: Metadata = {
 type Props = { params: Promise<{ slug: string; roundId: string }> };
 
 // A server component only so it can export `dynamic` and `metadata`; everything visible is the client
-// component, which renders <main id="main">. The admin token lives in the URL fragment, never sent here.
+// component (the four-step checklist, UX spec §7.2), which renders <main id="main">. AdminGate checks the
+// signed-in commissioner client-side.
 export default async function RoundAdminPage({ params }: Props) {
   const { slug, roundId } = await params;
   return <RoundAdmin slug={slug} roundId={roundId} />;

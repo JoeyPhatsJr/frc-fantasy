@@ -30,7 +30,7 @@ export function BumperPlate({ number, side = 'blue', size = 'md', className }: B
       role="img"
       aria-label={`Team ${number}`}
       className={[
-        'inline-flex shrink-0 items-center justify-center rounded-plate pt-px shadow-plate',
+        'inline-flex shrink-0 items-center justify-center rounded-plate pt-px shadow-[inset_0_-2px_0_rgb(0_0_0/.25)]',
         'font-display font-bold leading-none tracking-wide text-on-primary tabular-nums',
         SIDES[side],
         SIZES[size],

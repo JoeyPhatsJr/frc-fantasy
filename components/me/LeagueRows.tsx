@@ -1,34 +1,33 @@
-import Link from 'next/link';
-import type { MeLeague } from '@/lib/views/me';
+import { Row } from '@/components/ui/Row';
+import type { HomeLeague } from '@/lib/views/home';
 
-/** "My leagues" rows (spec §4.6): shared by the Me tab and the Leagues tab. */
-export function LeagueRows({ leagues }: { leagues: MeLeague[] }) {
+/**
+ * One row per league (spec §6.1): status line under the name, rank on the right. Callers wrap it in a Section.
+ * The Commissioner badge leads the status line, so a long league name is what gets cut off, never the badge.
+ */
+export function LeagueRows({ leagues }: { leagues: HomeLeague[] }) {
   return (
-    <ul className="-mx-2 divide-y divide-border">
+    <>
       {leagues.map((l) => (
-        <li key={l.slug}>
-          <Link
-            href={`/l/${l.slug}`}
-            className="flex min-h-14 cursor-pointer items-center gap-3 rounded-lg px-2 hover:bg-fg/5 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {l.anyLive ? (
-              <span aria-label="Live" className="size-2.5 shrink-0 rounded-full bg-success ring-4 ring-success/25 motion-safe:animate-pulse" />
-            ) : null}
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-semibold text-fg">{l.name}</span>
-              {l.isCommissioner ? <span className="block text-sm font-semibold text-secondary">Commissioner</span> : null}
-            </span>
-            {l.error ? (
-              <span className="shrink-0 text-sm text-fg-muted">Couldn&apos;t load</span>
-            ) : (
-              <span className="shrink-0 text-right tabular-nums">
-                <span className="block font-display text-xl font-bold text-fg">{l.total}</span>
-                <span className="block text-sm text-fg-muted">{l.rank ? `#${l.rank}` : '—'}</span>
-              </span>
-            )}
-          </Link>
-        </li>
+        <Row
+          key={l.slug}
+          href={l.error ? undefined : `/l/${l.slug}`}
+          title={l.name}
+          subtitle={
+            <>
+              {l.isCommissioner ? (
+                <span className="mr-2 inline-block rounded-[4px] bg-secondary px-1.5 align-middle text-[11px] font-bold uppercase leading-5 tracking-[.1em] text-on-secondary">
+                  Commissioner
+                </span>
+              ) : null}
+              {l.error ? "Couldn't load" : l.line}
+            </>
+          }
+          trailing={
+            l.error ? null : <span className="font-display text-[22px] font-bold tabular-nums text-fg">{l.rank ? `#${l.rank}` : '—'}</span>
+          }
+        />
       ))}
-    </ul>
+    </>
   );
 }

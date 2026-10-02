@@ -26,15 +26,15 @@ const listProps = (entries: PoolEntry[], over: Record<string, unknown> = {}) => 
 });
 
 describe('PoolStatCells', () => {
-  it('shows Proj, W-L-T, the best-finish badge, and OPR / rank', () => {
+  it('shows Projected, W-L-T, the best-finish badge, and Robot rating (OPR) / rank', () => {
     const t = text(renderToStaticMarkup(h(PoolStatCells, { entry: entry() })));
-    expect(t).toContain('Proj 38.2');
+    expect(t).toContain('Projected 38.2');
     expect(t).toContain('12-4-0');
     expect(t).toContain('Event winner');
-    expect(t).toContain('OPR 41.2 · #3');
+    expect(t).toContain('Robot rating (OPR) 41.2 · #3');
   });
 
-  it('shows a "New" chip instead of Proj, and no badge for a team never picked', () => {
+  it('shows a "New" chip instead of Projected, and no badge for a team never picked', () => {
     const html = renderToStaticMarkup(
       h(PoolStatCells, { entry: entry({ proj: null, bestFinish: null, record: null, opr: null, rank: null }) }),
     );
@@ -51,7 +51,7 @@ describe('PoolStatCells', () => {
 
 describe('PoolFootnote', () => {
   it('says projections use standard scoring (spec §6.3)', () => {
-    expect(text(renderToStaticMarkup(h(PoolFootnote)))).toBe('Proj. uses standard scoring.');
+    expect(text(renderToStaticMarkup(h(PoolFootnote)))).toBe('Projected points use standard scoring.');
   });
 });
 
@@ -60,12 +60,12 @@ describe("SP4's PoolList with real stats", () => {
 
   it('renders the stat cells for a projected team and the New chip for a new one', () => {
     const t = text(renderToStaticMarkup(h(PoolList, listProps([entry(), rookie]))));
-    expect(t).toContain('Proj 38.2');
+    expect(t).toContain('Projected 38.2');
     expect(t).toContain('12-4-0');
     expect(t).toContain('Event winner');
-    expect(t).toContain('OPR 41.2 · #3');
+    expect(t).toContain('Robot rating (OPR) 41.2 · #3');
     expect(t).toContain('New');
-    expect(t).toContain('Proj. uses standard scoring.');
+    expect(t).toContain('Projected points use standard scoring.');
   });
 
   it('keeps nicknames readable at 360 px: the name wraps to two lines and the stats get their own line', () => {

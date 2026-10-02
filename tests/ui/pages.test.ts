@@ -3,9 +3,11 @@ import { renderToStaticMarkup as render } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: () => {} }), usePathname: () => '/' }));
+const landing = vi.hoisted(() => ({ loadUpcomingEvents: vi.fn() }));
+vi.mock('@/lib/views/landing', () => landing);
 
 import AdminPage from '@/app/l/[slug]/admin/page';
-import { AdminDashboard, FIRST_ROUND_FAILED, leagueLinkLabels } from '@/components/admin/AdminDashboard';
+import { AdminDashboard, FIRST_ROUND_FAILED } from '@/components/admin/AdminDashboard';
 import { addFirstRound, afterCreateUrl, CreateLeagueForm, formatFields } from '@/components/CreateLeagueForm';
 import { InviteCodeBox } from '@/components/InviteCodeBox';
 import { JoinView } from '@/components/JoinView';
@@ -21,12 +23,12 @@ describe('JoinView (spec §4.6 /join)', () => {
     expect(out).toContain('Habich Fam');
     expect(out).toContain('type="password"');
     expect(out).toContain('Sign in');
-    expect(out).not.toContain('Commissioner: Joey'); // details only after sign-in
+    expect(out).toContain('Run by Joey · 3 players'); // the invite card shows who runs it either way
   });
   it('signed in: commissioner, member count and a Join button', () => {
     const out = render(h(JoinView, { preview, signedIn: true, code: 'ABC234' }));
-    expect(out).toContain('Commissioner: Joey');
-    expect(out).toContain('3 members');
+    expect(out).toContain('Run by Joey');
+    expect(out).toContain('3 players');
     expect(out).toContain('>Join<');
   });
   it('full league and bad code messages', () => {
@@ -41,7 +43,7 @@ describe('CreateLeagueForm', () => {
   it('has name, the two visibility choices, and no passcode', () => {
     const out = render(h(CreateLeagueForm, {}));
     expect(out).toContain('League name');
-    expect(out).toContain('Anyone with the link can view');
+    expect(out).toContain('Anyone with the link');
     expect(out).toContain('Members only');
     expect(out).not.toMatch(/passcode/i);
   });
@@ -91,13 +93,30 @@ describe('a failed prefilled first round is not silent (final review, Minor #13)
     expect(afterCreateUrl('fam-abc234', true)).toBe('/l/fam-abc234/admin?round_error=1');
   });
   it('the admin page passes the flag to the dashboard, which explains what happened', async () => {
+    landing.loadUpcomingEvents.mockResolvedValue([]);
     const page = (slug: string, sp: Record<string, string>) =>
       AdminPage({ params: Promise.resolve({ slug }), searchParams: Promise.resolve(sp) });
     const failed = await page('fam-abc234', { round_error: '1' });
     expect(failed.type).toBe(AdminDashboard);
-    expect(failed.props).toEqual({ slug: 'fam-abc234', firstRoundFailed: true });
-    expect((await page('fam-abc234', {})).props).toEqual({ slug: 'fam-abc234', firstRoundFailed: false });
-    expect(FIRST_ROUND_FAILED).toBe("Your league is ready, but the first round couldn't be added. Add it under Rounds below.");
+    expect(failed.props).toEqual({ slug: 'fam-abc234', firstRoundFailed: true, upcoming: [] });
+    expect((await page('fam-abc234', {})).props).toEqual({ slug: 'fam-abc234', firstRoundFailed: false, upcoming: [] });
+    expect(FIRST_ROUND_FAILED).toBe("Your league is ready, but the first round couldn't be added. Add it under Events below.");
+  });
+});
+
+describe('admin page: upcoming TBA events for the event picker (spec §7.1)', () => {
+  const page = () => AdminPage({ params: Promise.resolve({ slug: 'fam' }), searchParams: Promise.resolve({}) });
+  it('passes a trimmed list of upcoming events', async () => {
+    landing.loadUpcomingEvents.mockResolvedValue([
+      { key: '2026parr', name: 'Ramp Riot', start_date: '2026-10-24', end_date: '2026-10-24', timezone: 'America/New_York', event_type: 99 },
+    ]);
+    expect((await page()).props.upcoming).toEqual([
+      { key: '2026parr', name: 'Ramp Riot', startDate: '2026-10-24', endDate: '2026-10-24' },
+    ]);
+  });
+  it('a TBA outage never breaks admin: the list is just empty', async () => {
+    landing.loadUpcomingEvents.mockRejectedValue(new Error('TBA down'));
+    expect((await page()).props.upcoming).toEqual([]);
   });
 });
 
@@ -129,13 +148,6 @@ describe('addFirstRound: the prefilled event from /leagues/new?event= (SP2 final
   });
 });
 
-describe('admin shortcuts (final review, Minor #6)', () => {
-  it('only call the league page "public" when it is', () => {
-    expect(leagueLinkLabels('link')).toEqual({ view: 'View public page', copy: 'Copy public link' });
-    expect(leagueLinkLabels('members')).toEqual({ view: 'View league page', copy: 'Copy league link' });
-  });
-});
-
 describe('InviteCodeBox and SettingsForm', () => {
   it('renders the code input', () => {
     expect(render(h(InviteCodeBox, {}))).toContain('Have an invite code?');
@@ -146,7 +158,7 @@ describe('InviteCodeBox and SettingsForm', () => {
     expect(out).toContain('value="5181"');
     expect(out).toContain('Sign out');
     expect(out).toContain('Delete account');
-    expect(out).toContain('To change your name in one league, open that league and use “You in this league”.');
+    expect(out).toContain('Shown in every league. You can also set a different name inside a league from its ⋯ menu.');
   });
   it('InviteCodeBox input has keyboard attributes for codes', () => {
     const html = render(h(InviteCodeBox, {}));

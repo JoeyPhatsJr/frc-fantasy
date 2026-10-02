@@ -1,21 +1,22 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { AdjustmentEditor } from '@/components/admin/AdjustmentEditor';
 import { AdminGate } from '@/components/admin/AdminGate';
 import { DraftEntry } from '@/components/admin/DraftEntry';
-import { LiveDraftControls } from '@/components/admin/LiveDraftControls';
+import { DraftModeSwitch, LiveDraftControls } from '@/components/admin/LiveDraftControls';
 import { ManualResultsEditor } from '@/components/admin/ManualResultsEditor';
-import { DETAILS_SUMMARY, RoundSetup } from '@/components/admin/RoundSetup';
+import { type ChecklistStep, RoundChecklist, stepSummaries } from '@/components/admin/RoundChecklist';
+import { RoundSetup } from '@/components/admin/RoundSetup';
 import { usePending } from '@/components/admin/usePending';
 import { usePolling } from '@/components/admin/usePolling';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { Check, ChevronDown, ChevronLeft, RefreshCw, X } from '@/components/ui/icons';
+import { Check, ChevronLeft, RefreshCw, Trash2, X } from '@/components/ui/icons';
 import type { AdminApi } from '@/lib/admin/client';
+import { type AdminStep, adminStep, setupDone } from '@/lib/admin/steps';
 import type { AdminRoundDetail } from '@/lib/api/types';
 import { agoLabel, formatDateRange, roundKeyLine } from '@/lib/format';
 
@@ -71,8 +72,6 @@ function RoundManager({ slug, roundId, api }: { slug: string; roundId: string; a
     [reload],
   );
 
-  const { pending, go } = usePending(run);
-
   if (!detail) {
     return (
       <main id="main">
@@ -89,7 +88,63 @@ function RoundManager({ slug, roundId, api }: { slug: string; roundId: string; a
 
   const playerNames = Object.fromEntries(detail.players.map((p) => [p.id, p.name]));
   const section: SectionProps = { detail, busy, run, api, playerNames };
+
+  return (
+    <RoundAdminView
+      slug={slug}
+      section={section}
+      error={error}
+      notice={notice}
+      onNotice={setNotice}
+      onDismiss={() => {
+        setError(null);
+        setNotice(null);
+      }}
+    />
+  );
+}
+
+const SUBHEAD = 'font-display text-[17px] font-bold leading-6 text-fg';
+
+/**
+ * Round admin (UX spec §7.2): a header, the sticky error/notice, then the four-step checklist opened on
+ * `adminStep()`, and "Delete this event" at the very bottom. Every call and confirm is the one the old
+ * card layout made; only the arrangement changed.
+ */
+export function RoundAdminView({
+  slug,
+  section,
+  error,
+  notice,
+  onNotice,
+  onDismiss,
+}: {
+  slug: string;
+  section: SectionProps;
+  error: string | null;
+  notice: string | null;
+  onNotice: (message: string) => void;
+  onDismiss: () => void;
+}) {
+  const { detail } = section;
   const { round } = detail;
+  const playerIds = detail.players.map((p) => p.id);
+  const current = adminStep(detail.status, setupDone(round, playerIds));
+  const lines = stepSummaries({
+    playerCount: round.draftOrder.length,
+    rosterSize: round.rosterSize,
+    picks: detail.picks.length,
+    kind: round.kind,
+    manualResults: detail.manualResults?.length ?? 0,
+    finalized: round.finalizedAt !== null,
+  });
+  const content: Record<AdminStep, ReactNode> = {
+    1: <RoundSetup key={`${round.draftOrder.join(',')}|${round.rosterSize}`} {...section} />,
+    2: <DraftStep {...section} slug={slug} />,
+    3: <EventStep {...section} onNotice={onNotice} />,
+    4: <WrapUpStep {...section} />,
+  };
+  const steps: ChecklistStep[] = ([1, 2, 3, 4] as const).map((s) => ({ step: s, ...lines[s], content: content[s] }));
 
   return (
     <main id="main" className="space-y-6">
@@ -100,7 +155,7 @@ function RoundManager({ slug, roundId, api }: { slug: string; roundId: string; a
           className="-ml-2 inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-lg pr-3 pl-1 text-[15px] font-semibold text-primary motion-safe:transition-colors duration-150 hover:bg-surface-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronLeft className="size-5 shrink-0" />
-          Dashboard
+          Admin
         </Link>
         <h1 className="break-words font-display text-[28px] font-bold leading-[30px] text-fg">{round.eventName}</h1>
         <div className="space-y-0.5">
@@ -110,16 +165,7 @@ function RoundManager({ slug, roundId, api }: { slug: string; roundId: string; a
         <div>
           <StatusBadge status={detail.status} />
         </div>
-        <div>
-          <Button href={`/l/${slug}/r/${round.id}`} variant="secondary">
-            View public round page
-          </Button>
-        </div>
       </header>
-
-      {detail.nudgeFinalize ? (
-        <Alert tone="warning">Event&apos;s over — mark final once results look complete.</Alert>
-      ) : null}
 
       {/* Sticks under the top bar, so a pick that fails (say, another tab drafted first) is seen mid-draft. */}
       {error || notice ? (
@@ -127,128 +173,170 @@ function RoundManager({ slug, roundId, api }: { slug: string; roundId: string; a
           <div className="min-w-0 flex-1">
             {error ? <Alert tone="danger">{error}</Alert> : <Alert tone="success">{notice}</Alert>}
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Dismiss message"
-            onClick={() => {
-              setError(null);
-              setNotice(null);
-            }}
-          >
+          <Button type="button" variant="ghost" size="icon" aria-label="Dismiss message" onClick={onDismiss}>
             <X className="size-5" />
           </Button>
         </div>
       ) : null}
 
-      <section>
-        <Card title="Setup">
-          <details className="group" open={detail.status === 'setup'}>
-            <summary className={DETAILS_SUMMARY}>
-              <span className="min-w-0">Roster size, draft order, team pool, scoring</span>
-              <ChevronDown className="size-5 shrink-0 motion-safe:transition-transform duration-200 group-open:rotate-180" />
-            </summary>
-            <div className="pt-4">
-              <RoundSetup key={`${round.draftOrder.join(',')}|${round.rosterSize}`} {...section} />
-            </div>
-          </details>
-        </Card>
-      </section>
+      <RoundChecklist current={current} steps={steps} />
 
-      <section>
-        <Card title="Live draft">
-          <LiveDraftControls {...section} slug={slug} />
-        </Card>
-      </section>
-
-      <section>
-        <Card title="Draft">
-          <DraftEntry {...section} />
-        </Card>
-      </section>
-
-      {round.kind === 'manual' ? (
-        <section>
-          <Card title="Results">
-            <ManualResultsEditor {...section} />
-          </Card>
-        </section>
-      ) : null}
-
-      <section>
-        <Card title="Adjustments">
-          <AdjustmentEditor {...section} />
-        </Card>
-      </section>
-
-      <section>
-        <Card title="Data and status" className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {round.kind === 'tba' ? (
-              <Button
-                type="button"
-                variant="secondary"
-                busy={pending === 'refresh'}
-                disabled={busy}
-                onClick={() =>
-                  go('refresh', async () => {
-                    const out = await api<{ fetchedAt: string | null; stale: boolean }>(`/rounds/${round.id}/refresh`, {
-                      method: 'POST',
-                    });
-                    setNotice(
-                      out.stale
-                        ? `Couldn't reach The Blue Alliance. Showing data from ${agoLabel(out.fetchedAt, new Date())}.`
-                        : `Refreshed from The Blue Alliance (${agoLabel(out.fetchedAt, new Date())}).`,
-                    );
-                  })
-                }
-              >
-                {pending === 'refresh' ? null : <RefreshCw className="size-4 shrink-0" />}
-                Refresh from TBA
-              </Button>
-            ) : null}
-            {round.finalizedAt ? (
-              <Button
-                type="button"
-                variant="secondary"
-                busy={pending === 'finalize'}
-                disabled={busy}
-                onClick={() =>
-                  go(
-                    'finalize',
-                    () => api(`/rounds/${round.id}`, { method: 'PATCH', body: { finalized: false } }),
-                    'Round reopened.',
-                  )
-                }
-              >
-                Reopen round
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                busy={pending === 'finalize'}
-                disabled={busy}
-                onClick={() =>
-                  go(
-                    'finalize',
-                    () => api(`/rounds/${round.id}`, { method: 'PATCH', body: { finalized: true } }),
-                    'Round marked final.',
-                  )
-                }
-              >
-                {pending === 'finalize' ? null : <Check className="size-4 shrink-0" />}
-                Mark round final
-              </Button>
-            )}
-          </div>
-          <p className="text-xs text-fg-muted">
-            {round.kind === 'tba'
-              ? 'Refresh is limited to once every 15 seconds. Marking final only changes the badge and slows down checks for new data; scores are always computed from The Blue Alliance.'
-              : 'Marking final only changes the badge.'}
-          </p>
-        </Card>
-      </section>
+      <DeleteRound {...section} slug={slug} />
     </main>
+  );
+}
+
+/**
+ * Step 2: only the chosen draft method, plus "Switch to …". A finished live draft also gets DraftEntry,
+ * for its "Fix a pick" list (a team that withdrew).
+ */
+function DraftStep(props: SectionProps & { slug: string }) {
+  const { round, picks } = props.detail;
+  const live = round.draftMode === 'live';
+  const total = round.draftOrder.length * round.rosterSize;
+  const complete = total > 0 && picks.length >= total;
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+        <p className="flex min-h-9 items-center text-[15px] text-fg-muted">
+          {live ? 'Live draft on everyone’s phones.' : 'You enter the picks here.'}
+        </p>
+        <DraftModeSwitch {...props} />
+      </div>
+      {live ? <LiveDraftControls {...props} /> : <DraftEntry {...props} />}
+      {live && complete ? <DraftEntry {...props} /> : null}
+    </div>
+  );
+}
+
+/** Step 3: Refresh from TBA (TBA rounds; the refresh API serves only those), typed-in results, adjustments. */
+function EventStep(props: SectionProps & { onNotice: (message: string) => void }) {
+  const { detail, busy, run, api, onNotice } = props;
+  const { round } = detail;
+  const { pending, go } = usePending(run);
+  return (
+    <div className="space-y-8">
+      {round.kind === 'tba' ? (
+        <div className="space-y-2">
+          <Button
+            type="button"
+            variant="secondary"
+            busy={pending === 'refresh'}
+            disabled={busy}
+            onClick={() =>
+              go('refresh', async () => {
+                const out = await api<{ fetchedAt: string | null; stale: boolean }>(`/rounds/${round.id}/refresh`, {
+                  method: 'POST',
+                });
+                onNotice(
+                  out.stale
+                    ? `Couldn't reach The Blue Alliance. Showing data from ${agoLabel(out.fetchedAt, new Date())}.`
+                    : `Refreshed from The Blue Alliance (${agoLabel(out.fetchedAt, new Date())}).`,
+                );
+              })
+            }
+          >
+            {pending === 'refresh' ? null : <RefreshCw className="size-4 shrink-0" />}
+            Refresh from TBA
+          </Button>
+          <p className="text-xs text-fg-muted">Refresh is limited to once every 15 seconds.</p>
+        </div>
+      ) : null}
+      {round.kind === 'manual' ? (
+        <div className="space-y-3">
+          <h3 className={SUBHEAD}>Results</h3>
+          <ManualResultsEditor {...props} />
+        </div>
+      ) : null}
+      <div className="space-y-3">
+        <h3 className={SUBHEAD}>Adjustments</h3>
+        <AdjustmentEditor {...props} />
+      </div>
+    </div>
+  );
+}
+
+/** Step 4: the finalize nudge, then Mark round final / Reopen round. */
+function WrapUpStep({ detail, busy, run, api }: SectionProps) {
+  const { round } = detail;
+  const { pending, go } = usePending(run);
+  return (
+    <div className="space-y-3">
+      {detail.nudgeFinalize ? (
+        <Alert tone="warning">Event&apos;s over — mark final once results look complete.</Alert>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        {round.finalizedAt ? (
+          <Button
+            type="button"
+            variant="secondary"
+            busy={pending === 'finalize'}
+            disabled={busy}
+            onClick={() =>
+              go(
+                'finalize',
+                () => api(`/rounds/${round.id}`, { method: 'PATCH', body: { finalized: false } }),
+                'Round reopened.',
+              )
+            }
+          >
+            Reopen round
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            busy={pending === 'finalize'}
+            disabled={busy}
+            onClick={() =>
+              go(
+                'finalize',
+                () => api(`/rounds/${round.id}`, { method: 'PATCH', body: { finalized: true } }),
+                'Round marked final.',
+              )
+            }
+          >
+            {pending === 'finalize' ? null : <Check className="size-4 shrink-0" />}
+            Mark round final
+          </Button>
+        )}
+      </div>
+      <p className="text-xs text-fg-muted">
+        {round.kind === 'tba'
+          ? 'Marking final only changes the badge and slows down checks for new data; scores are always computed from The Blue Alliance.'
+          : 'Marking final only changes the badge.'}
+      </p>
+    </div>
+  );
+}
+
+/** Moved here from the dashboard's event rows (spec §7.2): same DELETE call and confirm, then back to Admin. */
+function DeleteRound({ detail, busy, run, api, slug }: SectionProps & { slug: string }) {
+  const { round } = detail;
+  const { pending, go } = usePending(run);
+  return (
+    <div className="flex flex-col items-start gap-1 border-t border-border pt-4">
+      <Button
+        type="button"
+        variant="danger"
+        size="sm"
+        busy={pending === 'delete'}
+        disabled={busy}
+        onClick={() => {
+          const sure = window.confirm(
+            `Delete ${round.eventName}? This also deletes its picks and adjustments. It can't be undone.`,
+          );
+          if (sure) {
+            go('delete', async () => {
+              await api(`/rounds/${round.id}`, { method: 'DELETE' });
+              window.location.assign(`/l/${slug}/admin`);
+            });
+          }
+        }}
+      >
+        {pending === 'delete' ? null : <Trash2 className="size-4 shrink-0" />}
+        {round.kind === 'season' ? 'Delete this season' : 'Delete this event'}
+      </Button>
+      <p className="text-[13px] leading-[18px] text-fg-muted">Also deletes its picks and adjustments.</p>
+    </div>
   );
 }

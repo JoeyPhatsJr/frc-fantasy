@@ -1,8 +1,15 @@
+import { createElement as h } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import {
   actionNotice,
+  DRAFT_PANEL_ID,
+  DRAFT_TABS_ID,
+  UNDO_STALE_NOTICE,
   autodraftShown,
   confirmTarget,
+  defaultDraftTab,
+  draftTabs,
   MAX_QUEUE,
   submitPick,
   toggledQueue,
@@ -10,6 +17,7 @@ import {
 import { DraftApiError, type DraftApi } from '@/lib/draft/api';
 import type { DraftState } from '@/lib/draft/state';
 import type { PoolEntry } from '@/lib/pool/entries';
+import { PageTabs, pageTabId } from '@/components/ui/PageTabs';
 
 const state = (over: Partial<DraftState> = {}): DraftState => ({
   phase: 'live', draftMode: 'live', pickNumber: 3, totalPicks: 6,
@@ -105,6 +113,16 @@ describe('submitPick sends the frozen pick number (review I2)', () => {
   it('if the clock moved, the server answers stale and the UI just refetches (no notice)', () => {
     expect(actionNotice(new DraftApiError(409, 'Draft changed in another tab — refresh', 'stale'), 'frc341')).toBeNull();
   });
+  it('a stale Undo says so instead of doing nothing (final review M7)', () => {
+    const stale = new DraftApiError(409, 'Draft changed in another tab — refresh', 'stale');
+    expect(UNDO_STALE_NOTICE).toBe('The draft moved on — check the board and try again.');
+    expect(actionNotice(stale, undefined, true)).toBe(UNDO_STALE_NOTICE);
+    expect(actionNotice(stale)).toBeNull(); // picks, pause, resume: still silent
+    // Other Undo failures keep their own message.
+    expect(actionNotice(new DraftApiError(403, 'Only the commissioner can do that'), undefined, true)).toBe(
+      'Only the commissioner can do that',
+    );
+  });
 });
 
 describe('autodraftShown: the optimistic auto-draft checkbox (review I4)', () => {
@@ -120,5 +138,36 @@ describe('autodraftShown: the optimistic auto-draft checkbox (review I4)', () =>
     expect(autodraftShown(false, saved, 150)).toBe(true); // old state, fetched before the save landed
     expect(autodraftShown(true, saved, 250)).toBe(true);
     expect(autodraftShown(false, saved, 250)).toBe(false); // e.g. an undo turned it off again since
+  });
+});
+
+describe('draftTabs', () => {
+  it('members get Pool · My queue · Board; watchers get Pool · Board; no Rosters tab', () => {
+    expect(draftTabs(true, 0).map((t) => t.label)).toEqual(['Pool', 'My queue', 'Board']);
+    expect(draftTabs(true, 3).map((t) => t.label)).toEqual(['Pool', 'My queue (3)', 'Board']);
+    expect(draftTabs(false, 0).map((t) => t.key)).toEqual(['pool', 'board']);
+  });
+});
+describe('defaultDraftTab', () => {
+  it('opens the board once the draft is done', () => {
+    expect(defaultDraftTab('done')).toBe('board');
+    expect(defaultDraftTab('setup')).toBe('pool');
+    expect(defaultDraftTab('live')).toBe('pool');
+    expect(defaultDraftTab('paused')).toBe('pool');
+  });
+});
+
+describe('draft room tabs label their panel (final review M10)', () => {
+  it('each tab has an id and controls the panel; the panel id matches the active tab', () => {
+    const html = renderToStaticMarkup(
+      h(PageTabs, {
+        label: 'Draft room', active: 'queue', onSelect: () => {}, idPrefix: DRAFT_TABS_ID, panelId: DRAFT_PANEL_ID,
+        items: [{ key: 'pool', label: 'Pool' }, { key: 'queue', label: 'My queue' }, { key: 'board', label: 'Board' }],
+      }),
+    );
+    for (const key of ['pool', 'queue', 'board']) expect(html).toContain(`id="${pageTabId(DRAFT_TABS_ID, key)}"`);
+    expect(html.match(/aria-controls="draft-room-panel"/g)).toHaveLength(3);
+    expect(html).toMatch(new RegExp(`id="${pageTabId(DRAFT_TABS_ID, 'queue')}" aria-selected="true"`));
+    expect(pageTabId(DRAFT_TABS_ID, 'queue')).toBe('draft-room-tab-queue');
   });
 });

@@ -10,14 +10,10 @@ export type AlertProps = {
 };
 
 const TONES: Record<AlertTone, { box: string; icon: string; Icon: (props: IconProps) => ReactNode }> = {
-  info: { box: 'border-primary/35 border-l-primary bg-primary/10', icon: 'text-primary', Icon: Info },
-  success: { box: 'border-success/35 border-l-success bg-success/10', icon: 'text-success', Icon: CircleCheck },
-  warning: { box: 'border-accent/45 border-l-accent bg-accent/10', icon: 'text-warning', Icon: TriangleAlert },
-  danger: {
-    box: 'border-red-alliance/40 border-l-red-alliance bg-red-alliance/10',
-    icon: 'text-red-alliance-text',
-    Icon: CircleAlert,
-  },
+  info: { box: 'border-primary', icon: 'text-primary', Icon: Info },
+  success: { box: 'border-success', icon: 'text-success', Icon: CircleCheck },
+  warning: { box: 'border-warning', icon: 'text-warning', Icon: TriangleAlert },
+  danger: { box: 'border-red-alliance', icon: 'text-red-alliance-text', Icon: CircleAlert },
 };
 
 /** Danger alerts interrupt screen readers (role="alert"); the rest are polite (role="status"). */
@@ -27,7 +23,7 @@ export function Alert({ tone, className, children }: AlertProps) {
     <div
       role={tone === 'danger' ? 'alert' : 'status'}
       className={[
-        'flex items-start gap-3 rounded-xl border border-l-4 p-3 text-sm font-medium text-fg',
+        'flex items-start gap-3 border-l-4 bg-surface py-2 pr-3 pl-3 text-[15px] text-fg',
         box,
         className,
       ]

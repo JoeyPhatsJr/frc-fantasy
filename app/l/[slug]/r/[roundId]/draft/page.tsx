@@ -1,18 +1,20 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { DraftRoom } from '@/components/draft/DraftRoom';
+import { DraftBoard } from '@/components/DraftBoard';
 import { PrivateLeague } from '@/components/PrivateLeague';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { ChevronLeft } from '@/components/ui/icons';
+import { StatusStrip } from '@/components/ui/StatusStrip';
 import { isUuid } from '@/lib/api/http';
 import { leagueAccess } from '@/lib/auth/roles';
 import { getRepo } from '@/lib/db';
+import { loadRoundPage } from '@/lib/views/round';
 
 export const dynamic = 'force-dynamic';
+// Hand-entered rounds load the round view, which can wait on TBA (same as the Event tab).
+export const maxDuration = 30;
 
 type Props = { params: Promise<{ slug: string; roundId: string }> };
 
+/** The Draft tab (UX §6.6). The league header above it carries the tabs, so there is no back link. */
 export default async function DraftRoomPage({ params }: Props) {
   const { slug, roundId } = await params;
   // Same gate as the round page: members-only leagues show SP1's private card and load nothing else.
@@ -25,34 +27,35 @@ export default async function DraftRoomPage({ params }: Props) {
   const round = await getRepo().getRound(roundId);
   if (!round || round.leagueId !== access.league.id) notFound();
 
-  const back = (
-    <Link
-      href={`/l/${slug}/r/${round.id}`}
-      className="-ml-2 inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-lg pr-3 pl-1 text-[15px] font-semibold text-primary hover:bg-surface-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <ChevronLeft className="size-5 shrink-0" />
-      {round.eventName}
-    </Link>
-  );
-
+  // The commissioner types the picks in (round admin): show the board as it fills.
   if (round.draftMode !== 'live') {
+    const page = await loadRoundPage(slug, round.id, new Date());
+    if (!page) notFound();
+    const { picks, teamNames } = page.view;
+    const total = round.draftOrder.length * round.rosterSize;
+    const done = total > 0 && picks.length >= total;
     return (
       <main id="main" className="space-y-4">
-        {back}
-        <Card title="No live draft for this round">
-          <p className="text-[15px] text-fg">The commissioner enters this round&apos;s picks.</p>
-          <Button href={`/l/${slug}/r/${round.id}`} variant="secondary" className="mt-4">
-            See the draft board
-          </Button>
-        </Card>
+        <h1 className="sr-only">{round.eventName} draft</h1>
+        <StatusStrip
+          tone={done ? 'final' : 'neutral'}
+          title={done ? 'Draft complete' : 'The commissioner enters picks for this event'}
+          detail={`${picks.length} of ${total} picks`}
+        />
+        <DraftBoard
+          picks={picks}
+          draftOrder={round.draftOrder}
+          rosterSize={round.rosterSize}
+          playerNames={page.playerNames}
+          teamNames={teamNames}
+        />
       </main>
     );
   }
 
   return (
     <main id="main" className="space-y-3">
-      {back}
-      <h1 className="font-display text-[28px] font-bold leading-[30px] text-fg">{round.eventName} draft</h1>
+      <h1 className="sr-only">{round.eventName} draft</h1>
       <DraftRoom slug={slug} roundId={round.id} eventName={round.eventName} />
     </main>
   );

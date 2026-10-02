@@ -10,7 +10,7 @@ import { createBrowserSupabase } from '@/lib/supabase/browser';
 
 type Mode = 'signin' | 'signup';
 
-/** Spec §4.1: one form for "Sign in" and "Create account". `next` is where to land afterwards. */
+/** Spec §4.1: one form for "Sign in" and "Create an account". `next` is where to land afterwards. */
 /** The browser holds a session before /auth/finish runs; if finish fails, drop it so nobody stays signed in with no profile. */
 async function dropSession() {
   try {
@@ -104,10 +104,10 @@ export function SignInForm({
   }
 
   return (
-    <form ref={formRef} method="post" onSubmit={submit} className="space-y-3" noValidate>
+    <form ref={formRef} method="post" onSubmit={submit} className="space-y-4" noValidate>
       {heading ? (
         <div className="space-y-1 pb-3">
-          <h1 className="font-display text-[28px] font-bold leading-[30px] text-fg">{HEADINGS[mode].title}</h1>
+          <h1 className="font-display text-[34px] font-bold leading-[36px] tracking-[-0.01em] text-fg">{HEADINGS[mode].title}</h1>
           <p className="text-[15px] leading-[22px] text-fg-muted">{HEADINGS[mode].line}</p>
         </div>
       ) : null}
@@ -155,7 +155,7 @@ export function SignInForm({
         </div>
       ) : null}
       <Button type="submit" busy={busy} disabled={!ready} className="w-full">
-        {busy ? (signup ? 'Creating account…' : 'Signing in…') : signup ? 'Create account' : 'Sign in'}
+        {busy ? (signup ? 'Creating your account…' : 'Signing in…') : signup ? 'Create an account' : 'Sign in'}
       </Button>
       <button
         type="button"
@@ -166,10 +166,10 @@ export function SignInForm({
           setErrorField(null);
         }}
       >
-        {signup ? 'Have an account? Sign in' : 'New here? Create account'}
+        {signup ? 'Have an account? Sign in' : 'New here? Create an account'}
       </button>
       {!signup ? (
-        <p className="text-center text-sm text-fg-muted">Forgot your password? Ask the site admin to reset it.</p>
+        <p className="text-center text-sm text-fg-muted">Forgot your password? Ask the league commissioner to reset it.</p>
       ) : null}
     </form>
   );

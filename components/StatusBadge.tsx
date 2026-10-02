@@ -6,7 +6,7 @@ const TONE: Record<RoundStatus, BadgeTone> = {
   drafting: 'drafting',
   upcoming: 'upcoming',
   live: 'live',
-  awaiting_final: 'warning',
+  awaiting_final: 'caution',
   final: 'final',
 };
 

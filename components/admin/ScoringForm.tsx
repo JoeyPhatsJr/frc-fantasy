@@ -43,12 +43,14 @@ function NumberField({
 
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <fieldset className="min-w-0 space-y-2 rounded-xl border border-border bg-surface-2 p-3">
-      <legend className="rounded-pill bg-surface px-2 font-display text-[17px] font-bold leading-6 text-fg">
-        {title}
-      </legend>
-      {children}
-    </fieldset>
+    // Flat groups split by hairlines, not cards inside cards (spec §1, §4). The wrapper carries the spacing,
+    // because a <legend> sits on the fieldset's top edge and would ignore the fieldset's own padding.
+    <div className="border-t border-border pt-4 first:border-t-0 first:pt-0">
+      <fieldset className="min-w-0 space-y-2">
+        <legend className="mb-2 font-display text-[17px] font-bold leading-6 text-fg">{title}</legend>
+        {children}
+      </fieldset>
+    </div>
   );
 }
 

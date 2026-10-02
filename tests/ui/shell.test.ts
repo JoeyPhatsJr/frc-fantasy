@@ -2,75 +2,10 @@ import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { SkipLink } from '@/components/SkipLink';
-import { LeagueBar } from '@/components/LeagueBar';
 import { ScoreboardSkeleton, Skeleton } from '@/components/Skeleton';
-import { activeTab } from '@/lib/nav';
 import { THEME_BOOT_SCRIPT, THEME_STORAGE_KEY } from '@/lib/theme';
 
 const render = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(el);
-
-describe('activeTab', () => {
-  it('is standings on the league page, with or without a trailing slash', () => {
-    expect(activeTab('/l/habich', 'habich')).toBe('standings');
-    expect(activeTab('/l/habich/', 'habich')).toBe('standings');
-  });
-
-  it('is round on any public round page', () => {
-    expect(activeTab('/l/habich/r/abc', 'habich')).toBe('round');
-    expect(activeTab('/l/habich/r/abc/', 'habich')).toBe('round');
-  });
-
-  it('is admin on the dashboard and on admin round pages', () => {
-    expect(activeTab('/l/habich/admin', 'habich')).toBe('admin');
-    expect(activeTab('/l/habich/admin/r/abc', 'habich')).toBe('admin');
-  });
-
-  it('is null outside this league', () => {
-    expect(activeTab('/', 'habich')).toBeNull();
-    expect(activeTab('/l/other', 'habich')).toBeNull();
-    expect(activeTab('/l/habich-2', 'habich')).toBeNull();
-    expect(activeTab('/l/habich/administrator', 'habich')).toBeNull();
-  });
-
-  it('matches slugs literally', () => {
-    expect(activeTab('/l/a.b', 'a.b')).toBe('standings');
-    expect(activeTab('/l/axb', 'a.b')).toBeNull();
-  });
-});
-
-describe('LeagueBar', () => {
-  it('shows the league name linking to standings', () => {
-    const html = render(h(LeagueBar, { slug: 'habich', name: 'Habich Fam', anyLive: false }));
-    expect(html).toContain('Habich Fam');
-    expect(html).toContain('href="/l/habich"');
-  });
-
-  it('shows a pulsing live dot with screen-reader text when a round is live', () => {
-    const html = render(h(LeagueBar, { slug: 'habich', name: 'Habich Fam', anyLive: true }));
-    expect(html).toContain('data-live-dot');
-    expect(html).toContain('motion-safe:animate-pulse');
-    expect(html).toContain('A round is live');
-  });
-
-  it('has no live dot when nothing is live', () => {
-    const html = render(h(LeagueBar, { slug: 'habich', name: 'Habich Fam', anyLive: false }));
-    expect(html).not.toContain('data-live-dot');
-    expect(html).not.toContain('A round is live');
-  });
-
-  it('shows the Commissioner label only when told the viewer is one', () => {
-    expect(render(h(LeagueBar, { slug: 'habich', name: 'Habich Fam', anyLive: false }))).not.toContain('Commissioner');
-    expect(render(h(LeagueBar, { slug: 'habich', name: 'Habich Fam', anyLive: false, isCommissioner: true }))).toContain('Commissioner');
-  });
-
-  it('renders an optional back slot before the name', () => {
-    const html = render(
-      h(LeagueBar, { slug: 'habich', name: 'Habich Fam', anyLive: false, back: h('a', { href: '/x' }, 'Back') }),
-    );
-    expect(html.indexOf('Back')).toBeGreaterThan(-1);
-    expect(html.indexOf('Back')).toBeLessThan(html.indexOf('Habich Fam'));
-  });
-});
 
 describe('Skeleton', () => {
   it('is a decorative surface-2 block that pulses only with motion allowed', () => {
@@ -128,59 +63,17 @@ describe('theme boot script', () => {
   });
 });
 
-import { AppTabBarView } from '@/components/AppTabBar';
-import { HeaderAccountView } from '@/components/HeaderAccount';
-import { appTab, showAppTabBar } from '@/lib/nav';
+import { appTab } from '@/lib/nav';
 
-describe('appTab / showAppTabBar (spec §4.6)', () => {
-  it('maps paths to the Me and Leagues tabs', () => {
-    expect(appTab('/')).toBe('me');
-    expect(appTab('/me/settings')).toBe('me');
+describe('appTab (spec §5.2)', () => {
+  it('maps paths to the Home, Leagues and You tabs', () => {
+    expect(appTab('/')).toBe('home');
+    expect(appTab('/you')).toBe('you');
+    expect(appTab('/me/settings')).toBe('you');
     expect(appTab('/leagues')).toBe('leagues');
     expect(appTab('/leagues/new')).toBe('leagues');
     expect(appTab('/join/ABC234')).toBe('leagues');
-    expect(appTab('/l/fam-abc234')).toBeNull();
-  });
-  it('hides the app bar on league pages, which have their own bottom bar', () => {
-    expect(showAppTabBar('/')).toBe(true);
-    expect(showAppTabBar('/leagues')).toBe(true);
-    expect(showAppTabBar('/l/fam-abc234')).toBe(false);
-    expect(showAppTabBar('/l/fam-abc234/admin')).toBe(false);
-  });
-});
-
-describe('AppTabBarView', () => {
-  it('renders Me and Leagues with the active one marked', () => {
-    const html = render(h(AppTabBarView, { pathname: '/leagues' }));
-    expect(html).toContain('href="/"');
-    expect(html).toContain('href="/leagues"');
-    // React renders aria-current before href, so match the anchor tag in either attribute order.
-    const leaguesTag = html.match(/<a [^>]*href="\/leagues"[^>]*>/)?.[0] ?? '';
-    expect(leaguesTag).toContain('aria-current="page"');
-    expect(html.match(/<a [^>]*href="\/"[^>]*>/)?.[0]).not.toContain('aria-current');
-  });
-  it('renders nothing on league pages', () => {
-    expect(render(h(AppTabBarView, { pathname: '/l/x' }))).toBe('');
-  });
-});
-
-describe('HeaderAccountView', () => {
-  it('signed out: a Sign in link to /signin that comes back to this page', () => {
-    const html = render(h(HeaderAccountView, { user: null, pathname: '/join/ABC234' }));
-    expect(html).toContain('Sign in');
-    expect(html).toContain('href="/signin?next=%2Fjoin%2FABC234"');
-  });
-  it('signed out on the home page: plain /signin', () => {
-    expect(render(h(HeaderAccountView, { user: null, pathname: '/' }))).toContain('href="/signin"');
-  });
-  it('signed out on /signin itself: no second Sign in (the page is the form)', () => {
-    expect(render(h(HeaderAccountView, { user: null, pathname: '/signin' }))).toBe('');
-  });
-  it('signed in: an account link to settings with the initial when there is no avatar', () => {
-    const html = render(h(HeaderAccountView, { user: { displayName: 'Joey', avatarUrl: null }, pathname: '/' }));
-    expect(html).toContain('href="/me/settings"');
-    expect(html).toContain('aria-label="Account settings for Joey"');
-    expect(html).toContain('>J<');
+    expect(appTab('/l/fam-abc234')).toBe('leagues');
   });
 });
 
@@ -194,18 +87,10 @@ describe('SkipLink', () => {
   });
 });
 
-describe('header avatar image', () => {
-  it('has explicit dimensions matching its rendered size', () => {
-    const html = render(h(HeaderAccountView, { user: { displayName: 'Joey', avatarUrl: 'https://x/a.png' }, pathname: '/' }));
-    expect(html).toContain('width="32"');
-    expect(html).toContain('height="32"');
-  });
-});
-
 describe('footer (shell)', () => {
   it('has mobile bottom padding to clear the fixed tab bar', () => {
-    // The footer needs pb-24 on mobile to clear the fixed AppTabBar (64px) and safe-area inset.
-    // At md breakpoint, it returns to pb-6 since AppTabBar becomes static.
+    // The footer needs pb-24 on mobile to clear the fixed bottom bar (64px) and safe-area inset.
+    // At md breakpoint, it returns to pb-6 since the bottom bar becomes static.
     expect('pb-24 text-center md:max-w-3xl md:pb-6').toContain('pb-24');
     expect('pb-24 text-center md:max-w-3xl md:pb-6').toContain('md:pb-6');
   });

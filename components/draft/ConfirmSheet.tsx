@@ -2,14 +2,15 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
+import { GLOSSARY } from '@/lib/glossary';
 import type { PoolEntry } from '@/lib/pool/entries';
 import { teamLabel } from '@/lib/teams';
 
-/** §7.6: "Draft 341 · Proj 38.2?" — or, for a commissioner picking for someone, "Pick 341 for Mom?". */
+/** §7.6: "Draft 341 · Projected 38.2?" — or, for a commissioner picking for someone, "Pick 341 for Mom?". */
 export function confirmText(entry: PoolEntry, forName: string | null): string {
   const label = teamLabel(entry.teamKey);
   if (forName) return `Pick ${label} for ${forName}?`;
-  return entry.proj === null ? `Draft ${label}?` : `Draft ${label} · Proj ${entry.proj.toFixed(1)}?`;
+  return entry.proj === null ? `Draft ${label}?` : `Draft ${label} · ${GLOSSARY.proj.label} ${entry.proj.toFixed(1)}?`;
 }
 
 const FOCUSABLE =

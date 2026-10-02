@@ -3,11 +3,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { ConfirmSheet, confirmText, trappedFocusIndex } from '@/components/draft/ConfirmSheet';
 import { bannerLines, DraftRoomBanner } from '@/components/draft/DraftRoomBanner';
-import { DraftRosters } from '@/components/draft/DraftRosters';
 import { PoolList } from '@/components/draft/PoolList';
 import { QueueList } from '@/components/draft/QueueList';
 import { LiveDraftControls } from '@/components/admin/LiveDraftControls';
-import { LiveDraftBanner } from '@/components/draft/LiveDraftBanner';
 import { DraftBoard } from '@/components/DraftBoard';
 import type { AdminRoundDetail } from '@/lib/api/types';
 import type { DraftState } from '@/lib/draft/state';
@@ -38,18 +36,56 @@ describe('bannerLines (§7.6)', () => {
     expect(bannerLines(state({ pickSeconds: null, deadline: null }), null, null)).toMatchObject({ clock: null, sub: null });
   });
   it('covers setup, paused, and done', () => {
-    expect(bannerLines(state({ phase: 'setup', onClock: null }), null, 'mom').main).toBe(
-      'Waiting for the commissioner to start the draft',
-    );
-    expect(bannerLines(state({ phase: 'paused', pausedRemainingMs: 30_000 }), null, 'mom')).toMatchObject({
-      main: 'Paused by commissioner', clock: '0:30 left',
+    expect(bannerLines(state({ phase: 'setup', onClock: null }), null, 'mom')).toMatchObject({
+      main: "Draft hasn't started", sub: null,
     });
-    expect(bannerLines(state({ phase: 'done', onClock: null }), null, 'mom')).toMatchObject({ main: 'Draft complete', sub: null });
+    expect(bannerLines(state({ phase: 'setup', onClock: null }), null, 'mom', 2, 6)).toMatchObject({
+      main: "Draft hasn't started", sub: 'You pick 2nd of 6',
+    });
+    expect(bannerLines(state({ phase: 'paused', pausedRemainingMs: 30_000 }), null, 'mom')).toMatchObject({
+      main: 'Paused by the commissioner', clock: '0:30 left',
+    });
+    expect(bannerLines(state({ phase: 'done', onClock: null }), null, 'mom', 2, 3)).toMatchObject({ main: 'Draft complete', sub: null });
   });
+  const banner = (over: Partial<DraftState>, meId: string | null, remainingMs: number | null = null, myPosition: number | null = null, playerCount = 3) =>
+    renderToStaticMarkup(h(DraftRoomBanner, { state: state(over), remainingMs, meId, reconnecting: false, myPosition, playerCount }));
   it('renders "On the clock: Mom · 0:42" and a Reconnecting line', () => {
-    const html = renderToStaticMarkup(h(DraftRoomBanner, { state: state(), remainingMs: 42_000, meId: null, reconnecting: true }));
+    const html = renderToStaticMarkup(
+      h(DraftRoomBanner, { state: state(), remainingMs: 42_000, meId: null, reconnecting: true, myPosition: null, playerCount: 3 }),
+    );
     expect(text(html)).toContain('On the clock: Mom · 0:42');
     expect(text(html)).toContain('Reconnecting…');
+  });
+  it('is a sticky band strip under the app header', () => {
+    const html = banner({}, null, 42_000);
+    expect(html).toMatch(/^<div[^>]*class="[^"]*sticky top-14 z-20[^"]*"/);
+    expect(html).toMatch(/^<div[^>]*class="[^"]*-mx-4 bg-band px-4 py-3 text-on-band/);
+    // Butts up against the league header band (which has mb-4): no light strip between the two dark bands.
+    expect(html).toMatch(/^<div[^>]*class="[^"]*(?<=[" ])-mt-4(?=[" ])/);
+  });
+  it('setup: "Draft hasn\'t started", my place in the order, and the snake explainer', () => {
+    const t = text(banner({ phase: 'setup', onClock: null }, 'mom', null, 2, 6));
+    expect(t).toContain("Draft hasn't started");
+    expect(t).toContain('You pick 2nd of 6');
+    expect(t).toContain('Snake order');
+    expect(banner({ phase: 'setup', onClock: null }, 'mom', null, 2, 6)).toContain('aria-label="What is Snake order?"');
+    // Watchers have no place in the order, but still get the explainer.
+    const watcher = text(banner({ phase: 'setup', onClock: null }, null));
+    expect(watcher).not.toContain('You pick');
+    expect(watcher).toContain('Snake order');
+  });
+  it('live: "Your pick!" big and gold on my turn, otherwise how many picks away', () => {
+    const mine = banner({}, 'mom', 42_000, 2, 3);
+    expect(text(mine)).toContain('Your pick!');
+    expect(mine).toMatch(/<p[^>]*class="[^"]*text-\[24px\][^"]*text-accent[^"]*"[^>]*>Your pick!<\/p>/);
+    expect(text(banner({}, 'dad', 42_000, 3, 3))).toContain("You're up in 1 pick");
+  });
+  it('paused and done', () => {
+    expect(text(banner({ phase: 'paused', pausedRemainingMs: 30_000 }, 'mom'))).toContain('Paused by the commissioner');
+    expect(text(banner({ phase: 'done', onClock: null }, 'mom'))).toContain('Draft complete');
+  });
+  it('keeps the polite live region for screen readers', () => {
+    expect(banner({}, 'mom', 42_000, 2, 3)).toContain('aria-live="polite"');
   });
 });
 
@@ -63,8 +99,8 @@ describe('PoolList (§6.3)', () => {
   it('shows a New chip for teams without a projection and Proj otherwise', () => {
     const t = text(renderToStaticMarkup(h(PoolList, props)));
     expect(t).toContain('New');
-    expect(t).toContain('Proj 12.5');
-    expect(t).toContain('Proj. uses standard scoring');
+    expect(t).toContain('Projected 12.5');
+    expect(t).toContain('Projected points use standard scoring');
   });
   it('disables Draft when it is not my turn, and hides buttons for read-only viewers', () => {
     const html = renderToStaticMarkup(h(PoolList, props));
@@ -84,6 +120,32 @@ describe('PoolList (§6.3)', () => {
   });
 });
 
+describe('PoolList plain labels (UX §6.6)', () => {
+  const props = {
+    slug: 'habich-fam-abc234', roundId: '00000000-0000-4000-8000-000000000001',
+    entries: [{ ...entry('frc341', 38.2, 'Miss Daisy'), opr: 41.23, rank: 3 }], taken: new Set<string>(), queued: new Set<string>(),
+    canDraft: true, draftLabel: 'Draft', readOnly: false, queueDisabled: false, onDraft: () => {}, onToggleQueue: () => {},
+  };
+  it('sorts by "Projected", "Robot rating" and "Team number" (same values as before), with a Projected explainer', () => {
+    const html = renderToStaticMarkup(h(PoolList, props));
+    expect(html).toContain('<option value="proj" selected="">Projected</option>');
+    expect(html).toContain('<option value="opr">Robot rating</option>');
+    expect(html).toContain('<option value="number">Team number</option>');
+    expect(html).toContain('aria-label="What is Projected?"');
+  });
+  it('rows show plain stat labels and sit on hairlines, not cards', () => {
+    const html = renderToStaticMarkup(h(PoolList, props));
+    expect(text(html)).toContain('Projected 38.2');
+    expect(text(html)).toContain('Robot rating (OPR) 41.2 · #3');
+    expect(html).not.toContain('OPR 41.2');
+    const row = html.match(/<li[^>]*>/)![0];
+    expect(row).toContain('border-b');
+    expect(row).not.toContain('rounded-xl');
+    // The Draft button is the small size.
+    expect(html).toMatch(/<button[^>]*class="[^"]*min-h-9[^"]*"[^>]*>Draft<\/button>/);
+  });
+});
+
 describe('QueueList', () => {
   it('lists queued teams in order, dropping taken ones', () => {
     const t = text(renderToStaticMarkup(h(QueueList, {
@@ -100,9 +162,9 @@ describe('QueueList', () => {
 });
 
 describe('ConfirmSheet', () => {
-  it('asks "Draft 341?" (with Proj when known) or "Pick 341 for Mom?"', () => {
+  it('asks "Draft 341?" (with Projected when known) or "Pick 341 for Mom?"', () => {
     expect(confirmText(entry('frc341', null), null)).toBe('Draft 341?');
-    expect(confirmText(entry('frc341', 38.2), null)).toBe('Draft 341 · Proj 38.2?');
+    expect(confirmText(entry('frc341', 38.2), null)).toBe('Draft 341 · Projected 38.2?');
     expect(confirmText(entry('frc341', null), 'Mom')).toBe('Pick 341 for Mom?');
     const html = renderToStaticMarkup(h(ConfirmSheet, { entry: entry('frc341', null), forName: null, busy: false, onConfirm: () => {}, onCancel: () => {} }));
     expect(html).toContain('role="dialog"');
@@ -123,16 +185,7 @@ describe('ConfirmSheet', () => {
   });
 });
 
-describe('DraftRosters and DraftBoard highlight', () => {
-  it('lists each player with their teams', () => {
-    const t = text(renderToStaticMarkup(h(DraftRosters, {
-      order: state().order, picks: [{ pickNumber: 0, playerId: 'joey', teamKey: 'frc341', auto: true }], rosterSize: 2, teamNames: {},
-    })));
-    expect(t).toContain('Joey');
-    expect(t).toContain('341');
-    expect(t).toContain('auto');
-    expect(t).toContain('Mom');
-  });
+describe('DraftBoard highlight', () => {
   it('rings the newest pick on the board', () => {
     const html = renderToStaticMarkup(h(DraftBoard, {
       picks: [{ pickNumber: 0, playerId: 'joey', teamKey: 'frc341' }], draftOrder: ['joey', 'mom'], rosterSize: 1,
@@ -140,14 +193,29 @@ describe('DraftRosters and DraftBoard highlight', () => {
     }));
     expect(html).toContain('data-newest="true"');
   });
-});
-
-describe('LiveDraftBanner', () => {
-  it('links members to the draft room', () => {
-    const html = renderToStaticMarkup(h(LiveDraftBanner, { slug: 'fam', drafts: [{ roundId: 'r1', eventName: 'Ramp Riot', phase: 'live' }] }));
-    expect(html).toContain('href="/l/fam/r/r1/draft"');
-    expect(text(html)).toContain('Draft is live — join');
-    expect(renderToStaticMarkup(h(LiveDraftBanner, { slug: 'fam', drafts: [] }))).toBe('');
+  it('gives each player a column (snake order down the rounds) inside its own sideways scroller', () => {
+    const html = renderToStaticMarkup(h(DraftBoard, {
+      picks: [
+        { pickNumber: 0, playerId: 'joey', teamKey: 'frc341' },
+        { pickNumber: 2, playerId: 'dad', teamKey: 'frc254' },
+        { pickNumber: 3, playerId: 'dad', teamKey: 'frc25' },
+      ],
+      draftOrder: ['joey', 'mom', 'dad'], rosterSize: 2,
+      playerNames: { joey: 'Joey', mom: 'Mom', dad: 'Dad' }, teamNames: {},
+    }));
+    expect(html).toMatch(/^<div[^>]*class="[^"]*overflow-x-auto/);
+    expect(html).not.toContain('rounded-card');
+    const t = text(html);
+    // Player names head the columns, in draft order.
+    expect(t.indexOf('Joey')).toBeLessThan(t.indexOf('Mom'));
+    expect(t.indexOf('Mom')).toBeLessThan(t.indexOf('Dad'));
+    // Round 2 runs backwards, so Dad's second team (pick #4) sits in Dad's column: the last cell of the row.
+    const round2 = html.split('Round 2')[1]!;
+    const cells = round2.match(/<li[\s\S]*?<\/li>/g)!;
+    expect(cells).toHaveLength(3);
+    expect(cells[2]).toContain('#4 · Dad');
+    expect(cells[2]).toContain('Team 25');
+    expect(cells[0]).toContain('#6 · Joey');
   });
 });
 

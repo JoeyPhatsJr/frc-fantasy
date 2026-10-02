@@ -2,42 +2,58 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AddManualRoundForm, type ManualRoundInput } from '@/components/admin/AddManualRoundForm';
-import { AddRoundForm, EventRow, RenameLeague } from '@/components/admin/DashboardParts';
+import { AddRoundForm, RenameLeague, RoundRows, VisibilityField } from '@/components/admin/DashboardParts';
 import { AdminGate } from '@/components/admin/AdminGate';
 import { DangerZone } from '@/components/admin/DangerZone';
+import type { UpcomingEvent } from '@/components/admin/EventPicker';
 import { FollowTeamsForm } from '@/components/admin/FollowTeamsForm';
+import { InviteCard } from '@/components/admin/InviteCard';
 import { MembersCard } from '@/components/admin/MembersCard';
+import { DETAILS_SUMMARY } from '@/components/admin/RoundSetup';
 import { ScoringForm } from '@/components/admin/ScoringForm';
 import { usePolling } from '@/components/admin/usePolling';
-import { CopyButton } from '@/components/CopyButton';
-import { StatusBadge } from '@/components/StatusBadge';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { ChevronDown, Trash2 } from '@/components/ui/icons';
+import { ChevronDown } from '@/components/ui/icons';
+import { Section } from '@/components/ui/Section';
 import type { AdminApi } from '@/lib/admin/client';
 import type { AdminState, EventLookup } from '@/lib/api/types';
-import { autoAddedNote } from '@/lib/follow/input';
-import { formatDateRange, roundKeyLine } from '@/lib/format';
+import { formatDateRange } from '@/lib/format';
 import { nextSeasonYear } from '@/lib/season/next';
 
-/** Members-only leagues have no public page, so the shortcuts don't call it one. */
-export function leagueLinkLabels(visibility: 'link' | 'members'): { view: string; copy: string } {
-  return visibility === 'link'
-    ? { view: 'View public page', copy: 'Copy public link' }
-    : { view: 'View league page', copy: 'Copy league link' };
-}
+export const FIRST_ROUND_FAILED = "Your league is ready, but the first round couldn't be added. Add it under Events below.";
 
-export const FIRST_ROUND_FAILED = "Your league is ready, but the first round couldn't be added. Add it under Rounds below.";
-
-/** firstRoundFailed: /leagues/new made the league but couldn't add the prefilled event (?round_error=1). */
-export function AdminDashboard({ slug, firstRoundFailed = false }: { slug: string; firstRoundFailed?: boolean }) {
+/**
+ * firstRoundFailed: /leagues/new made the league but couldn't add the prefilled event (?round_error=1).
+ * upcoming: the next TBA events for the "Add an event" picker (empty when TBA is unreachable).
+ */
+export function AdminDashboard({
+  slug,
+  firstRoundFailed = false,
+  upcoming = [],
+}: {
+  slug: string;
+  firstRoundFailed?: boolean;
+  upcoming?: UpcomingEvent[];
+}) {
   return (
-    <AdminGate slug={slug}>{(api) => <Dashboard slug={slug} api={api} firstRoundFailed={firstRoundFailed} />}</AdminGate>
+    <AdminGate slug={slug}>
+      {(api) => <Dashboard slug={slug} api={api} firstRoundFailed={firstRoundFailed} upcoming={upcoming} />}
+    </AdminGate>
   );
 }
 
-function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminApi; firstRoundFailed: boolean }) {
+function Dashboard({
+  slug,
+  api,
+  firstRoundFailed,
+  upcoming,
+}: {
+  slug: string;
+  api: AdminApi;
+  firstRoundFailed: boolean;
+  upcoming: UpcomingEvent[];
+}) {
   const [state, setState] = useState<AdminState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -45,7 +61,6 @@ function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminAp
   /** Which action is running (it shows the spinner); every other control is disabled meanwhile. */
   const [pending, setPending] = useState<string | null>(null);
   const busy = pending !== null;
-  const [addKind, setAddKind] = useState<'tba' | 'manual'>('tba');
 
   /** Counts reloads, so a slow background poll can't overwrite the fresher state a change just loaded. */
   const latestReload = useRef(0);
@@ -120,96 +135,72 @@ function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminAp
     );
   }
 
-  const leagueLink = typeof window === 'undefined' ? '' : `${window.location.origin}/l/${slug}`;
-  const labels = leagueLinkLabels(state.league.visibility);
-
   return (
-    <main id="main" className="space-y-6">
-      {/* The league bar (app/l/[slug]/layout.tsx) shows the name and "Commissioner"; this keeps a page heading for screen readers. */}
+    <main id="main" className="space-y-8">
+      {/* The league header shows the name and "Commissioner"; this keeps a page heading for screen readers. */}
       <h1 className="sr-only">Commissioner dashboard for {state.league.name}</h1>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button href={`/l/${slug}`} variant="secondary">
-          {labels.view}
-        </Button>
-        <CopyButton text={leagueLink} label={labels.copy} />
-      </div>
-
-      {roundWarning ? <Alert tone="warning">{FIRST_ROUND_FAILED}</Alert> : null}
-      {error ? <Alert tone="danger">{error}</Alert> : null}
-      {notice ? <Alert tone="success">{notice}</Alert> : null}
-
-      <RenameLeague
-        key={state.league.name}
-        name={state.league.name}
+      {roundWarning || error || notice ? (
+        <div className="space-y-3">
+          {roundWarning ? <Alert tone="warning">{FIRST_ROUND_FAILED}</Alert> : null}
+          {error ? <Alert tone="danger">{error}</Alert> : null}
+          {notice ? <Alert tone="success">{notice}</Alert> : null}
+        </div>
+      ) : null}
+      <DashboardBody
+        slug={slug}
+        state={state}
+        upcoming={upcoming}
         busy={busy}
-        saving={pending === 'league'}
-        onSave={(name) => run('league', () => api('/league', { method: 'PATCH', body: { name } }), 'League renamed.')}
+        pending={pending}
+        run={run}
+        api={api}
+        lookUpEvent={lookUpEvent}
+        reload={reload}
+        setNotice={setNotice}
+      />
+    </main>
+  );
+}
+
+export type DashboardBodyProps = {
+  slug: string;
+  state: AdminState;
+  upcoming: UpcomingEvent[];
+  busy: boolean;
+  pending: string | null;
+  run: (key: string, action: () => Promise<unknown>, done?: string) => Promise<boolean>;
+  api: AdminApi;
+  lookUpEvent: (eventKey: string) => Promise<EventLookup | null>;
+  reload: () => Promise<void>;
+  setNotice: (notice: string | null) => void;
+};
+
+/**
+ * The league admin page, top to bottom (spec §7.1): Invite people → Events (or Season) → Members →
+ * Settings → Danger zone. Only builds markup from what it's given; the state and calls live in Dashboard.
+ */
+export function DashboardBody({ slug, state, upcoming, busy, pending, run, api, lookUpEvent, reload, setNotice }: DashboardBodyProps) {
+  const { league } = state;
+  const inLeague = new Set(state.rounds.map((r) => r.eventKey));
+  return (
+    <>
+      <InviteCard
+        leagueName={league.name}
+        code={league.inviteCode}
+        busy={busy}
+        resetting={pending === 'reset'}
+        onReset={() => {
+          if (window.confirm('Make a new code? The old code and link stop working.')) {
+            run('reset', () => api('/invite', { method: 'POST' }), 'New invite code made. The old one no longer works.');
+          }
+        }}
       />
 
-      <section>
-        <MembersCard
-          inviteLink={typeof window === 'undefined' ? '' : `${window.location.origin}/join/${state.league.inviteCode}`}
-          league={state.league}
-          players={state.players}
-          me={state.me}
-          busy={busy}
-          pending={pending}
-          onReset={() => run('reset', () => api('/invite', { method: 'POST' }), 'New invite code made. The old one no longer works.')}
-          onVisibility={(visibility) => run('visibility', () => api('/league', { method: 'PATCH', body: { visibility } }))}
-          onRole={(id, role) => run(`role:${id}`, () => api(`/players/${id}`, { method: 'PATCH', body: { role } }))}
-          onRemove={(p) => run(`remove:${p.id}`, () => api(`/players/${p.id}`, { method: 'DELETE' }), `${p.name} was removed.`)}
-        />
-      </section>
-
-      <section>
-        <Card title="Rounds" className="space-y-3">
-          {state.rounds.length === 0 ? <p className="text-[15px] text-fg-muted">No rounds yet.</p> : null}
-          <ul className="-mx-2 divide-y divide-border">
-            {state.rounds.map((round) => (
-              <li
-                key={round.id}
-                className="space-y-3 rounded-lg px-2 py-3 motion-safe:transition-colors duration-200 hover:bg-fg/5"
-              >
-                <EventRow
-                  startDate={round.startDate}
-                  title={round.eventName}
-                  lines={[
-                    formatDateRange(round.startDate, round.endDate),
-                    roundKeyLine(round),
-                    round.totalPicks === 0 ? 'Draft not set up' : `${round.pickCount} of ${round.totalPicks} picks`,
-                    ...(round.autoAdded ? [autoAddedNote(state.league.follows)] : []),
-                  ]}
-                  trailing={<StatusBadge status={round.status} />}
-                />
-                <div className="flex flex-wrap gap-2 pl-15">
-                  <Button href={`/l/${slug}/admin/r/${round.id}`} aria-label={`Manage ${round.eventName}`}>
-                    Manage
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="danger"
-                    aria-label={`Delete ${round.eventName}`}
-                    busy={pending === `delete:${round.id}`}
-                    disabled={busy}
-                    onClick={() => {
-                      const sure = window.confirm(
-                        `Delete ${round.eventName}? This also deletes its picks and adjustments. It can't be undone.` +
-                          (round.autoAdded ? ' Follow-a-team won’t add it again.' : ''),
-                      );
-                      if (sure) {
-                        run(`delete:${round.id}`, () => api(`/rounds/${round.id}`, { method: 'DELETE' }), 'Round deleted.');
-                      }
-                    }}
-                  >
-                    {pending === `delete:${round.id}` ? null : <Trash2 className="size-4 shrink-0" />}
-                    Delete
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-          {state.league.format === 'season' ? (
-            (() => {
+      {league.format === 'season' ? (
+        <Section label="Season">
+          <RoundRows slug={slug} rounds={state.rounds} follows={league.follows} />
+          <div className="px-4 py-4">
+            {(() => {
               const next = nextSeasonYear(state.rounds);
               return next === null ? (
                 <p className="text-[13px] leading-[18px] text-fg-muted">
@@ -226,66 +217,44 @@ function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminAp
                   Start {next} season
                 </Button>
               );
-            })()
-          ) : null}
-          {state.league.format === 'event' ? (
-            <div className="space-y-3">
-              <FollowTeamsForm
-                key={state.league.follows.join(',')}
-                follows={state.league.follows}
-                busy={busy}
-                saving={pending === 'follows'}
-                onSave={(teams) =>
-                  run('follows', async () => {
-                    const out = await api<{ added: number; synced: boolean }>('/follows', { method: 'PUT', body: { teams } });
-                    setNotice(
-                      !out.synced
-                        ? "Saved. Couldn't reach The Blue Alliance — new events will be added on the next check."
-                        : out.added > 0
-                          ? `Saved. Added ${out.added} ${out.added === 1 ? 'round' : 'rounds'}.`
-                          : 'Saved.',
-                    );
-                  })
-                }
-              />
-              <div role="group" aria-label="Kind of round to add" className="flex gap-2">
-                {(['tba', 'manual'] as const).map((kind) => (
-                  <Button
-                    key={kind}
-                    type="button"
-                    size="sm"
-                    variant={addKind === kind ? 'primary' : 'secondary'}
-                    aria-pressed={addKind === kind}
-                    onClick={() => setAddKind(kind)}
-                  >
-                    {kind === 'tba' ? 'TBA event' : 'Manual event'}
-                  </Button>
-                ))}
-              </div>
-              {addKind === 'tba' ? (
-                <>
-                  <AddRoundForm
-                    busy={busy}
-                    checking={pending === 'check-round'}
-                    saving={pending === 'add-round'}
-                    onCheck={lookUpEvent}
-                    onAdd={(eventKey) =>
-                      run('add-round', async () => {
-                        const out = await api<{ round: { eventName: string; startDate: string; endDate: string } }>(
-                          '/rounds',
-                          { method: 'POST', body: { eventKey } },
-                        );
-                        setNotice(
-                          `Added ${out.round.eventName} (${formatDateRange(out.round.startDate, out.round.endDate)}). Wrong event? Delete it above.`,
-                        );
-                      })
-                    }
-                  />
-                  <p className="text-[13px] leading-[18px] text-fg-muted">
-                    The event key is the last part of the event&apos;s address on thebluealliance.com, such as 2026parr.
-                  </p>
-                </>
-              ) : (
+            })()}
+          </div>
+        </Section>
+      ) : (
+        <div className="space-y-6">
+          <Section label="Events">
+            {state.rounds.length === 0 ? (
+              <p className="px-4 py-4 text-[15px] text-fg-muted">No events yet. Add one below.</p>
+            ) : (
+              <RoundRows slug={slug} rounds={state.rounds} follows={league.follows} />
+            )}
+          </Section>
+          <AddRoundForm
+            upcoming={upcoming.filter((e) => !inLeague.has(e.key))}
+            busy={busy}
+            checking={pending === 'check-round'}
+            saving={pending === 'add-round'}
+            onCheck={lookUpEvent}
+            onAdd={(eventKey) =>
+              run('add-round', async () => {
+                const out = await api<{ round: { eventName: string; startDate: string; endDate: string } }>('/rounds', {
+                  method: 'POST',
+                  body: { eventKey },
+                });
+                setNotice(
+                  `Added ${out.round.eventName} (${formatDateRange(out.round.startDate, out.round.endDate)}). Wrong event? Open it under Events to delete it.`,
+                );
+              })
+            }
+          />
+          <details className="group">
+            <summary className={DETAILS_SUMMARY}>
+              More ways to add events
+              <ChevronDown className="size-5 shrink-0 motion-safe:transition-transform duration-200 group-open:rotate-180" />
+            </summary>
+            <div className="space-y-6 pt-4">
+              <div className="space-y-3">
+                <h3 className="font-display text-[17px] font-bold leading-6 text-fg">Manual event</h3>
                 <AddManualRoundForm
                   busy={busy}
                   saving={pending === 'add-manual'}
@@ -297,25 +266,67 @@ function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminAp
                     )
                   }
                 />
-              )}
+              </div>
+              <div className="space-y-3 border-t border-border pt-6">
+                <h3 className="font-display text-[17px] font-bold leading-6 text-fg">Follow teams</h3>
+                <FollowTeamsForm
+                  key={league.follows.join(',')}
+                  follows={league.follows}
+                  busy={busy}
+                  saving={pending === 'follows'}
+                  onSave={(teams) =>
+                    run('follows', async () => {
+                      const out = await api<{ added: number; synced: boolean }>('/follows', { method: 'PUT', body: { teams } });
+                      setNotice(
+                        !out.synced
+                          ? "Saved. Couldn't reach The Blue Alliance — new events will be added on the next check."
+                          : out.added > 0
+                            ? `Saved. Added ${out.added} ${out.added === 1 ? 'round' : 'rounds'}.`
+                            : 'Saved.',
+                      );
+                    })
+                  }
+                />
+              </div>
             </div>
-          ) : null}
-        </Card>
-      </section>
+          </details>
+        </div>
+      )}
 
-      <section>
-        <Card title="Default scoring" className="space-y-3">
-          <p className="text-[15px] text-fg-muted">
-            New rounds copy these values. Changing them does not change rounds that already exist.
-          </p>
+      <MembersCard
+        players={state.players}
+        me={state.me}
+        busy={busy}
+        pending={pending}
+        onRole={(id, role) => run(`role:${id}`, () => api(`/players/${id}`, { method: 'PATCH', body: { role } }))}
+        onRemove={(p) => run(`remove:${p.id}`, () => api(`/players/${p.id}`, { method: 'DELETE' }), `${p.name} was removed.`)}
+      />
+
+      <Section label="Settings">
+        <div className="space-y-6 px-4 py-4">
+          <RenameLeague
+            key={league.name}
+            name={league.name}
+            busy={busy}
+            saving={pending === 'league'}
+            onSave={(name) => run('league', () => api('/league', { method: 'PATCH', body: { name } }), 'League renamed.')}
+          />
+          <VisibilityField
+            visibility={league.visibility}
+            busy={busy}
+            onChange={(visibility) => run('visibility', () => api('/league', { method: 'PATCH', body: { visibility } }))}
+          />
           <details className="group">
-            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-xl border border-primary/40 bg-surface px-4 font-semibold text-primary motion-safe:transition-colors duration-200 hover:bg-surface-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden">
-              Edit default scoring
+            <summary className={DETAILS_SUMMARY}>
+              Default scoring
               <ChevronDown className="size-5 shrink-0 motion-safe:transition-transform duration-200 group-open:rotate-180" />
             </summary>
-            <div className="pt-4">
+            <div className="space-y-4 pt-4">
+              <p className="text-[15px] text-fg-muted">
+                New rounds copy these values. Changing them does not change rounds that already exist.
+              </p>
               <ScoringForm
-                initial={state.league.defaultScoring}
+                initial={league.defaultScoring}
                 saveLabel="Save default scoring"
                 onSave={async (defaultScoring) => {
                   await api('/league', { method: 'PATCH', body: { defaultScoring } });
@@ -324,21 +335,19 @@ function Dashboard({ slug, api, firstRoundFailed }: { slug: string; api: AdminAp
               />
             </div>
           </details>
-        </Card>
-      </section>
+        </div>
+      </Section>
 
-      <section>
-        <DangerZone
-          leagueName={state.league.name}
-          busy={busy}
-          onDelete={(confirmName) =>
-            run('delete-league', async () => {
-              await api('/league', { method: 'DELETE', body: { confirmName } });
-              window.location.assign('/leagues');
-            })
-          }
-        />
-      </section>
-    </main>
+      <DangerZone
+        leagueName={league.name}
+        busy={busy}
+        onDelete={(confirmName) =>
+          run('delete-league', async () => {
+            await api('/league', { method: 'DELETE', body: { confirmName } });
+            window.location.assign('/leagues');
+          })
+        }
+      />
+    </>
   );
 }
