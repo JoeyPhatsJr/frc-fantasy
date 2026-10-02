@@ -30,14 +30,14 @@ export const metadata: Metadata = {
 };
 
 // viewport-fit=cover turns on env(safe-area-inset-*) so the bottom tab bar clears the iPhone home indicator.
-// themeColor tints the mobile browser chrome; the values are the header surface (--color-surface) per theme.
+// themeColor tints the mobile browser chrome; the values are the header band (--color-band) per theme.
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', color: '#16243a' },
+    { media: '(prefers-color-scheme: light)', color: '#14171f' },
+    { media: '(prefers-color-scheme: dark)', color: '#080b11' },
   ],
 };
 

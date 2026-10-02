@@ -19,16 +19,19 @@
  */
 @theme {
   /* Dark (default) */
-  --color-bg: #0f1b2d;             /* page (field carpet) */
-  --color-surface: #16243a;        /* cards, header, tab bar */
-  --color-surface-2: #1e2f4a;      /* raised rows, inputs, skeletons */
-  --color-border: #2a3d5c;         /* 1px separators */
-  --color-fg: #f2f5f9;             /* text */
-  --color-fg-muted: #a7b4c7;       /* secondary text */
+  --color-bg: #0d131d;             /* page (de-saturated field navy) */
+  --color-surface: #151d2a;        /* raised rows, sheets, inputs */
+  --color-surface-2: #1c2636;      /* pressed rows, skeletons */
+  --color-border: #283447;         /* hairline dividers */
+  --color-fg: #eef2f7;
+  --color-fg-muted: #9ba8ba;
+  --color-band: #080b11;           /* broadcast header band */
+  --color-on-band: #ffffff;
+  --color-band-muted: #8592a8;     /* inactive tab labels on the band */
 
-  --color-primary: #6199ff;        /* FRC blue as text, links, active tab */
-  --color-primary-fill: #3b6fe0;   /* FRC blue behind white text: buttons, blue bumpers */
-  --color-primary-strong: #2f5bc4; /* pressed / hovered fill */
+  --color-primary: #6aa2ff;        /* FRC blue as text, links, active tab */
+  --color-primary-fill: #2f6fe0;   /* FRC blue behind white text: buttons, blue bumpers */
+  --color-primary-strong: #255ac0; /* pressed / hovered fill */
   --color-on-primary: #ffffff;
 
   --color-red-alliance: #de2f28;   /* red bumpers, danger fills (white text) */
@@ -40,11 +43,11 @@
   --color-accent-text: #ffd35c;    /* gold as text on surfaces */
 
   --color-success: #2fbf71;        /* live badge, saved */
-  --color-on-success: #0f1b2d;
+  --color-on-success: #0d131d;
   --color-warning: #ffd35c;        /* stale banners (text and icons) */
   --color-secondary: #9b7bff;      /* commissioner label, drafting badge */
-  --color-on-secondary: #0f1b2d;
-  --color-ring: #6199ff;           /* focus */
+  --color-on-secondary: #0d131d;
+  --color-ring: #6aa2ff;           /* focus */
 
   /* Rank circles #2 and #3 (gold #1 is accent). Both carry on-accent text (≥ 4.5:1 in both themes). */
   --color-silver: #c3ccd8;
@@ -66,7 +69,7 @@
   --font-display: var(--font-barlow-condensed), "Barlow Condensed", system-ui, sans-serif;
   --font-body: var(--font-barlow), "Barlow", system-ui, sans-serif;
 
-  --radius-card: 14px;
+  --radius-card: 10px;
   --radius-plate: 6px;
   --radius-pill: 9999px;
 }
@@ -99,35 +102,38 @@
   :root[data-theme="light"] {
     color-scheme: light;
 
-    --color-bg: #eff6ff;
+    --color-bg: #f4f2ee;
     --color-surface: #ffffff;
-    --color-surface-2: #f1f5fd;
-    --color-border: #e4ecfc;
-    --color-fg: #0f172a;
-    --color-fg-muted: #475569;
+    --color-surface-2: #ebe8e2;
+    --color-border: #dcd8d0;
+    --color-fg: #16181d;
+    --color-fg-muted: #5f5b53;
+    --color-band: #14171f;
+    --color-on-band: #ffffff;
+    --color-band-muted: #9aa3b5;
 
-    --color-primary: #2563eb;
-    --color-primary-fill: #2563eb;
-    --color-primary-strong: #1d4ed8;
+    --color-primary: #0a52b0;
+    --color-primary-fill: #0a5bc4;
+    --color-primary-strong: #08489c;
     --color-on-primary: #ffffff;
 
-    --color-red-alliance: #dc2626;
-    --color-red-alliance-text: #b91c1c;
+    --color-red-alliance: #d0261d;
+    --color-red-alliance-text: #b3201a;
 
-    --color-accent: #f59e0b;
-    --color-accent-strong: #d97706;
+    --color-accent: #f2a900;
+    --color-accent-strong: #d99800;
     --color-on-accent: #1a1300;
-    --color-accent-text: #b45309;
+    --color-accent-text: #8a5a00;
 
-    --color-success: #15803d;
+    --color-success: #127a3a;
     --color-on-success: #ffffff;
-    --color-warning: #b45309;
-    --color-secondary: #7c3aed;
+    --color-warning: #9a5b00;
+    --color-secondary: #6d3fd1;
     --color-on-secondary: #ffffff;
-    --color-ring: #2563eb;
+    --color-ring: #0a52b0;
 
-    --color-silver: #aeb8c6;
-    --color-bronze: #c47f3f;
+    --color-silver: #7d8794;
+    --color-bronze: #9a5a22;
 
     --card-shadow: 0 1px 2px rgb(15 23 42 / 0.06), 0 8px 24px -12px rgb(37 99 235 / 0.25);
   }
