@@ -256,15 +256,18 @@ function EventStep(props: SectionProps & { onNotice: (message: string) => void }
   );
 }
 
-/** Step 4: the finalize nudge, then Mark round final / Reopen round. */
+/** Step 4 (spec 2026-10-02 §7): what auto-finalize will do, then Mark round final / Reopen round. */
 function WrapUpStep({ detail, busy, run, api }: SectionProps) {
   const { round } = detail;
   const { pending, go } = usePending(run);
+  const note = round.finalizedAt
+    ? 'Final. Scores still update if TBA changes; adjustments still work.'
+    : round.autoFinalize
+      ? 'This round finalizes on its own once the playoffs are done (or 3 days after the event). Mark it final now if results look complete.'
+      : 'Auto-finalize is off for this round.';
   return (
     <div className="space-y-3">
-      {detail.nudgeFinalize ? (
-        <Alert tone="warning">Event&apos;s over — mark final once results look complete.</Alert>
-      ) : null}
+      <p className="text-sm text-fg-muted">{note}</p>
       <div className="flex flex-wrap gap-2">
         {round.finalizedAt ? (
           <Button
@@ -272,13 +275,14 @@ function WrapUpStep({ detail, busy, run, api }: SectionProps) {
             variant="secondary"
             busy={pending === 'finalize'}
             disabled={busy}
-            onClick={() =>
-              go(
+            onClick={() => {
+              if (!window.confirm('Reopening keeps this round open until you mark it final again.')) return;
+              void go(
                 'finalize',
                 () => api(`/rounds/${round.id}`, { method: 'PATCH', body: { finalized: false } }),
-                'Round reopened.',
-              )
-            }
+                'Round reopened — it stays open until you mark it final.',
+              );
+            }}
           >
             Reopen round
           </Button>
@@ -300,11 +304,6 @@ function WrapUpStep({ detail, busy, run, api }: SectionProps) {
           </Button>
         )}
       </div>
-      <p className="text-xs text-fg-muted">
-        {round.kind === 'tba'
-          ? 'Marking final only changes the badge and slows down checks for new data; scores are always computed from The Blue Alliance.'
-          : 'Marking final only changes the badge.'}
-      </p>
     </div>
   );
 }

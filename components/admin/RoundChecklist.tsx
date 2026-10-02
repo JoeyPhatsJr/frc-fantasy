@@ -34,7 +34,7 @@ export function stepSummaries(input: {
     },
     4: {
       summary: input.finalized ? 'Final' : 'Not final yet',
-      preview: 'Mark the round final when the event ends',
+      preview: 'Finalizes on its own after the event',
     },
   };
 }

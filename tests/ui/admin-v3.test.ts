@@ -78,6 +78,7 @@ describe('stepSummaries', () => {
     expect(s[2].summary).toBe('Draft complete · 24 picks');
     expect(s[3].preview).toBe('Scores update from The Blue Alliance automatically. Fix anything with adjustments.');
     expect(s[4].summary).toBe('Not final yet');
+    expect(s[4].preview).toBe('Finalizes on its own after the event');
     const manual = stepSummaries({ playerCount: 2, rosterSize: 3, picks: 6, kind: 'manual', manualResults: 5, finalized: true });
     expect(manual[3].summary).toBe('5 results entered');
     expect(manual[4].summary).toBe('Final');

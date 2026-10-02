@@ -351,6 +351,16 @@ describe('PATCH /admin/rounds/{id}', () => {
     expect((await repo.getRound(round.id))!.finalizedAt).toBeNull();
   });
 
+  // Spec 2026-10-02 §6: reopening keeps the round open until the commissioner marks it final again.
+  it('reopening turns auto-finalize off; marking final leaves it alone', async () => {
+    const round = await seedRound();
+    await patchRound(request('PATCH', '/x', { body: { finalized: true } }), at(round));
+    expect((await repo.getRound(round.id))!.autoFinalize).toBe(true);
+    const res = await patchRound(request('PATCH', '/x', { body: { finalized: false } }), at(round));
+    expect((await repo.getRound(round.id))!.autoFinalize).toBe(false);
+    expect((await readJson(res)).round.autoFinalize).toBe(false);
+  });
+
   it('leaves other fields alone when only one is patched', async () => {
     const round = await seedRound();
     const [mom] = await seedPlayers('Mom');

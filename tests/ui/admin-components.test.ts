@@ -423,11 +423,27 @@ describe('Round admin (spec §7.2: a four-step checklist)', () => {
     expect(html).toContain('Draft complete · 4 picks · Edit');
   });
 
-  it('step 4 carries the finalize nudge; step 3 has Refresh from TBA and Adjustments', () => {
+  it('step 4 explains auto-finalize and offers Mark round final; step 3 stays closed', () => {
     const html = page(detailOf({ status: 'awaiting_final', nudgeFinalize: true, picks: fourPicks }));
-    expect(html).toContain('mark final once results look complete');
+    expect(html).toContain(
+      'This round finalizes on its own once the playoffs are done (or 3 days after the event). Mark it final now if results look complete.',
+    );
     expect(html).toContain('Mark round final');
+    expect(html).not.toContain('mark final once results look complete');
     expect(html).not.toContain('Refresh from TBA'); // step 3 is closed
+  });
+
+  it('a final round says scores still update and offers Reopen round', () => {
+    const html = page(detailOf({ status: 'final', round: { finalizedAt: '2026-10-25T00:00:00Z' }, picks: fourPicks }));
+    expect(html).toContain('Final. Scores still update if TBA changes; adjustments still work.');
+    expect(html).toContain('Reopen round');
+  });
+
+  it('a reopened round says auto-finalize is off', () => {
+    const html = page(detailOf({ status: 'awaiting_final', round: { autoFinalize: false }, picks: fourPicks }));
+    expect(html).toContain('Auto-finalize is off for this round.');
+    expect(html).toContain('Mark round final');
+    expect(html).not.toContain('finalizes on its own once the playoffs are done');
   });
 });
 
