@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appTab, footerPadding, leagueTab, leagueTabHref, leagueTabs, showLiveDraftPill } from '@/lib/nav';
+import { appTab, footerPadding, leagueTab, leagueTabHref, leagueTabs, showHeaderSignIn, showLiveDraftPill } from '@/lib/nav';
 
 describe('appTab', () => {
   it('home is the root only', () => {
@@ -64,12 +64,27 @@ describe('leagueTabHref', () => {
 });
 
 describe('showLiveDraftPill', () => {
-  it('hides on draft pages and the sign-in page only', () => {
-    expect(showLiveDraftPill('/')).toBe(true);
+  it('hides on draft pages, the sign-in page and Home only', () => {
     expect(showLiveDraftPill('/l/fam')).toBe(true);
+    expect(showLiveDraftPill('/l/fam/r/1')).toBe(true);
+    expect(showLiveDraftPill('/leagues')).toBe(true);
+    expect(showLiveDraftPill('/you')).toBe(true);
     expect(showLiveDraftPill('/l/fam/draft')).toBe(false);
     expect(showLiveDraftPill('/l/fam/r/1/draft')).toBe(false);
     expect(showLiveDraftPill('/signin')).toBe(false);
+  });
+  it("hides on Home, whose Up next card already leads with the live draft", () => {
+    expect(showLiveDraftPill('/')).toBe(false);
+  });
+});
+
+describe('showHeaderSignIn', () => {
+  it('hides the header Sign in button on the sign-in page only', () => {
+    expect(showHeaderSignIn('/signin')).toBe(false);
+    expect(showHeaderSignIn('/signin/')).toBe(false);
+    expect(showHeaderSignIn('/')).toBe(true);
+    expect(showHeaderSignIn('/join/ABC123')).toBe(true);
+    expect(showHeaderSignIn('/l/fam')).toBe(true);
   });
 });
 

@@ -38,7 +38,7 @@ export function FollowTeamsForm({
         label="Follow teams (up to 3)"
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="5181, 341"
+        placeholder="e.g. 5181, 341"
         autoComplete="off"
         error={error}
         hint="Follow up to 3 teams and we'll add each event they attend automatically. Delete one and it stays deleted."

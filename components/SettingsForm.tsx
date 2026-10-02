@@ -61,6 +61,8 @@ export function SettingsForm({ profile }: { profile: { displayName: string; frcT
         <form onSubmit={save} className="space-y-4 px-4 py-4">
           <Input
             label="Display name"
+            name="displayName"
+            autoComplete="name"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             maxLength={40}
@@ -69,7 +71,9 @@ export function SettingsForm({ profile }: { profile: { displayName: string; frcT
           />
           <Input
             label="My FRC team (optional)"
+            name="frcTeam"
             inputMode="numeric"
+            autoComplete="off"
             value={team}
             onChange={(e) => setTeam(e.target.value.replace(/\D/g, ''))}
             maxLength={5}

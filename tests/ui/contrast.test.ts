@@ -48,6 +48,14 @@ describe.each([['dark', dark], ['light', light]] as const)('%s theme tokens', (_
     expect(Object.values(t)).not.toContain('#eff6ff');
     expect(Object.values(t)).not.toContain('#2563eb');
   });
+  // WCAG 1.4.11: a field's edge must be at least 3:1 against the field and the page around it.
+  it.each([['surface'], ['bg'], ['surface-2']])('field-border on %s is at least 3:1', (bg) => {
+    expect(t['field-border'], 'field-border').toBeDefined();
+    expect(contrast(t['field-border'], t[bg])).toBeGreaterThanOrEqual(3);
+  });
+  it('the live dot on the band is at least 3:1', () => {
+    expect(contrast(t['band-live'], t.band)).toBeGreaterThanOrEqual(3);
+  });
   it('podium colors are at least 3:1 on the page', () => {
     expect(contrast(t.silver, t.bg)).toBeGreaterThanOrEqual(3);
     expect(contrast(t.bronze, t.bg)).toBeGreaterThanOrEqual(3);

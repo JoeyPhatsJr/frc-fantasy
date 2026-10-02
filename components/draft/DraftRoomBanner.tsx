@@ -52,6 +52,7 @@ export function bannerLines(
 /**
  * The draft room's sticky status strip on the dark band, just under the app header (h-14).
  * The band is dark in both themes, so text uses on-band / band-muted, and gold (accent) reads as text here.
+ * -mt-4 cancels the league header's mb-4, so the two dark bands meet with no strip of page between them.
  */
 export function DraftRoomBanner({
   state,
@@ -71,7 +72,7 @@ export function DraftRoomBanner({
   const b = bannerLines(state, remainingMs, meId, myPosition, playerCount);
   const mine = b.sub === 'Your pick!';
   return (
-    <div className="sticky top-14 z-20 -mx-4 bg-band px-4 py-3 text-on-band space-y-1">
+    <div className="sticky top-14 z-20 -mx-4 bg-band px-4 py-3 text-on-band space-y-1 -mt-4">
       {reconnecting ? <Alert tone="warning">Reconnecting…</Alert> : null}
       {/* The ticking clock stays out of the live region so screen readers aren't read every second. */}
       <p className="sr-only" aria-live="polite">

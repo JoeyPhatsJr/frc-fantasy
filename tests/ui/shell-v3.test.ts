@@ -9,7 +9,8 @@ vi.mock('next/navigation', () => ({
 }));
 import { BottomBarView } from '@/components/shell/BottomBar';
 import { AppHeader } from '@/components/shell/AppHeader';
-import { AppearanceControlView } from '@/components/you/AppearanceControl';
+import { HeaderSignInView } from '@/components/shell/HeaderSignIn';
+import { AppearanceControlView, arrowTheme } from '@/components/you/AppearanceControl';
 import { LeagueHeaderView } from '@/components/shell/LeagueHeader';
 import { LeagueSwitcherView } from '@/components/shell/LeagueSwitcher';
 
@@ -51,6 +52,10 @@ describe('AppHeader', () => {
   it('shows Sign in when signed out', () => {
     expect(r(h(AppHeader, { signedIn: false }))).toContain('href="/signin"');
   });
+  it('drops the header Sign in button on the sign-in page itself', () => {
+    expect(r(h(HeaderSignInView, { pathname: '/signin' }))).toBe('');
+    expect(r(h(HeaderSignInView, { pathname: '/join/ABC123' }))).toContain('href="/signin"');
+  });
 });
 
 describe('AppearanceControlView', () => {
@@ -65,6 +70,21 @@ describe('AppearanceControlView', () => {
   it('renders both unchecked before mount', () => {
     const html = r(h(AppearanceControlView, { theme: null, onChange: () => {} }));
     expect(html).not.toContain('aria-checked="true"');
+  });
+  it('is one Tab stop: only the checked option (Light before mount) is tabbable', () => {
+    const radios = (theme: 'light' | 'dark' | null) =>
+      r(h(AppearanceControlView, { theme, onChange: () => {} })).match(/<button[^>]*role="radio"[^>]*>[\s\S]*?<\/button>/g) ?? [];
+    const dark = radios('dark');
+    expect(dark.find((b) => b.includes('Dark'))).toContain('tabindex="0"');
+    expect(dark.find((b) => b.includes('Light'))).toContain('tabindex="-1"');
+    expect(radios(null).find((b) => b.includes('Light'))).toContain('tabindex="0"');
+  });
+  it('arrow keys move between Light and Dark, wrapping; other keys do nothing', () => {
+    expect(arrowTheme('ArrowRight', 'light')).toBe('dark');
+    expect(arrowTheme('ArrowDown', 'dark')).toBe('light');
+    expect(arrowTheme('ArrowLeft', 'light')).toBe('dark');
+    expect(arrowTheme('ArrowUp', 'dark')).toBe('light');
+    expect(arrowTheme('Enter', 'light')).toBeNull();
   });
 });
 
@@ -123,6 +143,10 @@ describe('LeagueHeaderView', () => {
     expect(r(h(LeagueHeaderView, base))).not.toContain('data-live-dot');
     const html = r(h(LeagueHeaderView, { ...base, anyLive: true }));
     expect(html).toContain('data-live-dot');
+    // The bright band-live green, not light-theme success (#127a3a), which is dim on the dark band.
+    const dot = html.match(/<span[^>]*data-live-dot[^>]*>/)?.[0] ?? '';
+    expect(dot).toContain('bg-band-live');
+    expect(dot).not.toContain('bg-success');
     expect(html).toContain('A round is live');
   });
   it('truncates a very long league name', () => {

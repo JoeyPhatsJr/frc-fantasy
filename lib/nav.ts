@@ -55,11 +55,19 @@ export function leagueTabHref(tab: LeagueTab, slug: string, targetRoundId: strin
   }
 }
 
-/** The live-draft pill steps aside where it would be redundant or in the way (spec §5.5). */
+/**
+ * The live-draft pill steps aside where it would be redundant or in the way (spec §5.5): draft pages,
+ * sign-in, and Home, whose Up next card always leads with a live draft (lib/views/upNext.ts).
+ */
 export function showLiveDraftPill(pathname: string): boolean {
   const p = trim(pathname);
-  if (p === '/signin') return false;
+  if (p === '/' || p === '/signin') return false;
   return !/^\/l\/[^/]+(\/r\/[^/]+)?\/draft$/.test(p);
+}
+
+/** The header's "Sign in" button is pointless on the sign-in page itself. */
+export function showHeaderSignIn(pathname: string): boolean {
+  return trim(pathname) !== '/signin';
 }
 
 /**

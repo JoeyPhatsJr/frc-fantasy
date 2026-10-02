@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Button } from '@/components/ui/Button';
+import { HeaderSignIn } from '@/components/shell/HeaderSignIn';
 
 /** Hex-nut mark: gold hexagon with a blue bore. Decorative. */
 function Mark() {
@@ -11,7 +11,7 @@ function Mark() {
   );
 }
 
-/** The dark band across the top: wordmark home, and a Sign in button when signed out. */
+/** The dark band across the top: wordmark home, and a Sign in button when signed out (not on /signin). */
 export function AppHeader({ signedIn }: { signedIn: boolean }) {
   return (
     <header className="sticky top-0 z-30 bg-band text-on-band">
@@ -25,11 +25,7 @@ export function AppHeader({ signedIn }: { signedIn: boolean }) {
             FRC FANTASY
           </span>
         </Link>
-        {signedIn ? null : (
-          <Button href="/signin" size="sm" variant="accent">
-            Sign in
-          </Button>
-        )}
+        {signedIn ? null : <HeaderSignIn />}
       </div>
     </header>
   );

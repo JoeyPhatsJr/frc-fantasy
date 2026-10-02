@@ -69,19 +69,24 @@ test('bottom bar and league tabs get a member everywhere; the live-draft pill le
     await expect(joey).toHaveURL(/localhost:3100\/$/);
     await expect(appBar(joey)).toBeVisible();
 
-    // Once the draft is live, members get the gold pill on every page but the room. Joey is first on the clock.
+    // Once the draft is live, members get the gold pill on every page but the room and Home. Joey is first on the clock.
     const started = await joeyCtx.request.post(`/api/l/${seed.slug}/admin/rounds/${seed.roundId}/draft/start`);
     expect(started.ok()).toBeTruthy();
 
-    // Mom isn't on the clock: "Draft is live — {league} · Join".
+    // Mom isn't on the clock: "Draft is live — {league} · Join". (Not on Home: its Up next card shows the draft.)
     const mom = await momCtx.newPage();
-    await mom.goto('/');
+    await mom.goto('/leagues');
     const momPill = mom.getByRole('link', { name: new RegExp(`^Draft is live — ${escape(leagueName)}`) });
     await expect(momPill).toBeVisible();
     await expect(momPill).toHaveAttribute('href', room);
 
-    // Joey is: "Your pick! — {league}". The pill takes him to the room, where it steps aside.
+    // Home leads with the draft in its Up next card, so the pill steps aside there.
     await joey.goto('/');
+    await expect(joey.getByRole('link', { name: 'Open draft room' })).toBeVisible();
+    await expect(joey.getByRole('link', { name: new RegExp(`^Your pick! — ${escape(leagueName)}`) })).toHaveCount(0);
+
+    // Joey is: "Your pick! — {league}". The pill takes him to the room, where it steps aside.
+    await joey.goto('/leagues');
     const joeyPill = joey.getByRole('link', { name: new RegExp(`^Your pick! — ${escape(leagueName)}`) });
     await expect(joeyPill).toBeVisible();
     await joeyPill.click();

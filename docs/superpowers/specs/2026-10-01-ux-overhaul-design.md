@@ -181,7 +181,7 @@ export function showLiveDraftPill(pathname: string): boolean;     // false on an
 
 ### 5.5 Live-draft pill
 
-When the signed-in user is a member of any league with a draft in phase `live` or `paused`, a gold pill sits just above the bottom bar on every page except draft pages: **"● Draft is live — {league} · Join"** (paused: "Draft paused — {league}"; when `onClockPlayer` (`lib/draft/live.ts`) is the user: **"● Your pick! — {league}"**), linking to that round's draft room. More than one → the first by league name, with "+1".
+When the signed-in user is a member of any league with a draft in phase `live` or `paused`, a gold pill sits just above the bottom bar on every page except draft pages, sign-in and Home (whose Up next card already leads with the live draft; Task 19): **"● Draft is live — {league} · Join"** (paused: "Draft paused — {league}"; when `onClockPlayer` (`lib/draft/live.ts`) is the user: **"● Your pick! — {league}"**), linking to that round's draft room. More than one → the first by league name, with "+1".
 
 Data: a new `loadMyLiveDrafts(userId)` in `lib/views/` that uses **only existing repo methods** (the user's leagues → their rounds → picks for rounds still drafting) and `liveDraftsOf` from `lib/draft/liveBanner.ts`. It must not call TBA or `loadLeaguePage`. Rendered from the root layout; failures render nothing (never block the page). It replaces the per-page `LiveDraftBanner` on Standings/Event.
 

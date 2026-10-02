@@ -44,6 +44,8 @@ export function RenameLeague({
       <div className="flex gap-2">
         <input
           id={id}
+          name="leagueName"
+          autoComplete="off"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           maxLength={80}

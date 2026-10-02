@@ -98,15 +98,16 @@ describe('LiveDraftPillView', () => {
   });
   const render = (drafts: MyLiveDraft[], pathname: string) => renderToStaticMarkup(h(LiveDraftPillView, { drafts, pathname }));
 
-  it('renders nothing with no drafts', () => expect(render([], '/')).toBe(''));
+  it('renders nothing with no drafts', () => expect(render([], '/leagues')).toBe(''));
   it('links to the draft room', () => {
-    const html = render([d()], '/');
+    const html = render([d()], '/leagues');
     expect(html).toContain('Draft is live');
     expect(html).toContain('Family');
     expect(html).toContain('href="/l/fam/r/r1/draft"');
   });
-  it('says Your pick! on my turn', () => expect(render([d({ myTurn: true })], '/')).toContain('Your pick!'));
-  it('says paused when paused', () => expect(render([d({ phase: 'paused' })], '/')).toContain('Draft paused'));
+  it('says Your pick! on my turn', () => expect(render([d({ myTurn: true })], '/leagues')).toContain('Your pick!'));
+  it('says paused when paused', () => expect(render([d({ phase: 'paused' })], '/leagues')).toContain('Draft paused'));
   it('steps aside on the draft room', () => expect(render([d()], '/l/fam/r/1/draft')).toBe(''));
-  it('shows +1 for a second draft', () => expect(render([d(), d({ roundId: 'r2', leagueName: 'Other' })], '/')).toContain('+1'));
+  it('steps aside on Home, where Up next already shows the live draft', () => expect(render([d()], '/')).toBe(''));
+  it('shows +1 for a second draft', () => expect(render([d(), d({ roundId: 'r2', leagueName: 'Other' })], '/leagues')).toContain('+1'));
 });

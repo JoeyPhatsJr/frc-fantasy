@@ -120,7 +120,7 @@ export function CreateLeagueForm({ event }: { event?: { key: string; name: strin
   return (
     <Card title="Create a league" className="space-y-4">
       <form onSubmit={submit} className="space-y-4">
-        <Input label="League name" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} required />
+        <Input label="League name" name="leagueName" autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} required />
         <fieldset className="space-y-2">
           <legend className="mb-1 text-sm font-semibold text-fg">Who can see it?</legend>
           {choice('link', 'Anyone with the link', 'Anyone with the link can watch')}
@@ -159,7 +159,8 @@ export function CreateLeagueForm({ event }: { event?: { key: string; name: strin
             label="Follow teams (optional, up to 3)"
             value={follows}
             onChange={(e) => setFollows(e.target.value)}
-            placeholder="5181"
+            placeholder="e.g. 5181, 341"
+            autoComplete="off"
             error={followsError}
             hint="Follow up to 3 teams and we'll add each event they attend automatically."
           />

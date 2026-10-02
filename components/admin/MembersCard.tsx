@@ -10,7 +10,7 @@ import type { AdminPlayer } from '@/lib/api/types';
 
 export function removeConfirmText(p: AdminPlayer): string {
   return p.inUse
-    ? `Remove ${p.name}? They have picks or are in a draft order, so they stay in past standings as "${p.name} (left)".`
+    ? `Remove ${p.name}? They have picks or are in a draft order, so they stay in past standings as “${p.name} (left)”.`
     : `Remove ${p.name} from the league?`;
 }
 

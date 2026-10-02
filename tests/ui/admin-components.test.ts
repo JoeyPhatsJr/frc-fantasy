@@ -92,7 +92,7 @@ describe('AddRoundForm (now the EventPicker plus the Found preview)', () => {
   it('starts with the upcoming list, a labelled TBA link box and a Check button, and no Add button until a check', () => {
     expect(html).toContain('Ramp Riot');
     expect(html).toContain('TBA link or event code (like 2025parr)');
-    expect(html).toContain('placeholder="2026parr"');
+    expect(html).toContain('placeholder="e.g. 2026parr"');
     expect(html).toMatch(/<button[^>]*type="submit"[^>]*>[^<]*Check<\/button>/);
     expect(html).not.toContain('Add this round');
   });
@@ -285,7 +285,7 @@ describe('FollowTeamsForm helper text (spec §6.10)', () => {
 describe('removeConfirmText', () => {
   it('explains that someone with history stays in past standings', () => {
     expect(removeConfirmText(members[1])).toBe(
-      'Remove Mom? They have picks or are in a draft order, so they stay in past standings as "Mom (left)".',
+      'Remove Mom? They have picks or are in a draft order, so they stay in past standings as “Mom (left)”.',
     );
     expect(removeConfirmText({ ...members[1], inUse: false })).toBe('Remove Mom from the league?');
   });

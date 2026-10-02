@@ -9,7 +9,9 @@ describe('SignInForm', () => {
     expect(html).toContain('type="email"');
     expect(html).toContain('type="password"');
     expect(html).toContain('autoComplete="current-password"');
-    expect(html).toContain('Create account');
+    // Same words as the landing page's button ("Create an account").
+    expect(html).toContain('New here? Create an account');
+    expect(html).not.toMatch(/Create account/);
     expect(html).toContain('Forgot your password? Ask the league commissioner to reset it.');
     expect(html).not.toContain('site admin');
     expect(html).not.toContain('Continue with Google');
@@ -17,6 +19,7 @@ describe('SignInForm', () => {
   it('create-account mode asks for a name too', () => {
     const html = renderToStaticMarkup(createElement(SignInForm, { initialMode: 'signup' }));
     expect(html).toContain('Your name');
+    expect(html).toMatch(/<button[^>]*type="submit"[^>]*>Create an account<\/button>/);
     expect(html).toContain('autoComplete="new-password"');
     expect(html).toContain('minLength="8"');
   });

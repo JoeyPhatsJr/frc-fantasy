@@ -15,7 +15,8 @@ export type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'id'> & {
 
 /** Field styling without a width, for fields that size themselves (a number box, a flex-1 input). */
 export const FIELD_BASE =
-  'h-11 touch-manipulation rounded-lg border border-border bg-surface px-3 text-base text-fg ' +
+  // field-border (not the hairline border) so the edge is >= 3:1 against the field and page (WCAG 1.4.11).
+  'h-11 touch-manipulation rounded-lg border border-field-border bg-surface px-3 text-base text-fg ' +
   'placeholder:text-fg-muted motion-safe:transition-colors duration-200 hover:border-fg-muted ' +
   'focus-visible:outline-hidden focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring ' +
   'disabled:cursor-not-allowed disabled:border-border disabled:opacity-60 ' +

@@ -196,7 +196,7 @@ export function DraftRoom({ slug, roundId, eventName }: { slug: string; roundId:
               <span
                 aria-hidden="true"
                 className={`relative inline-flex h-7 w-12 items-center rounded-full motion-safe:transition-colors ${
-                  autodraftOn ? 'bg-primary-fill' : 'bg-border'
+                  autodraftOn ? 'bg-primary-fill' : 'bg-field-border'
                 }`}
               >
                 <span

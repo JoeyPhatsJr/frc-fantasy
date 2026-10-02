@@ -180,10 +180,11 @@ export function DraftEntry({ detail, busy, run, api, playerNames }: SectionProps
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by number or name"
+              placeholder="Number or name…"
               autoCapitalize="none"
               autoCorrect="off"
               autoComplete="off"
+              spellCheck={false}
               enterKeyHint="search"
             />
           </div>

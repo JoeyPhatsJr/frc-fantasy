@@ -7,12 +7,15 @@ export type SeasonBoardRound = { id: string; eventName: string; status: RoundSta
 
 const DONE: ReadonlySet<RoundStatus> = new Set(['final', 'awaiting_final']);
 
-/** The Standings strip title (spec §6.3): "{n} events · {k} to go", "Season over" or "No events yet". */
+/**
+ * The Standings strip title (spec §6.3): "{n} events · {k} to go", "No events yet", and once nothing is
+ * left to play, "Season over" only when every round is final — before that, results can still change.
+ */
 export function seasonProgress(rounds: { status: RoundStatus }[]): string {
   if (rounds.length === 0) return 'No events yet';
   const left = rounds.filter((r) => !DONE.has(r.status)).length;
-  if (left === 0) return 'Season over';
-  return `${rounds.length} ${rounds.length === 1 ? 'event' : 'events'} · ${left} to go`;
+  if (left > 0) return `${rounds.length} ${rounds.length === 1 ? 'event' : 'events'} · ${left} to go`;
+  return rounds.every((r) => r.status === 'final') ? 'Season over' : 'All events done · waiting on final results';
 }
 
 function Breakdown({ perRound, rounds }: { perRound: number[]; rounds: SeasonBoardRound[] }) {

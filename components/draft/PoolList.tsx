@@ -111,8 +111,13 @@ export function PoolList({
       <div className="grid grid-cols-[1fr_auto] gap-2">
         <Input
           label="Search teams"
+          type="search"
           inputMode="search"
-          placeholder="Number or name"
+          placeholder="Number or name…"
+          autoComplete="off"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           value={query}
           onChange={(ev) => setQuery(ev.target.value)}
         />

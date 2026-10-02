@@ -75,7 +75,7 @@ export function EventPicker({
             }}
             maxLength={200}
             required
-            placeholder="2026parr"
+            placeholder="e.g. 2026parr"
             autoCapitalize="none"
             autoCorrect="off"
             autoComplete="off"

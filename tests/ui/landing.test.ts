@@ -24,6 +24,10 @@ describe('Landing (spec §4.6, landing redesign 2026-09-30)', () => {
     expect(text).toContain('341 earned +10 for rank, +8 as a captain and +15 for winning the event.');
   });
 
+  it('pulls the hero band up against the dark app header (no strip of page between them)', () => {
+    expect(out).toMatch(/<section data-hero="[^"]*" class="[^"]*(?<=[" ])-mt-6(?=[" ])[^"]*bg-band/);
+  });
+
   it('has a visible Sign in button beside Create an account', () => {
     expect(out).toMatch(/<a[^>]*href="\/signin"[^>]*>Sign in<\/a>/);
     expect(out).toContain('href="/signin?mode=signup"');

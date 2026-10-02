@@ -131,6 +131,17 @@ describe('Input', () => {
     expect(html).not.toContain('aria-invalid="true"');
     expect(html).toContain('aria-describedby="t-hint"');
   });
+
+  it('draws the field edge in field-border (>= 3:1), not the faint hairline border', () => {
+    for (const html of [
+      render(h(Input, { label: 'Name', id: 'n' })),
+      render(h(Select, { label: 'Sort', id: 's', children: h('option', { value: 'a' }, 'A') })),
+    ]) {
+      const cls = html.match(/<(?:input|select)[^>]*class="([^"]+)"/)?.[1] ?? '';
+      expect(cls.split(' ')).toContain('border-field-border');
+      expect(cls.split(' ')).not.toContain('border-border');
+    }
+  });
 });
 
 describe('Select', () => {

@@ -144,7 +144,11 @@ describe('seasonProgress', () => {
     expect(seasonProgress([])).toBe('No events yet');
     expect(seasonProgress([{ status: 'final' }, { status: 'live' }, { status: 'upcoming' }])).toBe('3 events · 2 to go');
     expect(seasonProgress([{ status: 'upcoming' }])).toBe('1 event · 1 to go');
-    expect(seasonProgress([{ status: 'final' }, { status: 'awaiting_final' }])).toBe('Season over');
+    expect(seasonProgress([{ status: 'final' }, { status: 'final' }])).toBe('Season over');
+  });
+  it('waits on final results while any finished event is still awaiting final', () => {
+    expect(seasonProgress([{ status: 'final' }, { status: 'awaiting_final' }])).toBe('All events done · waiting on final results');
+    expect(seasonProgress([{ status: 'awaiting_final' }])).toBe('All events done · waiting on final results');
   });
 });
 

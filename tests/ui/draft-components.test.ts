@@ -60,6 +60,8 @@ describe('bannerLines (§7.6)', () => {
     const html = banner({}, null, 42_000);
     expect(html).toMatch(/^<div[^>]*class="[^"]*sticky top-14 z-20[^"]*"/);
     expect(html).toMatch(/^<div[^>]*class="[^"]*-mx-4 bg-band px-4 py-3 text-on-band/);
+    // Butts up against the league header band (which has mb-4): no light strip between the two dark bands.
+    expect(html).toMatch(/^<div[^>]*class="[^"]*(?<=[" ])-mt-4(?=[" ])/);
   });
   it('setup: "Draft hasn\'t started", my place in the order, and the snake explainer', () => {
     const t = text(banner({ phase: 'setup', onClock: null }, 'mom', null, 2, 6));

@@ -14,7 +14,7 @@ import { NAME_MAX } from '@/lib/leagues/names';
 type Message = { tone: 'success' | 'danger'; text: string };
 
 export function leaveConfirmText(leagueName: string): string {
-  return `Leave ${leagueName}? If you have picks, you stay in past standings marked "(left)". You can only rejoin as a new player.`;
+  return `Leave ${leagueName}? If you have picks, you stay in past standings marked “(left)”. You can only rejoin as a new player.`;
 }
 
 export type LeagueMenuViewProps = {

@@ -51,10 +51,11 @@ export function LeagueHeaderView(p: LeagueHeaderProps & { pathname: string }) {
             </Link>
             {p.anyLive ? (
               <span className="flex shrink-0 items-center">
+                {/* band-live, not success: light-theme success (#127a3a) is too dim on the dark band. */}
                 <span
                   data-live-dot
                   aria-hidden="true"
-                  className="size-2.5 rounded-full bg-success ring-4 ring-success/25 motion-safe:animate-pulse"
+                  className="size-2.5 rounded-full bg-band-live ring-4 ring-band-live/25 motion-safe:animate-pulse"
                 />
                 <span className="sr-only">A round is live</span>
               </span>
