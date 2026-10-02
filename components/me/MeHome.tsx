@@ -1,10 +1,10 @@
+import Link from 'next/link';
 import { InviteCodeBox } from '@/components/InviteCodeBox';
-import { LeagueRows } from '@/components/me/LeagueRows';
 import { BumperPlate } from '@/components/ui/BumperPlate';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { teamLabel } from '@/lib/teams';
-import type { MePage } from '@/lib/views/me';
+import type { MeLeague, MePage } from '@/lib/views/me';
 
 export function MeHome({ page }: { page: MePage }) {
   const { leagues, teams, season } = page;
@@ -42,7 +42,7 @@ export function MeHome({ page }: { page: MePage }) {
         </Card>
       ) : null}
       <Card title="My leagues">
-        <LeagueRows leagues={leagues} />
+        <LegacyLeagueRows leagues={leagues} />
       </Card>
       <Card title="My season" className="space-y-2">
         <p className="font-display text-[32px] font-bold tabular-nums text-fg">{season.total}</p>
@@ -55,5 +55,37 @@ export function MeHome({ page }: { page: MePage }) {
         <p className="text-[15px] text-fg-muted">Average finish: {season.averageFinish ?? '—'}</p>
       </Card>
     </main>
+  );
+}
+
+// Task 9: LeagueRows now takes HomeLeague[]; MeHome is dead code deleted in Task 17, so it keeps its own copy of the old rows.
+function LegacyLeagueRows({ leagues }: { leagues: MeLeague[] }) {
+  return (
+    <ul className="-mx-2 divide-y divide-border">
+      {leagues.map((l) => (
+        <li key={l.slug}>
+          <Link
+            href={`/l/${l.slug}`}
+            className="flex min-h-14 cursor-pointer items-center gap-3 rounded-lg px-2 hover:bg-fg/5 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {l.anyLive ? (
+              <span aria-label="Live" className="size-2.5 shrink-0 rounded-full bg-success ring-4 ring-success/25 motion-safe:animate-pulse" />
+            ) : null}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-semibold text-fg">{l.name}</span>
+              {l.isCommissioner ? <span className="block text-sm font-semibold text-secondary">Commissioner</span> : null}
+            </span>
+            {l.error ? (
+              <span className="shrink-0 text-sm text-fg-muted">Couldn&apos;t load</span>
+            ) : (
+              <span className="shrink-0 text-right tabular-nums">
+                <span className="block font-display text-xl font-bold text-fg">{l.total}</span>
+                <span className="block text-sm text-fg-muted">{l.rank ? `#${l.rank}` : '—'}</span>
+              </span>
+            )}
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }
