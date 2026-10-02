@@ -15,13 +15,15 @@ export function upNextCopy(next: Exclude<UpNext, null>): Copy {
   const eventHref = `/l/${item.leagueSlug}/r/${item.roundId}`;
   const draftHref = `${eventHref}/draft`;
   const ev = item.eventName;
+  // A hand-entered draft has no room to join, only the board the commissioner fills in (final review M5).
+  const draftLabel = item.draftMode === 'commissioner' ? 'See the draft board' : 'Open draft room';
   switch (kind) {
     case 'draft-live':
       return {
         eyebrow,
         title: item.draftPhase === 'paused' ? 'Draft paused' : item.myTurn ? 'Your pick!' : 'Draft is live',
         detail: `${ev} · ${item.leagueName}`,
-        action: { label: 'Open draft room', href: draftHref },
+        action: { label: draftLabel, href: draftHref },
       };
     case 'event-live':
       return {
@@ -49,7 +51,7 @@ export function upNextCopy(next: Exclude<UpNext, null>): Copy {
         eyebrow,
         title: `${ev} draft coming up`,
         detail: `${shortDate(item.startDate)} · ${item.leagueName}`,
-        action: { label: 'Open draft room', href: draftHref },
+        action: { label: draftLabel, href: draftHref },
       };
   }
 }

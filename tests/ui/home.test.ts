@@ -44,6 +44,13 @@ describe('upNextCopy', () => {
     expect(d.title).toBe('Ramp Riot draft coming up');
     expect(d.detail).toBe('Oct 24 · Family');
     expect(d.action?.href).toBe('/l/fam/r/r1/draft');
+    expect(d.action?.label).toBe('Open draft room');
+  });
+  it('hand-entered drafts point at the board, not a room (final review M5)', () => {
+    const soon = upNextCopy({ kind: 'draft-soon', item: item({ status: 'setup', draftPhase: 'setup', draftMode: 'commissioner' }) });
+    expect(soon.action).toEqual({ label: 'See the draft board', href: '/l/fam/r/r1/draft' });
+    const live = upNextCopy({ kind: 'draft-live', item: item({ status: 'drafting', draftPhase: 'live', draftMode: 'commissioner' }) });
+    expect(live.action).toEqual({ label: 'See the draft board', href: '/l/fam/r/r1/draft' });
   });
 });
 
@@ -71,6 +78,18 @@ describe('LeagueRows', () => {
     expect(html).toContain('Commissioner');
     expect(html).toContain('Couldn&#x27;t load');
     expect(html).not.toContain('href="/l/x"');
+  });
+  it('puts the Commissioner badge on the status line, outside the name that gets cut off (final review M4)', () => {
+    const html = r(h(LeagueRows, { leagues: [
+      { slug: 'fam', name: 'The Extremely Long Habich Family Fantasy League', isCommissioner: true, rank: 1, total: 9, line: 'Ramp Riot · drafting', error: false },
+    ] }));
+    // Row's title span is the one that cuts off long text; the badge must not be inside it.
+    const title = html.match(/<span class="block truncate text-\[15px\][^"]*">([\s\S]*?)<\/span>/)?.[1] ?? '';
+    expect(title).toBe('The Extremely Long Habich Family Fantasy League');
+    expect(html).toMatch(/Commissioner<\/span>Ramp Riot · drafting/);
+    expect(r(h(LeagueRows, { leagues: [
+      { slug: 'x', name: 'Other', isCommissioner: false, rank: 2, total: 1, line: 'Ramp Riot · drafting', error: false },
+    ] }))).not.toContain('Commissioner');
   });
 });
 

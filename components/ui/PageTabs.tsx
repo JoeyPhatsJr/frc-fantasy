@@ -1,19 +1,33 @@
 'use client';
 
-import { useRef } from 'react';
+import { useId, useRef } from 'react';
 
-/** In-page tabs (state, not routes). Arrow keys move between tabs. */
+/** The id of a tab button, so its panel can say `aria-labelledby={pageTabId(prefix, activeKey)}`. */
+export function pageTabId(prefix: string, key: string): string {
+  return `${prefix}-tab-${key}`;
+}
+
+/**
+ * In-page tabs (state, not routes). Arrow keys move between tabs. Each tab gets the id `pageTabId(idPrefix, key)`;
+ * pass `panelId` (the one tabpanel's id) to wire up aria-controls.
+ */
 export function PageTabs({
   items,
   active,
   onSelect,
   label,
+  idPrefix,
+  panelId,
 }: {
   items: { key: string; label: string }[];
   active: string;
   onSelect: (key: string) => void;
   label: string;
+  idPrefix?: string;
+  panelId?: string;
 }) {
+  const fallbackPrefix = useId();
+  const prefix = idPrefix ?? fallbackPrefix;
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
   const onKeyDown = (ev: React.KeyboardEvent, i: number) => {
     if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
@@ -35,7 +49,9 @@ export function PageTabs({
             }}
             type="button"
             role="tab"
+            id={pageTabId(prefix, t.key)}
             aria-selected={on}
+            aria-controls={panelId}
             tabIndex={on ? 0 : -1}
             onClick={() => onSelect(t.key)}
             onKeyDown={(ev) => onKeyDown(ev, i)}

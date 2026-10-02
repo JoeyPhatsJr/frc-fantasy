@@ -67,7 +67,7 @@ Starting values (the implementer may nudge them to pass §4.5 contrast tests, ke
 | `accent` | `#f2a900` | `#f5b301` | gold: leader, current step, active tab underline |
 | `accent-text` | `#8a5a00` | `#ffd35c` | gold as text |
 | `success` | `#127a3a` | `#2fbf71` | LIVE badge, saved |
-| `warning` | `#9a5b00` | `#ffd35c` | stale data |
+| `warning` | `#925600` | `#ffd35c` | stale data; Awaiting final badge text (neutral fill, final review M9) |
 | `secondary` | `#6d3fd1` | `#9b7bff` | commissioner label only |
 
 `on-*` companions, `ring`, `silver`, `bronze` are kept and re-tuned to match. `radius-card` drops to 10px (sheets/forms only); `shadow-card` is removed from rows (kept only for sheets).

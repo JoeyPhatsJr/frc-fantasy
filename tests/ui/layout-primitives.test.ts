@@ -5,7 +5,7 @@ import { Row, RankNumeral, Points } from '@/components/ui/Row';
 import { Section } from '@/components/ui/Section';
 import { StatusStrip } from '@/components/ui/StatusStrip';
 import { BandTabs } from '@/components/ui/Tabs';
-import { Sheet } from '@/components/ui/Sheet';
+import { lockBodyScroll, Sheet } from '@/components/ui/Sheet';
 import { PageTabs } from '@/components/ui/PageTabs';
 
 const r = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(el);
@@ -62,7 +62,18 @@ describe('StatusStrip', () => {
     const html = r(h(StatusStrip, { tone: 'live', title: 'Ramp Riot', detail: 'updated 1 min ago' }));
     expect(html).toContain('LIVE');
     expect(html).toContain('motion-safe:animate-pulse');
-    expect(html).toContain('role="status"');
+  });
+  it('is a labelled region; only the detail line is a polite live region (final review M3)', () => {
+    const html = r(h(StatusStrip, {
+      tone: 'live', title: 'Ramp Riot', detail: 'Last updated 1 min ago',
+      action: h('a', { href: '/x' }, 'Open draft room'),
+    }));
+    expect(html).toMatch(/^<section aria-label="Status"/);
+    expect(html.match(/role="status"/g)).toHaveLength(1);
+    expect(html).toContain('<p role="status" aria-live="polite" class="text-[13px] text-fg-muted">Last updated 1 min ago</p>');
+    // The live region holds only the detail text, never the action.
+    expect(html).not.toMatch(/role="status"[^>]*>[^<]*<a/);
+    expect(r(h(StatusStrip, { tone: 'neutral', title: 'No events yet' }))).not.toContain('role="status"');
   });
   it('wraps long titles instead of overflowing', () => {
     expect(r(h(StatusStrip, { tone: 'neutral', title: 'x' }))).toContain('break-words');
@@ -91,6 +102,16 @@ describe('Sheet', () => {
     expect(html).toContain('aria-modal="true"');
     expect(html).toContain('aria-label="Close"');
   });
+  it('locks page scroll while open and restores the previous value (final review M13)', () => {
+    const body = { style: { overflow: 'auto' } };
+    const unlock = lockBodyScroll(body);
+    expect(body.style.overflow).toBe('hidden');
+    unlock();
+    expect(body.style.overflow).toBe('auto');
+    const plain = { style: { overflow: '' } };
+    lockBodyScroll(plain)();
+    expect(plain.style.overflow).toBe('');
+  });
 });
 
 describe('PageTabs', () => {
@@ -100,5 +121,12 @@ describe('PageTabs', () => {
     ] }));
     expect(html).toContain('role="tablist"');
     expect(html.match(/aria-selected="true"/g)).toHaveLength(1);
+  });
+  it('gives every tab an id, even without a prefix', () => {
+    const html = r(h(PageTabs, { label: 'Views', active: 'a', onSelect: () => {}, items: [
+      { key: 'a', label: 'A' }, { key: 'b', label: 'B' },
+    ] }));
+    expect(html.match(/role="tab" id="[^"]+-tab-[ab]"/g)).toHaveLength(2);
+    expect(html).not.toContain('aria-controls');
   });
 });

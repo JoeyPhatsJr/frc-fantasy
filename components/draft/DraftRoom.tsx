@@ -10,7 +10,7 @@ import { DraftBoard } from '@/components/DraftBoard';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { InfoTip } from '@/components/ui/InfoTip';
-import { PageTabs } from '@/components/ui/PageTabs';
+import { PageTabs, pageTabId } from '@/components/ui/PageTabs';
 import { DraftApiError, type DraftApi } from '@/lib/draft/api';
 import type { DraftState } from '@/lib/draft/state';
 import { GLOSSARY } from '@/lib/glossary';
@@ -18,6 +18,9 @@ import type { PoolEntry } from '@/lib/pool/entries';
 import { teamLabel } from '@/lib/teams';
 
 type Tab = 'pool' | 'queue' | 'board';
+/** Ids for the room's tabs and its one tabpanel (the panel is labelled by the active tab). */
+export const DRAFT_TABS_ID = 'draft-room';
+export const DRAFT_PANEL_ID = 'draft-room-panel';
 /** Same cap as the PUT draft/queue route. */
 export const MAX_QUEUE = 100;
 
@@ -41,10 +44,16 @@ function positionOf(state: DraftState, playerId: string | null): number | null {
   return i < 0 ? null : i + 1;
 }
 
-/** §7.6: what to tell the player after a failed action. null = say nothing; 409 stale/not_your_turn just refetch. */
-export function actionNotice(err: unknown, pickedTeam?: string): string | null {
+export const UNDO_STALE_NOTICE = 'The draft moved on — check the board and try again.';
+
+/**
+ * §7.6: what to tell the player after a failed action. null = say nothing; 409 stale/not_your_turn just refetch.
+ * Undo is the exception (final review M7): a stale Undo would otherwise look like a button that did nothing.
+ */
+export function actionNotice(err: unknown, pickedTeam?: string, undo = false): string | null {
   if (!(err instanceof DraftApiError)) return "Couldn't reach the server. Check your connection and try again.";
   if (err.code === 'taken' && pickedTeam) return `${teamLabel(pickedTeam)} was just taken — pick again`;
+  if (err.code === 'stale' && undo) return UNDO_STALE_NOTICE;
   if (err.code === 'stale' || err.code === 'not_your_turn') return null;
   return err.message;
 }
@@ -114,14 +123,14 @@ export function DraftRoom({ slug, roundId, eventName }: { slug: string; roundId:
   const pickingFor = !myTurn && me?.isCommissioner && state.phase === 'live' ? state.onClock : null;
   const lastPick = state.picks[state.picks.length - 1] ?? null;
 
-  /** Runs one action; on any outcome, refetch. 409 stale/not_your_turn refetch silently (§7.6). */
-  async function run(action: () => Promise<unknown>, pickedTeam?: string) {
+  /** Runs one action; on any outcome, refetch. 409 stale/not_your_turn refetch silently (§7.6), except Undo. */
+  async function run(action: () => Promise<unknown>, pickedTeam?: string, undo = false) {
     setBusy(true);
     setNotice(null);
     try {
       await action();
     } catch (err) {
-      setNotice(actionNotice(err, pickedTeam));
+      setNotice(actionNotice(err, pickedTeam, undo));
     } finally {
       setBusy(false);
       setConfirming(null);
@@ -235,7 +244,7 @@ export function DraftRoom({ slug, roundId, eventName }: { slug: string; roundId:
                 disabled={busy}
                 onClick={() => {
                   const label = `${teamLabel(lastPick.teamKey)} (${playerNames[lastPick.playerId] ?? 'Unknown'})`;
-                  if (window.confirm(`Undo the last pick: ${label}?`)) void run(() => api.undo(lastPick.pickNumber));
+                  if (window.confirm(`Undo the last pick: ${label}?`)) void run(() => api.undo(lastPick.pickNumber), undefined, true);
                 }}
               >
                 Undo last pick
@@ -257,9 +266,16 @@ export function DraftRoom({ slug, roundId, eventName }: { slug: string; roundId:
         </Alert>
       ) : null}
 
-      <PageTabs label="Draft room" items={tabs} active={activeTab} onSelect={(key) => setTab(key as Tab)} />
+      <PageTabs
+        label="Draft room"
+        items={tabs}
+        active={activeTab}
+        onSelect={(key) => setTab(key as Tab)}
+        idPrefix={DRAFT_TABS_ID}
+        panelId={DRAFT_PANEL_ID}
+      />
 
-      <div role="tabpanel">
+      <div role="tabpanel" id={DRAFT_PANEL_ID} aria-labelledby={pageTabId(DRAFT_TABS_ID, activeTab)}>
         {activeTab === 'pool' ? (
           <PoolList
             slug={slug}

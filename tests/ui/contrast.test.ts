@@ -33,6 +33,7 @@ const PAIRS: [string, string][] = [
   ['primary', 'bg'], ['primary', 'surface'], ['on-primary', 'primary-fill'],
   ['on-band', 'band'], ['band-muted', 'band'], ['accent-text', 'bg'], ['on-accent', 'accent'],
   ['red-alliance-text', 'bg'], ['on-success', 'success'],
+  ['warning', 'surface-2'], // the Awaiting final badge (final review M9)
 ];
 
 describe.each([['dark', dark], ['light', light]] as const)('%s theme tokens', (_name, t) => {

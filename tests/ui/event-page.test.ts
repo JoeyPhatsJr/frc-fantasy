@@ -52,7 +52,7 @@ describe('Event tab (spec §6.5)', () => {
 
   it('renders the strip, leaderboard and scoring link, and drops the old sections', async () => {
     const out = await page(round.id);
-    expect(out).toContain('role="status"');
+    expect(out).toContain('aria-label="Status"');
     expect(out).toContain('Draft not set up yet');
     expect(out).toContain('Leaderboard');
     expect(out).toContain('How scoring works');

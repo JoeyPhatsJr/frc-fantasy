@@ -1,8 +1,8 @@
-import { getRepo } from '@/lib/db';
 import { draftPhase, onClockPlayer } from '@/lib/draft/live';
 import { localDate } from '@/lib/rounds/status';
 import { targetRound } from '@/lib/rounds/target';
 import { loadLeaguePage } from '@/lib/views/league';
+import { listMyLeagues } from '@/lib/views/memberships';
 import { leagueStatusLine, upNext, type UpNext, type UpNextInput } from '@/lib/views/upNext';
 
 export type MeSeason = {
@@ -40,7 +40,7 @@ export type HomePage = { leagues: HomeLeague[]; upNext: UpNext; season: MeSeason
 
 /** Everything Home and You show. Leagues load in parallel; one failing league doesn't break the page. */
 export async function loadHome(userId: string, now: Date): Promise<HomePage> {
-  const memberships = await getRepo().listLeaguesForUser(userId);
+  const memberships = await listMyLeagues(userId);
   const results = await Promise.allSettled(memberships.map((m) => loadLeaguePage(m.league.slug, now)));
   const today = localDate(now, 'America/New_York');
   const leagues: HomeLeague[] = [];

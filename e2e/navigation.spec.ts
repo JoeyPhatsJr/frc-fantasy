@@ -40,7 +40,7 @@ test('bottom bar and league tabs get a member everywhere; the live-draft pill le
     await leagueTabs(joey).getByRole('link', { name: 'Event' }).click();
     await expect(joey).toHaveURL(new RegExp(`${escape(event)}$`));
     await expect(leagueTabs(joey).getByRole('link', { name: 'Event' })).toHaveAttribute('aria-current', 'page');
-    await expect(joey.getByRole('status').first()).toBeVisible();
+    await expect(joey.getByRole('region', { name: 'Status' })).toBeVisible();
     await expect(appBar(joey)).toBeVisible();
 
     // Draft tab: the round's draft room.

@@ -149,7 +149,7 @@ describe('league page: standings and "(left)" names (spec §6.3)', () => {
 
   it('no events: a "No events yet" strip and empty state; commissioners get the Admin link', async () => {
     let out = await page();
-    expect(out).toContain('role="status"');
+    expect(out).toContain('aria-label="Status"');
     expect(out.match(/No events yet/g)?.length).toBeGreaterThanOrEqual(2);
     expect(out).not.toContain('Add one in Admin');
     setUser(commish);
@@ -194,7 +194,7 @@ describe('league page: standings and "(left)" names (spec §6.3)', () => {
       startDate: '2027-01-01', endDate: '2027-12-31', timezone: 'America/New_York', scoring: defaultScoring(),
     });
     const out = await page(season.league.slug);
-    expect(out).toContain('role="status"');
+    expect(out).toContain('aria-label="Status"');
     expect(out).toContain('Leaderboard');
     expect(out).toContain('How scoring works');
     expect(out).toContain('Draft not set up yet');

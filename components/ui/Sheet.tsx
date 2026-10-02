@@ -7,6 +7,15 @@ import { X } from '@/components/ui/icons';
 const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+/** Stops the page behind an open sheet from scrolling; the returned function puts the old value back. */
+export function lockBodyScroll(body: { style: { overflow: string } }): () => void {
+  const previous = body.style.overflow;
+  body.style.overflow = 'hidden';
+  return () => {
+    body.style.overflow = previous;
+  };
+}
+
 /** A bottom sheet on phones, a centered dialog on desktop. Traps focus, closes on Escape or backdrop tap. */
 export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
   const panel = useRef<HTMLDivElement>(null);
@@ -17,6 +26,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
   useEffect(() => {
     if (!open) return;
     const opener = document.activeElement;
+    const unlockScroll = lockBodyScroll(document.body);
     const el = panel.current;
     el?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
     const onKey = (ev: KeyboardEvent) => {
@@ -31,6 +41,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
+      unlockScroll();
       if (opener instanceof HTMLElement) opener.focus();
     };
   }, [open]);

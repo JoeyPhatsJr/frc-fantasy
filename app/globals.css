@@ -131,7 +131,7 @@
 
     --color-success: #127a3a;
     --color-on-success: #ffffff;
-    --color-warning: #9a5b00;
+    --color-warning: #925600; /* >= 4.5:1 on surface-2 too (the Awaiting final badge) */
     --color-secondary: #6d3fd1;
     --color-on-secondary: #ffffff;
     --color-ring: #0a52b0;

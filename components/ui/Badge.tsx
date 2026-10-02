@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-export type BadgeTone = 'neutral' | 'live' | 'upcoming' | 'final' | 'drafting' | 'warning';
+export type BadgeTone = 'neutral' | 'live' | 'upcoming' | 'final' | 'drafting' | 'warning' | 'caution';
 
 export type BadgeProps = {
   tone: BadgeTone;
@@ -17,6 +17,8 @@ const TONES: Record<BadgeTone, string> = {
   final: 'bg-surface-2 text-fg-muted ring-1 ring-inset ring-border',
   drafting: 'bg-surface-2 text-fg ring-1 ring-inset ring-border',
   warning: 'bg-accent text-on-accent',
+  // Needs attention but isn't a leader or a pick: neutral fill, warning text (gold fills are reserved, spec §4.2).
+  caution: 'bg-surface-2 text-warning ring-1 ring-inset ring-border',
 };
 
 export function Badge({ tone, className, children }: BadgeProps) {

@@ -5,6 +5,7 @@ import { leagueAccess } from '@/lib/auth/roles';
 import { getRepo } from '@/lib/db';
 import type { LeagueFormat } from '@/lib/db/types';
 import { statusesFromRows, targetFromRows } from '@/lib/rounds/targetFor';
+import { listMyLeagues } from '@/lib/views/memberships';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +25,7 @@ type Shell = {
 /** The signed-in user's other leagues, for the Switch chip. A failure only hides the chip. */
 async function otherLeagues(userId: string, leagueId: string): Promise<{ slug: string; name: string }[]> {
   try {
-    const mine = await getRepo().listLeaguesForUser(userId);
+    const mine = await listMyLeagues(userId);
     return mine.filter((m) => m.league.id !== leagueId).map((m) => ({ slug: m.league.slug, name: m.league.name }));
   } catch (err) {
     console.error(err);

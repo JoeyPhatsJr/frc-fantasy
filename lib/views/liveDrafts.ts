@@ -1,5 +1,6 @@
 import { getRepo } from '@/lib/db';
 import { draftPhase, onClockPlayer } from '@/lib/draft/live';
+import { listMyLeagues } from '@/lib/views/memberships';
 
 export type MyLiveDraft = {
   leagueSlug: string;
@@ -13,7 +14,7 @@ export type MyLiveDraft = {
 /** Every running draft in the user's leagues, database only (spec §5.5). */
 export async function loadMyLiveDrafts(userId: string): Promise<MyLiveDraft[]> {
   const repo = getRepo();
-  const memberships = await repo.listLeaguesForUser(userId);
+  const memberships = await listMyLeagues(userId);
   const perLeague = await Promise.all(
     memberships.map(async ({ league, player }) => {
       const rounds = (await repo.listRounds(league.id)).filter((r) => r.draftMode === 'live' && r.draftStartedAt);

@@ -89,6 +89,12 @@ describe('StatusBadge', () => {
     expect(render(h(StatusBadge, { status: 'live' }))).toContain('animate-pulse');
     expect(render(h(StatusBadge, { status: 'final' }))).not.toContain('animate-pulse');
   });
+  it('Awaiting final is a neutral badge with warning text, not a gold fill (final review M9)', () => {
+    const html = render(h(StatusBadge, { status: 'awaiting_final' }));
+    expect(html).toContain('text-warning');
+    expect(html).toContain('bg-surface-2');
+    expect(html).not.toContain('bg-accent');
+  });
 });
 
 describe('Freshness', () => {

@@ -10,10 +10,13 @@ const TONE: Record<StripTone, string> = {
   warning: 'border-l-warning',
 };
 
-/** The one-line "where are we" header of a screen (spec §4.6, §6.5). */
+/**
+ * The one-line "where are we" header of a screen (spec §4.6, §6.5). A labelled region, not a live region:
+ * it holds buttons, and only the detail line (e.g. "Last updated 2 min ago") is announced when it changes.
+ */
 export function StatusStrip({ tone, title, detail, action, switcher }: { tone: StripTone; title: ReactNode; detail?: ReactNode; action?: ReactNode; switcher?: ReactNode }) {
   return (
-    <div role="status" className={`-mx-4 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-b-border border-l-4 bg-surface px-4 py-3 ${TONE[tone]}`}>
+    <section aria-label="Status" className={`-mx-4 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-b-border border-l-4 bg-surface px-4 py-3 ${TONE[tone]}`}>
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-center gap-2 break-words font-display text-[20px] font-bold leading-6 text-fg">
           {tone === 'live' ? (
@@ -24,10 +27,14 @@ export function StatusStrip({ tone, title, detail, action, switcher }: { tone: S
           ) : null}
           {title}
         </p>
-        {detail ? <p className="text-[13px] text-fg-muted">{detail}</p> : null}
+        {detail ? (
+          <p role="status" aria-live="polite" className="text-[13px] text-fg-muted">
+            {detail}
+          </p>
+        ) : null}
       </div>
       {switcher}
       {action}
-    </div>
+    </section>
   );
 }
