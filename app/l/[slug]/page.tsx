@@ -4,14 +4,12 @@ import { AutoRefresh } from '@/components/AutoRefresh';
 import { DateBlock } from '@/components/DateBlock';
 import { Freshness } from '@/components/Freshness';
 import { Leaderboard } from '@/components/Leaderboard';
-import { LiveDraftBanner } from '@/components/draft/LiveDraftBanner';
 import { LeagueMeCard } from '@/components/LeagueMeCard';
 import { PrivateLeague } from '@/components/PrivateLeague';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { leagueAccess } from '@/lib/auth/roles';
-import { memberLiveDrafts } from '@/lib/draft/liveBanner';
 import { scheduleFollowSync } from '@/lib/follow/sync';
 import { formatDateRange } from '@/lib/format';
 import { loadLeaguePage } from '@/lib/views/league';
@@ -36,12 +34,10 @@ export default async function LeaguePage({ params }: Props) {
   // Only { slug, name } of the league reaches this page; the admin token hash never does.
   const { league, standings, rounds } = page;
   const live = rounds.filter((r) => r.status === 'live');
-  const drafts = await memberLiveDrafts(slug, rounds);
 
   return (
     <main id="main" className="space-y-6">
       <AutoRefresh seconds={60} />
-      <LiveDraftBanner slug={slug} drafts={drafts} />
 
       {/* The league bar (app/l/[slug]/layout.tsx) shows the name; this keeps a page heading for screen readers. */}
       <h1 className="sr-only">{league.name} standings</h1>

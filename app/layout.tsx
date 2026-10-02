@@ -3,8 +3,10 @@ import { Barlow, Barlow_Condensed } from 'next/font/google';
 import { SkipLink } from '@/components/SkipLink';
 import { AppHeader } from '@/components/shell/AppHeader';
 import { BottomBar } from '@/components/shell/BottomBar';
+import { LiveDraftPill } from '@/components/shell/LiveDraftPill';
 import { getUser } from '@/lib/auth/session';
 import { THEME_BOOT_SCRIPT } from '@/lib/theme';
+import { safeLiveDrafts } from '@/lib/views/liveDrafts';
 import './globals.css';
 
 const barlowCondensed = Barlow_Condensed({
@@ -38,17 +40,19 @@ export const viewport: Viewport = {
   ],
 };
 
-async function isSignedIn(): Promise<boolean> {
+async function signedInUserId(): Promise<string | null> {
   try {
-    return (await getUser()) !== null;
+    return (await getUser())?.id ?? null;
   } catch (err) {
     console.error(err); // a sleeping database or missing env var: render signed-out rather than a blank page
-    return false;
+    return null;
   }
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const signedIn = await isSignedIn();
+  const userId = await signedInUserId();
+  const signedIn = userId !== null;
+  const drafts = userId ? await safeLiveDrafts(userId) : [];
   return (
     // Light by default. The boot script swaps in a saved choice before React hydrates, so the
     // attribute can legitimately differ from the server markup.
@@ -72,6 +76,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         >
           {children}
         </div>
+        {signedIn ? <LiveDraftPill drafts={drafts} /> : null}
         {signedIn ? <BottomBar /> : null}
 
         <footer
