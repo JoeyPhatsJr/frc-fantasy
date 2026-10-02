@@ -142,13 +142,6 @@
     @apply bg-bg text-fg font-body antialiased;
   }
 
-  /* The fixed bottom tab bar (small screens) must never cover the footer. */
-  @media (width < 48rem) {
-    body:has([data-tabbar]) {
-      padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
-    }
-  }
-
   /* The sticky header is 56px (h-14); anchored targets (#main) must not hide under it. */
   html {
     scroll-padding-top: 4.5rem;

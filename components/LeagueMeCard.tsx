@@ -8,12 +8,12 @@ import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { leaveLeague, renameMe } from '@/lib/admin/client';
 import { NAME_MAX } from '@/lib/leagues/names';
+import { leaveConfirmText } from '@/components/shell/LeagueMenu';
 
 type Message = { tone: 'success' | 'danger'; text: string };
 
-export function leaveConfirmText(leagueName: string): string {
-  return `Leave ${leagueName}? If you have picks, you stay in past standings marked "(left)". You can only rejoin as a new player.`;
-}
+/** Moved to the league header's ⋯ menu; re-exported here until Task 17 deletes this card. */
+export { leaveConfirmText };
 
 type ViewProps = {
   leagueName: string;

@@ -1,11 +1,10 @@
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { LeagueBar } from '@/components/LeagueBar';
-import { TabBar } from '@/components/TabBar';
+import { LeagueHeader } from '@/components/shell/LeagueHeader';
 import { leagueAccess } from '@/lib/auth/roles';
 import { getRepo } from '@/lib/db';
-import { localDate, roundStatus } from '@/lib/rounds/status';
-import { targetRound } from '@/lib/rounds/target';
+import type { LeagueFormat } from '@/lib/db/types';
+import { statusesFromRows, targetFromRows } from '@/lib/rounds/targetFor';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,37 +12,58 @@ type Props = { children: ReactNode; params: Promise<{ slug: string }> };
 
 type Shell = {
   canView: boolean;
-  league: { slug: string; name: string };
+  league: { slug: string; name: string; format: LeagueFormat };
   anyLive: boolean;
   targetRoundId: string | null;
   isCommissioner: boolean;
+  isMember: boolean;
+  myName: string | null;
+  myLeagues: { slug: string; name: string }[];
 };
 
-/** League name, live flag and the Round tab's target, from the database only (no TBA calls). */
+/** The signed-in user's other leagues, for the Switch chip. A failure only hides the chip. */
+async function otherLeagues(userId: string, leagueId: string): Promise<{ slug: string; name: string }[]> {
+  try {
+    const mine = await getRepo().listLeaguesForUser(userId);
+    return mine.filter((m) => m.league.id !== leagueId).map((m) => ({ slug: m.league.slug, name: m.league.name }));
+  } catch (err) {
+    console.error(err);
+    return [];
+  }
+}
+
+/** League name, live flag, tab targets and the viewer's menu data, from the database only (no TBA calls). */
 async function loadShell(slug: string, now: Date): Promise<Shell | null> {
   const access = await leagueAccess(slug);
   if (!access) return null;
   const { league } = access;
   // Non-members get no league data at all: the page renders the private card instead.
   if (!access.canView) {
-    return { canView: false, league: { slug: league.slug, name: '' }, anyLive: false, targetRoundId: null, isCommissioner: false };
+    return {
+      canView: false,
+      league: { slug: league.slug, name: '', format: league.format },
+      anyLive: false,
+      targetRoundId: null,
+      isCommissioner: false,
+      isMember: false,
+      myName: null,
+      myLeagues: [],
+    };
   }
   const repo = getRepo();
   const rounds = await repo.listRounds(league.id);
   const picks = await repo.listPicksForRounds(rounds.map((r) => r.id));
-  const statuses = rounds.map((round) => ({
-    id: round.id,
-    startDate: round.startDate,
-    status: roundStatus(round, picks.filter((p) => p.roundId === round.id).length, now),
-  }));
 
   return {
     canView: true,
-    // Only { slug, name } leaves this function.
-    league: { slug: league.slug, name: league.name },
-    anyLive: statuses.some((r) => r.status === 'live'),
-    targetRoundId: targetRound(statuses, localDate(now, rounds[0]?.timezone)),
+    // Only { slug, name, format } leaves this function.
+    league: { slug: league.slug, name: league.name, format: league.format },
+    anyLive: statusesFromRows(rounds, picks, now).some((r) => r.status === 'live'),
+    targetRoundId: targetFromRows(rounds, picks, now),
     isCommissioner: access.isCommissioner,
+    isMember: access.player !== null,
+    myName: access.player?.name ?? null,
+    myLeagues: access.user ? await otherLeagues(access.user.id, league.id) : [],
   };
 }
 
@@ -64,10 +84,17 @@ export default async function LeagueLayout({ children, params }: Props) {
 
   return (
     <>
-      <div className="mb-6">
-        <LeagueBar slug={shell.league.slug} name={shell.league.name} anyLive={shell.anyLive} isCommissioner={shell.isCommissioner} />
-        <TabBar slug={shell.league.slug} targetRoundId={shell.targetRoundId} showAdmin={shell.isCommissioner} />
-      </div>
+      <LeagueHeader
+        slug={shell.league.slug}
+        name={shell.league.name}
+        format={shell.league.format}
+        isCommissioner={shell.isCommissioner}
+        isMember={shell.isMember}
+        myName={shell.myName}
+        targetRoundId={shell.targetRoundId}
+        anyLive={shell.anyLive}
+        myLeagues={shell.myLeagues}
+      />
       {children}
     </>
   );

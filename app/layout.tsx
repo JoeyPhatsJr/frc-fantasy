@@ -65,8 +65,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <SkipLink />
         <AppHeader signedIn={signedIn} />
 
-        {/* Signed in, the footer clears the fixed bottom bar; signed out there is no tab
-            bar (league pages' TabBar pads <body> itself, see globals.css), so no extra space. */}
+        {/* Signed in, the footer clears the fixed bottom bar; signed out there is no bottom
+            bar at all (league tabs live in the band at the top), so no extra space. */}
         <div
           className={`mx-auto w-full max-w-2xl flex-1 px-4 py-6 ${signedIn ? 'pb-28' : 'pb-10'}`}
         >
