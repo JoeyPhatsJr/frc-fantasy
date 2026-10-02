@@ -52,6 +52,12 @@ describe('Button', () => {
     expect(html).toContain('Saving');
   });
 
+  it('is rounded-lg, not a pill', () => {
+    const html = render(h(Button, null, 'x'));
+    expect(html).toContain('rounded-lg');
+    expect(html).not.toContain('rounded-pill');
+  });
+
   it('accent is a gold fill with on-accent text, never plain fg (which is light in dark mode)', () => {
     const html = render(h(Button, { variant: 'accent' }, 'Add this round'));
     expect(html).toContain('bg-accent');
@@ -77,7 +83,14 @@ describe('Badge', () => {
   it('other tones have no pulsing dot', () => {
     const html = render(h(Badge, { tone: 'final', children: 'Final' }));
     expect(html).not.toContain('animate-pulse');
-    expect(html).toContain('rounded-pill');
+    expect(html).toContain('rounded-[4px]');
+    expect(html).toContain('uppercase');
+  });
+
+  it('Badge drafting tone is neutral, not purple', () => {
+    const html = render(h(Badge, { tone: 'drafting' }, 'Drafting'));
+    expect(html).not.toContain('bg-secondary');
+    expect(html).toContain('bg-surface-2');
   });
 });
 
@@ -162,7 +175,7 @@ describe('Card', () => {
     expect(html).toContain('href="/x"');
     expect(html).toContain('Body');
     expect(html).toContain('rounded-card');
-    expect(html).toContain('shadow-card');
+    expect(html).not.toContain('shadow-card');
   });
 
   it('renders just children when there is no header', () => {
@@ -219,6 +232,22 @@ describe('BumperPlate', () => {
 
   it('merges className', () => {
     expect(render(h(BumperPlate, { number: '103', className: 'w-full' }))).toContain('w-full');
+  });
+});
+
+describe('BumperPlate colour', () => {
+  it('is blue unless told red', () => {
+    expect(render(h(BumperPlate, { number: '5181' }))).toContain('bg-primary-fill');
+    expect(render(h(BumperPlate, { number: '5181', side: 'red' }))).toContain('bg-red-alliance');
+  });
+});
+
+describe('Alert style', () => {
+  it('is a left-ruled note with the tone on the border and no fill', () => {
+    const html = render(h(Alert, { tone: 'danger', children: 'x' }));
+    expect(html).toContain('border-l-4');
+    expect(html).toContain('border-red-alliance');
+    expect(html).not.toContain('bg-red-alliance/10');
   });
 });
 

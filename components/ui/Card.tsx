@@ -15,7 +15,7 @@ export function Card({ title, eyebrow, action, className, children }: CardProps)
   const hasHeader = title != null || eyebrow != null || action != null;
   return (
     <div
-      className={['rounded-card border border-border bg-surface p-4 shadow-card', className]
+      className={['rounded-card border border-border bg-surface p-4', className]
         .filter(Boolean)
         .join(' ')}
     >
@@ -23,7 +23,7 @@ export function Card({ title, eyebrow, action, className, children }: CardProps)
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
             {eyebrow != null && (
-              <p className="text-[13px] font-semibold leading-[18px] text-fg-muted">{eyebrow}</p>
+              <p className="text-[11px] font-bold uppercase leading-4 tracking-[.12em] text-fg-muted">{eyebrow}</p>
             )}
             {title != null && (
               <h2 className="font-display text-[22px] font-bold leading-[26px] break-words text-fg">

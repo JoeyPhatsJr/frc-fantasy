@@ -13,9 +13,9 @@ export type BadgeProps = {
 const TONES: Record<BadgeTone, string> = {
   neutral: 'bg-surface-2 text-fg-muted ring-1 ring-inset ring-border',
   live: 'bg-success text-on-success',
-  upcoming: 'bg-primary-fill text-on-primary',
+  upcoming: 'bg-surface-2 text-primary ring-1 ring-inset ring-border',
   final: 'bg-surface-2 text-fg-muted ring-1 ring-inset ring-border',
-  drafting: 'bg-secondary text-on-secondary',
+  drafting: 'bg-surface-2 text-fg ring-1 ring-inset ring-border',
   warning: 'bg-accent text-on-accent',
 };
 
@@ -23,8 +23,8 @@ export function Badge({ tone, className, children }: BadgeProps) {
   return (
     <span
       className={[
-        'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill px-2.5 py-0.5',
-        'text-[13px] font-semibold leading-[18px]',
+        'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[4px] px-2 py-0.5',
+        'text-[11px] font-bold uppercase leading-4 tracking-[.08em]',
         TONES[tone],
         className,
       ]
