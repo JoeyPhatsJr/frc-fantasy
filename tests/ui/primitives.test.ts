@@ -88,7 +88,7 @@ describe('Badge', () => {
   });
 
   it('Badge drafting tone is neutral, not purple', () => {
-    const html = render(h(Badge, { tone: 'drafting' }, 'Drafting'));
+    const html = render(h(Badge, { tone: 'drafting', children: 'Drafting' }));
     expect(html).not.toContain('bg-secondary');
     expect(html).toContain('bg-surface-2');
   });
